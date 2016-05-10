@@ -4,6 +4,9 @@ module Espa.Cli.Native where
 import Paths_esp_assembler
 import Data.Tes3.Disassembler
 
+espSuffix :: String
+espSuffix = ".esp"
+
 espaHelpHeader :: String
 espaHelpHeader
   =  "Usage: espa [OPTION]... [FILE]...\n"
@@ -42,7 +45,7 @@ espaOptionsDescr =
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
   ]
 
-espaOptions :: [String] -> (EspaOptions, [String], [String])
+espaOptions :: [String] -> (EspaOptions, [FilePath], [String])
 espaOptions args =
   let (options, names, errors) = getOpt Permute espaOptionsDescr args in
   (foldl (flip id) defaultEspaOptions options, names, errors)
@@ -83,13 +86,18 @@ espaDisassemblyErrorText :: EspDisassemblyError -> String
 espaDisassemblyErrorText (EspDisassemblyBadSuffix name) = name ++ ": Filename has an unknown suffix, skipping"
 espaDisassemblyErrorText (EspDisassemblyIOError e) = ioeGetErrorString e
 
-espaDisassembly :: String -> ExceptT EspDisassemblyError IO ()
+getDisassembliedFileName :: FilePath -> Either EspDisassemblyError FilePath
+getDisassembliedFileName name
+  | endswith espSuffix name = Right $ take (length name - length espSuffix) name
+  | otherwise = Left $ EspDisassemblyBadSuffix name
+
+espaDisassembly :: FilePath -> ExceptT EspDisassemblyError IO ()
 espaDisassembly name = do
-  throwE $ EspDisassemblyBadSuffix name
---  tryIO' $ putStrLn $ "disassembly " ++ name
+  output_name <- hoistEither $ getDisassembliedFileName name
+  tryIO' $ putStrLn $ "disassembly " ++ name ++ " -> " ++ output_name
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"
 
-espaAssembly :: String -> ExceptT IOError IO ()
+espaAssembly :: FilePath -> ExceptT IOError IO ()
 espaAssembly name = tryIO $ putStrLn $ "assembly " ++ name

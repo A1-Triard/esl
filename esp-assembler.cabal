@@ -21,6 +21,7 @@ library
                      , Espa.Cli.Native
   other-modules:       Paths_esp_assembler
   build-depends:       base >= 4.7 && < 5
+                     , MissingH
                      , bytestring
                      , errors
                      , transformers
