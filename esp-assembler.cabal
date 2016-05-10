@@ -17,7 +17,10 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Tes3.Disassembler
                      , Data.Tes3.Disassembler.Native
+                     , Espa.Cli
+                     , Espa.Cli.Native
   build-depends:       base >= 4.7 && < 5
+                     , bytestring
   default-language:    Haskell2010
 
 executable espa

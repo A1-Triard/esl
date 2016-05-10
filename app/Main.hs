@@ -1,6 +1,6 @@
 module Main where
 
-import Data.Tes3.Disassembler
+import Espa.Cli
 
 main :: IO ()
-main = someFunc
+main = espa

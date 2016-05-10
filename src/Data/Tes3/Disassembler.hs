@@ -1,5 +1,6 @@
 module Data.Tes3.Disassembler
-  ( someFunc
+  ( T3Error
+  , disassembly
   ) where
 
 import Data.Tes3.Disassembler.Native
