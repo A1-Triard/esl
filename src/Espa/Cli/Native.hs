@@ -56,11 +56,40 @@ espa = do
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
-      | optDisassembly options = espaDisassembly names
-      | otherwise = espaAssembly names
+      | optDisassembly options = forM_ (if null names then ["-"] else names) $ printErrors espaDisassemblyErrorText . espaDisassembly
+      | otherwise = forM_ (if null names then ["-"] else names) $ printErrors espaAssemblyErrorText . espaAssembly
+      
+printErrors :: (e -> String) -> ExceptT e IO () -> IO ()
+printErrors error_text action = do
+  result <- runExceptT action
+  case result of
+    Left e -> handle (\x -> let _ = x :: IOError in return ()) $ hPutStrLn stderr $ error_text e
+    Right _ -> return ()
+    
+class IOErrorHost a where
+  fromIOError :: IOError -> a
 
-espaDisassembly :: [String] -> IO ()
-espaDisassembly names = putStrLn $ "disassembly " ++ concat names
+tryIO' :: IOErrorHost e => IO a -> ExceptT e IO a
+tryIO' = withExceptT fromIOError . tryIO
 
-espaAssembly :: [String] -> IO ()
-espaAssembly names = putStrLn $ "assembly " ++ concat names
+data EspDisassemblyError
+  = EspDisassemblyIOError IOError
+  | EspDisassemblyBadSuffix FilePath
+  
+instance IOErrorHost EspDisassemblyError where
+  fromIOError = EspDisassemblyIOError
+
+espaDisassemblyErrorText :: EspDisassemblyError -> String
+espaDisassemblyErrorText (EspDisassemblyBadSuffix name) = name ++ ": Filename has an unknown suffix, skipping"
+espaDisassemblyErrorText (EspDisassemblyIOError e) = ioeGetErrorString e
+
+espaDisassembly :: String -> ExceptT EspDisassemblyError IO ()
+espaDisassembly name = do
+  throwE $ EspDisassemblyBadSuffix name
+--  tryIO' $ putStrLn $ "disassembly " ++ name
+
+espaAssemblyErrorText :: IOError -> String
+espaAssemblyErrorText _ = "error"
+
+espaAssembly :: String -> ExceptT IOError IO ()
+espaAssembly name = tryIO $ putStrLn $ "assembly " ++ name
