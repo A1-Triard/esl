@@ -1,6 +1,7 @@
 module Espa.Cli.Native where
 
 #include <haskell>
+import Paths_esp_assembler
 import Data.Tes3.Disassembler
 
 espaHelpHeader :: String
@@ -54,7 +55,7 @@ espa = do
     process_options (options, names, errors)
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
-      | optShowVersion options = putStrLn "0.1"
+      | optShowVersion options = putStrLn $ "espa " ++ showVersion version
       | optDisassemby options = espaDisassembly names
       | otherwise = espaAssembly names
 
