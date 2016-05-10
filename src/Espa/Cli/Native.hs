@@ -54,8 +54,8 @@ espa = do
   where
     process_options (options, names, errors)
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
-      | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
+      | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
       | optDisassembly options = espaDisassembly names
       | otherwise = espaAssembly names
 
