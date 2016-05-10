@@ -20,7 +20,7 @@ espaUsageErrorFooter
   = "Try `espa --help' for more information."
 
 data EspaOptions = EspaOptions
-  { optDisassemby :: Bool
+  { optDisassembly :: Bool
   , optShowVersion :: Bool
   , optShowHelp :: Bool
   , optVerbose :: Bool
@@ -28,7 +28,7 @@ data EspaOptions = EspaOptions
 
 defaultEspaOptions :: EspaOptions
 defaultEspaOptions = EspaOptions
-  { optDisassemby = False
+  { optDisassembly = False
   , optShowVersion = False
   , optShowHelp = False
   , optVerbose = False
@@ -36,7 +36,7 @@ defaultEspaOptions = EspaOptions
   
 espaOptionsDescr :: [OptDescr (EspaOptions -> EspaOptions)]
 espaOptionsDescr =
-  [ Option ['d'] ["disassembly"] (NoArg (\o -> o {optDisassemby = True})) "force disassembliation"
+  [ Option ['d'] ["disassembly"] (NoArg (\o -> o {optDisassembly = True})) "force disassembliation"
   , Option ['V'] ["version"] (NoArg (\o -> o {optShowVersion = True})) "display the version number and exit"
   , Option ['h'] ["help"] (NoArg (\o -> o {optShowHelp = True})) "display this help and exit"
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
@@ -56,7 +56,7 @@ espa = do
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
-      | optDisassemby options = espaDisassembly names
+      | optDisassembly options = espaDisassembly names
       | otherwise = espaAssembly names
 
 espaDisassembly :: [String] -> IO ()
