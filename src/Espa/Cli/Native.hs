@@ -59,9 +59,15 @@ espa = do
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
-      | optDisassembly options = forM_ (if null names then ["-"] else names) $ printErrors espaDisassemblyErrorText . espaDisassembly
-      | otherwise = forM_ (if null names then ["-"] else names) $ printErrors espaAssemblyErrorText . espaAssembly
-      
+      | optDisassembly options = forM_ (filenames names) $ printErrors espaDisassemblyErrorText . espaDisassembly (verboser options)
+      | otherwise = forM_ (filenames names) $ printErrors espaAssemblyErrorText . espaAssembly (verboser options)
+    filenames names = if null names then ["-"] else names
+    verboser options
+      | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . putStrLn
+      | otherwise = \_ -> return ()
+
+type Verboser = String -> IO ()
+
 printErrors :: (e -> String) -> ExceptT e IO () -> IO ()
 printErrors error_text action = do
   result <- runExceptT action
@@ -91,13 +97,13 @@ getDisassembliedFileName name
   | endswith espSuffix name = Right $ take (length name - length espSuffix) name
   | otherwise = Left $ EspDisassemblyBadSuffix name
 
-espaDisassembly :: FilePath -> ExceptT EspDisassemblyError IO ()
-espaDisassembly name = do
+espaDisassembly :: Verboser -> FilePath -> ExceptT EspDisassemblyError IO ()
+espaDisassembly verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
-  tryIO' $ putStrLn $ "disassembly " ++ name ++ " -> " ++ output_name
+  tryIO' $ verbose $ name ++ " -> " ++ output_name
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"
 
-espaAssembly :: FilePath -> ExceptT IOError IO ()
-espaAssembly name = tryIO $ putStrLn $ "assembly " ++ name
+espaAssembly :: Verboser -> FilePath -> ExceptT IOError IO ()
+espaAssembly v name = tryIO $ v $ "assembly " ++ name
