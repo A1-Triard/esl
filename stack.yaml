@@ -47,6 +47,11 @@ flags: {}
 # Extra package databases containing global packages
 extra-package-dbs: []
 
+ghc-options:
+  esp-assembler: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
+  espa: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
+  esp-assembler-test: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
+
 # Control whether we use the GHC we find on the path
 # system-ghc: true
 # 

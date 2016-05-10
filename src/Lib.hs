@@ -1,6 +1,6 @@
-module Lib
-    ( someFunc
-    ) where
+module Lib where
+
+#include <haskell>
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
