@@ -1,3 +1,5 @@
+include/
+*.lkshs
 dist
 cabal-dev
 *.o
