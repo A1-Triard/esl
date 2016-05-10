@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import Data.Tes3.Disassembler
 
 main :: IO ()
 main = someFunc

@@ -1,4 +1,4 @@
-module Lib where
+module Data.Tes3.Disassembler.Native where
 
 #include <haskell>
 
