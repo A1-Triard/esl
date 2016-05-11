@@ -92,12 +92,22 @@ withBinaryInputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT I
 withBinaryInputFile "-" action = action stdin
 withBinaryInputFile name action = bracketE (tryIO $ openBinaryFile name ReadMode) (tryIO . hClose) action
 
+withTextOutputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
+withTextOutputFile "-" action = action stdout
+withTextOutputFile name action = bracketE (tryIO $ openFile name WriteMode) (tryIO . hClose) action
+
+handleT3Error :: T3Error -> IOError
+handleT3Error UnexpectedEOF = userError "Unexpected end of file"
+
 espaDisassembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaDisassembly verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
   tryIO $ verbose $ name ++ " -> " ++ output_name
-  withBinaryInputFile name $ \_ -> do
-    return ()
+  withBinaryInputFile name $ \input -> do
+    input_s <- tryIO $ B.hGetContents input
+    output_s <- withExceptT handleT3Error $ hoistEither $ disassembly input_s
+    withTextOutputFile output_name $ \output -> do
+      tryIO $ hPutStr output output_s
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"

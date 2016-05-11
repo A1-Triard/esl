@@ -5,4 +5,4 @@ module Data.Tes3.Disassembler.Native where
 data T3Error = UnexpectedEOF
 
 disassembly :: ByteString -> Either T3Error String
-disassembly _ = Right "ESP"
+disassembly _ = Right "ESP\n"

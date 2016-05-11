@@ -1,5 +1,5 @@
 module Data.Tes3.Disassembler
-  ( T3Error
+  ( T3Error (..)
   , disassembly
   ) where
 
