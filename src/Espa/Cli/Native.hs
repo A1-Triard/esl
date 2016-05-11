@@ -2,6 +2,7 @@ module Espa.Cli.Native where
 
 #include <haskell>
 import Paths_esp_assembler
+import Control.Error.Extensions
 import Data.Tes3.Disassembler
 
 espSuffix :: String
@@ -63,7 +64,7 @@ espa = do
       | otherwise = forM_ (filenames names) $ printErrors espaAssemblyErrorText . espaAssembly (verboser options)
     filenames names = if null names then ["-"] else names
     verboser options
-      | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . putStrLn
+      | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . hPutStrLn stderr
       | otherwise = \_ -> return ()
 
 type Verboser = String -> IO ()
@@ -75,32 +76,28 @@ printErrors error_text action = do
     Left e -> handle (\x -> let _ = x :: IOError in return ()) $ hPutStrLn stderr $ error_text e
     Right _ -> return ()
     
-class IOErrorHost a where
-  fromIOError :: IOError -> a
+espaDisassemblyErrorText :: IOError -> String
+espaDisassemblyErrorText e
+  | isUserError e = ioeGetErrorString e
+  | isDoesNotExistError e = fromMaybe "" (ioeGetFileName e) ++ ": No such file or directory"
+  | otherwise = ioeGetErrorString e
 
-tryIO' :: IOErrorHost e => IO a -> ExceptT e IO a
-tryIO' = withExceptT fromIOError . tryIO
-
-data EspDisassemblyError
-  = EspDisassemblyIOError IOError
-  | EspDisassemblyBadSuffix FilePath
-  
-instance IOErrorHost EspDisassemblyError where
-  fromIOError = EspDisassemblyIOError
-
-espaDisassemblyErrorText :: EspDisassemblyError -> String
-espaDisassemblyErrorText (EspDisassemblyBadSuffix name) = name ++ ": Filename has an unknown suffix, skipping"
-espaDisassemblyErrorText (EspDisassemblyIOError e) = ioeGetErrorString e
-
-getDisassembliedFileName :: FilePath -> Either EspDisassemblyError FilePath
+getDisassembliedFileName :: FilePath -> Either IOError FilePath
 getDisassembliedFileName name
+  | name == "-" = Right "-"
   | endswith espSuffix name = Right $ take (length name - length espSuffix) name
-  | otherwise = Left $ EspDisassemblyBadSuffix name
+  | otherwise = Left $ userError $ name ++ ": Filename has an unknown suffix, skipping"
+  
+withBinaryInputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
+withBinaryInputFile "-" action = action stdin
+withBinaryInputFile name action = bracketE (tryIO $ openBinaryFile name ReadMode) (tryIO . hClose) action
 
-espaDisassembly :: Verboser -> FilePath -> ExceptT EspDisassemblyError IO ()
+espaDisassembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaDisassembly verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
-  tryIO' $ verbose $ name ++ " -> " ++ output_name
+  tryIO $ verbose $ name ++ " -> " ++ output_name
+  withBinaryInputFile name $ \_ -> do
+    return ()
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"

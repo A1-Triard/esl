@@ -15,7 +15,8 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Data.Tes3.Disassembler
+  exposed-modules:     Control.Error.Extensions
+                     , Data.Tes3.Disassembler
                      , Data.Tes3.Disassembler.Native
                      , Espa.Cli
                      , Espa.Cli.Native
