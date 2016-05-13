@@ -16,6 +16,8 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Control.Error.Extensions
+                     , Data.Tes3
+                     , Data.Tes3.Native
                      , Data.Tes3.Disassembler
                      , Data.Tes3.Disassembler.Native
                      , Espa.Cli
@@ -26,6 +28,7 @@ library
                      , bytestring
                      , errors
                      , transformers
+                     , containers
   default-language:    Haskell2010
 
 executable espa
@@ -42,6 +45,12 @@ test-suite esp-assembler-test
   main-is:             Spec.hs
   build-depends:       base
                      , esp-assembler
+                     , bytestring
+                     , transformers
+                     , errors
+                     , HUnit
+                     , MissingH
+                     , containers
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 

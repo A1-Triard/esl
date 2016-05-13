@@ -48,9 +48,9 @@ flags: {}
 extra-package-dbs: []
 
 ghc-options:
-  esp-assembler: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
-  espa: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
-  esp-assembler-test: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports
+  esp-assembler: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XGeneralizedNewtypeDeriving -XDeriveGeneric -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
+  espa: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XGeneralizedNewtypeDeriving -XDeriveGeneric -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
+  esp-assembler-test: -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XGeneralizedNewtypeDeriving -XDeriveGeneric -XDeriveFunctor -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
 
 # Control whether we use the GHC we find on the path
 # system-ghc: true
