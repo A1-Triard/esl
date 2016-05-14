@@ -2,6 +2,21 @@ module Data.Tes3.Disassembler.Native where
 
 #include <haskell>
 import Data.Tes3
+  
+labelEOF :: String -> Get a -> Get a
+labelEOF s = label $ showString "REPLACE/not enough bytes/" s
+
+getError :: ByteOffset -> String -> String
+getError offset s =
+  replace "BYTES" (showHex offset "") $ process $ viewL $ lines s
+  where
+    process Nothing = ""
+    process (Just (e, rules)) = foldl apply e rules
+    apply e ('R' : 'E' : 'P' : 'L' : 'A' : 'C' : 'E' : '/' : r) =
+      case splitOn "/" r of
+        (a : b : []) -> if e == a then b else e
+        _ -> e
+    apply e _  = e
 
 expect :: (Show a, Eq a) => a -> Get a -> Get ()
 expect expected getter = do
@@ -36,21 +51,9 @@ skipAll = do
   return ()
   
 file :: Get ()
-file = label "REPLACE/not enough bytes/BYTES: unexpected end of file." $ do
+file = labelEOF "BYTES: unexpected end of file." $ do
   void $ expectRecord (T3Mark TES3) skipAll
   skipAll
-  
-getError :: ByteOffset -> String -> String
-getError offset s =
-  replace "BYTES" (showHex offset "") $ process $ viewL $ lines s
-  where
-    process Nothing = ""
-    process (Just (e, rules)) = foldl apply e rules
-    apply e ('R' : 'E' : 'P' : 'L' : 'A' : 'C' : 'E' : '/' : r) =
-      case splitOn "/" r of
-        (a : b : []) -> if e == a then b else e
-        _ -> e
-    apply e _  = e
 
 disassembly :: ByteString -> Either String String
 disassembly b =
