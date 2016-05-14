@@ -6,6 +6,9 @@ import Data.Tes3
 labelEOF :: String -> Get a -> Get a
 labelEOF s = label $ showString "REPLACE/not enough bytes/" s
 
+labelError :: String -> Get a -> Get a
+labelError s = label $ showString "ERROR/" s
+
 getError :: ByteOffset -> String -> String
 getError offset s =
   replace "BYTES" (showHex offset "") $ process $ viewL $ lines s
@@ -16,6 +19,7 @@ getError offset s =
       case splitOn "/" r of
         (a : b : []) -> if e == a then b else e
         _ -> e
+    apply _ ('E' : 'R' : 'R' : 'O' : 'R' : '/' : r) = r
     apply e _  = e
 
 expect :: (Show a, Eq a) => a -> Get a -> Get ()
@@ -35,30 +39,56 @@ size = getWord32le
 gap :: Get ()
 gap = expect 0 getWord64le
 
-data T3Record body = T3Record T3Sign body
+data T3Field = T3BinaryField T3Sign ByteString
+data T3Record = T3Record T3Sign [T3Field]
+data T3File = T3File [T3Field] [T3Record]
 
-expectRecord :: T3Sign -> Get body -> Get (T3Record body)
-expectRecord s body = do
-  expect s sign
+binaryField :: Get ByteString
+binaryField = getRemainingLazyByteString
+
+fieldBody :: T3Sign -> Word32 -> Get T3Field
+fieldBody s _ = (T3BinaryField s) <$> binaryField
+
+field :: Get T3Field
+field = do
+  s <- sign
+  z <- size
+  isolate (fromIntegral z) $ fieldBody s z
+
+recordBody :: Get [T3Field]
+recordBody = whileM (not <$> isEmpty) field
+
+recordTail :: Get [T3Field]
+recordTail = do
   z <- size
   gap
-  b <- isolate (fromIntegral z) body
-  return $ T3Record s b
+  isolate (fromIntegral z) recordBody
   
-skipAll :: Get ()
-skipAll = do
-  whileM_ (not <$> isEmpty) $ skip 1
-  return ()
+record :: Get T3Record
+record = do
+  s <- sign
+  t <- recordTail
+  return $ T3Record s t
   
-file :: Get ()
-file = labelEOF "BYTES: unexpected end of file." $ do
-  void $ expectRecord (T3Mark TES3) skipAll
-  skipAll
+fileSignature :: Get ()
+fileSignature = labelError "File format not recognized." $ expect (T3Mark TES3) sign
 
-disassembly :: ByteString -> Either String String
-disassembly b =
+file :: Get T3File
+file = labelEOF "BYTES: unexpected end of file." $ do
+  fileSignature
+  header <- recordTail
+  records <- whileM (not <$> isEmpty) record
+  return $ T3File header records
+
+parseFile :: ByteString -> Either String T3File
+parseFile b =
   case pushEndOfInput $ runGetIncremental file `pushChunks` b of
     Fail _ offset e -> Left $ getError offset e
     Done (SB.null -> False) offset _ -> Left $ showHex offset ": end of file expected."
-    Done _ _ _ -> Right "ESP\n"
+    Done _ _ f -> Right f
     _ -> Left "Internal error."
+
+disassembly :: ByteString -> Either String String
+disassembly b = do
+  _ <- parseFile b
+  return "ESP\n"
