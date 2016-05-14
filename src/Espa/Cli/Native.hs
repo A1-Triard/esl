@@ -96,8 +96,8 @@ withTextOutputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IO
 withTextOutputFile "-" action = action stdout
 withTextOutputFile name action = bracketE (tryIO $ openFile name WriteMode) (tryIO . hClose) action
 
-handleT3Error :: T3Error -> IOError
-handleT3Error UnexpectedEOF = userError "Unexpected end of file"
+handleT3Error :: FilePath -> String -> IOError
+handleT3Error name e = userError $ showString name $ showString ": " e
 
 espaDisassembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaDisassembly verbose name = do
@@ -105,7 +105,7 @@ espaDisassembly verbose name = do
   tryIO $ verbose $ name ++ " -> " ++ output_name
   withBinaryInputFile name $ \input -> do
     input_s <- tryIO $ B.hGetContents input
-    output_s <- withExceptT handleT3Error $ hoistEither $ disassembly input_s
+    output_s <- withExceptT (handleT3Error name) $ hoistEither $ disassembly input_s
     withTextOutputFile output_name $ \output -> do
       tryIO $ hPutStr output output_s
 
