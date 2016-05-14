@@ -3,7 +3,6 @@ module Data.Tes3.Disassembler
   , T3Record (..)
   , T3File (..)
   , getT3File
-  , formatT3FileError
   , runGetT3File
   , disassembly
   ) where
