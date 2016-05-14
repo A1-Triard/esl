@@ -29,6 +29,7 @@ library
                      , errors
                      , transformers
                      , containers
+                     , binary
   default-language:    Haskell2010
 
 executable espa
