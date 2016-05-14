@@ -15,6 +15,14 @@ instance Show T3Sign where
     let (a, b, c, d) = toBytes s in
     [chr $ fromIntegral a, chr $ fromIntegral b, chr $ fromIntegral c, chr $ fromIntegral d]
 
+instance Read T3Sign where
+  readPrec = do
+    a <- get
+    b <- get
+    c <- get
+    d <- get
+    return $ t3SignNew $ fromBytes (fromIntegral $ ord a) (fromIntegral $ ord b) (fromIntegral $ ord c) (fromIntegral $ ord d)
+
 fromBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Word32
 fromBytes a b c d
   =  (fromIntegral a)
