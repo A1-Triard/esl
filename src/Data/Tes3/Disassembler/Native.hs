@@ -96,5 +96,5 @@ runGetT3File b =
 
 disassembly :: ByteString -> Either String String
 disassembly b = do
-  _ <- runGetT3File b
-  return "ESP\n"
+  f <- runGetT3File b
+  return $ show f ++ "\n"
