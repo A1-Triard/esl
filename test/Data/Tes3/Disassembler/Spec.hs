@@ -12,6 +12,7 @@ tests = TestList
   [ TestCase parseEmptyFile
   , TestCase parseShortInvalidFile
   , TestCase parseLongInvalidFile
+  , TestCase parseFileWithValidSignature
   , TestCase parseValidFile
   ]
 
@@ -27,23 +28,24 @@ w32 = leBytes
 w64 :: Word64 -> ByteString
 w64 = leBytes
 
-testFile0Bytes :: ByteString
-testFile0Bytes
-  =  C.pack "TES3"
-  <> w32 0
-  <> w64 0
-
-testFile0 :: T3File
-testFile0 = T3File [] []
-
 testFile1Bytes :: ByteString
 testFile1Bytes
   =  C.pack "TES3"
-  <> w32 9
+  <> w32 346
   <> w64 0
-  <> C.pack "TEDR"
-  <> w32 1
-  <> C.pack "h"
+  <> C.pack "HEDR"
+  <> w32 300
+  <> w32 0x07
+  <> w32 32
+  <> B.fromStrict testAuthor
+  <> B.fromStrict testDescription
+  <> w32 39
+  <> C.pack "MAST"
+  <> w32 14
+  <> C.pack "Morrowind.esm\0"
+  <> C.pack "DATA"
+  <> w32 8
+  <> w64 137
   <> C.pack "CLOH"
   <> w32 29
   <> w64 0
@@ -54,10 +56,38 @@ testFile1Bytes
   <> w32 5
   <> C.pack "idid\0"
 
+testAuthor :: S.ByteString
+testAuthor = SC.pack $ replace "0" "\0"
+  (  "test author00000"
+  ++ "0000000000000000"
+  )
+
+testDescription :: S.ByteString
+testDescription = SC.pack $ replace "0" "\0"
+  (  "test description"
+  ++ "AAA0000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  ++ "0000000000000000"
+  )
+
 testFile1 :: T3File
 testFile1 = T3File
-  [ T3BinaryField (read "TEDR") "h"
-  ]
+  ( T3Header 0x07 (KnownT3FileType ESS) testAuthor testDescription 39
+    [ T3FileRef (SC.pack "Morrowind.esm\0") 137
+    ]
+  )
   [ T3Record (read "CLOH")
     [ T3BinaryField (read "NAMF") "namename"
     , T3BinaryField (read "IDID") "idid\0"
@@ -78,7 +108,10 @@ parseLongInvalidFile = do
   assertEqual "" (Left "File format not recognized.") $ runGetT3File $ C.pack "TEhfdskj fsd jhfg gjf jhs"
   assertEqual "" (Left "File format not recognized.") $ runGetT3File $ C.pack "X0 fhsdm hfsdg jhfsdg fjs gd"
 
+parseFileWithValidSignature :: Assertion
+parseFileWithValidSignature = do
+  assertEqual "" (Left "10h: unexpected end of header") $ runGetT3File $ C.pack "TES3" <> w32 0 <> w64 0
+
 parseValidFile :: Assertion
 parseValidFile = do
-  assertEqual "" (Right testFile0) $ runGetT3File testFile0Bytes
-  assertEqual "" (Right testFile1 ) $ runGetT3File testFile1Bytes
+  assertEqual "" (Right testFile1) $ runGetT3File testFile1Bytes

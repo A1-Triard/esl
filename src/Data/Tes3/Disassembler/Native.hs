@@ -20,10 +20,6 @@ size = getWord32le
 gap :: Get (Either String ()) ()
 gap = expect 0 getWord64le
 
-data T3Field = T3BinaryField T3Sign ByteString deriving (Eq, Show)
-data T3Record = T3Record T3Sign [T3Field] deriving (Eq, Show)
-data T3File = T3File [T3Field] [T3Record] deriving (Eq, Show)
-
 binaryField :: Get e ByteString
 binaryField = getRemainingLazyByteString
 
@@ -34,7 +30,7 @@ field :: Get String T3Field
 field = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  isolate (fromIntegral z) (fieldBody s z) $ \c -> "{0}: field size mismatch: " ++ showHex z " expected, but " ++ show c ++ " consumed."
+  isolate (fromIntegral z) (fieldBody s z) $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Get String [T3Field]
 recordBody = whileM (not <$> isEmpty) field
@@ -43,21 +39,50 @@ recordTail :: Get (Either String ()) [T3Field]
 recordTail = do
   z <- size `withError` Right ()
   gap
-  onError Left $ isolate (fromIntegral z) recordBody $ \c -> "{0}: record size mismatch: " ++ showHex z " expected, but " ++ show c ++ " consumed."
+  onError Left $ isolate (fromIntegral z) recordBody $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 record :: Get String T3Record
 record = do
   s <- sign `withError` "{0}: unexpected end of record"
-  t <- onError (either id (const "{0}: unexpected end of file")) recordTail
+  t <- onError (either id (const "{0}: unexpected end of record")) recordTail
   return $ T3Record s t
   
 fileSignature :: Get String ()
 fileSignature = onError (const "File format not recognized.") $ expect (T3Mark TES3) sign
 
+fileRef :: Get (Either String ()) T3FileRef
+fileRef = do
+  expect (T3Mark MAST) sign
+  m <- size `withError` Right ()
+  name <- getByteString (fromIntegral m) `withError` Right ()
+  expect (T3Mark DATA) sign
+  expect 8 size
+  z <- getWord64le `withError` Right ()
+  return $ T3FileRef name z
+
+fileHeaderData :: Get (Either String ()) T3Header
+fileHeaderData = do
+  expect (T3Mark HEDR) sign
+  expect 300 size
+  version <- getWord32le `withError` Right ()
+  file_type <- t3FileTypeNew <$> getWord32le `withError` Right ()
+  author <- getByteString 32 `withError` Right ()
+  description <- getByteString 256 `withError` Right ()
+  items_count <- getWord32le `withError` Right ()
+  refs <- whileM (not <$> isEmpty) fileRef
+  return $ T3Header version file_type author description items_count refs
+
+fileHeader :: Get (Either String ()) T3Header
+fileHeader = do
+  z <- size `withError` Right ()
+  gap
+  let t = onError (either id (const "{0}: unexpected end of header")) fileHeaderData
+  onError Left $ isolate (fromIntegral z) t $ \c -> "{0}: header size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+
 getT3File :: Get String T3File
 getT3File = do
   fileSignature
-  header <- onError (either id (const "{0}: unexpected end of file")) recordTail
+  header <- onError (either id (const "{0}: unexpected end of file")) fileHeader
   records <- whileM (not <$> isEmpty) record
   return $ T3File header records
 

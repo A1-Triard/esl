@@ -3,8 +3,22 @@ module Data.Tes3.Native where
 #include <haskell>
 
 data T3Mark
-  = TES3 | FNAM | NAME | SCPT | CONT
-  | MISC | NPC_
+  = TES3 | HEDR | MAST | DATA | GLOB | NAME | FNAM | FORM
+  | GMST | GMDT | ACTI | ALCH | APPA | ARMO | BODY | BOOK
+  | BSGN | CELL | CLAS | CLOT | CNTC | CONT | CREA | CREC
+  | DIAL | DOOR | ENCH | FACT | INFO | INGR | LAND | LEVC
+  | LEVI | LIGH | LOCK | LTEX | MGEF | MISC | NPC_ | NPCC
+  | PGRD | PROB | RACE | REGN | REPA | SCPT | SKIL | SNDG
+  | SOUN | SPEL | SSCR | STAT | WEAP | SAVE | JOUR | QUES
+  | GSCR | PLAY | CSTA | GMAP | DIAS | WTHR | KEYS | DYNA
+  | ASPL | ACTC | MPRJ | PROJ | DCOU | MARK | FILT | DBGP
+  | STRV | INTV | FLTV | SCHD | SCVR | SCDT | SCTX | MODL
+  | IRDT | SCRI | ITEX | CNDT | FLAG | MCDT | NPCO | AADT
+  | CTDT | RNAM | INDX | CNAM | ANAM | BNAM | KNAM | NPDT
+  | AIDT | DODT | AI_W | CLDT | BYDT | RGNN | AODT | NAM5
+  | DESC | WHGT | FADT | AMBI | FRMR | RADT | NAM0 | NPCS
+  | DNAM | XSCL | SKDT | DELE | MEDT | PTEX | CVFX | BVFX
+  | HVFX | AVFX | BSND | CSND | HSND | ASND | WEAT | SNAM
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -63,3 +77,18 @@ t3MarkNew w = SM.lookup w t3MarkNews
 
 t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
+
+data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show)
+data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq, Show)
+
+t3FileTypeNew :: Word32 -> T3FileType
+t3FileTypeNew 0 = KnownT3FileType ESP
+t3FileTypeNew 1 = KnownT3FileType ESM
+t3FileTypeNew 32 = KnownT3FileType ESS
+t3FileTypeNew a = UnknownT3FileType a
+
+data T3Field = T3BinaryField T3Sign ByteString deriving (Eq, Show)
+data T3Record = T3Record T3Sign [T3Field] deriving (Eq, Show)
+data T3FileRef = T3FileRef S.ByteString Word64 deriving (Eq, Show)
+data T3Header = T3Header Word32 T3FileType S.ByteString S.ByteString Word32 [T3FileRef] deriving (Eq, Show)
+data T3File = T3File T3Header [T3Record] deriving (Eq, Show)
