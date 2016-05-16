@@ -100,6 +100,7 @@ data T3FieldType
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
+t3FieldType _ (T3Mark SCRI) = T3String
 t3FieldType _ (T3Mark NAME) = T3String
 t3FieldType _ (T3Mark FNAM) = T3String
 t3FieldType _ (T3Mark MODL) = T3String
