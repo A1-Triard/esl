@@ -91,7 +91,7 @@ t3FileTypeNew 1 = KnownT3FileType ESM
 t3FileTypeNew 32 = KnownT3FileType ESS
 t3FileTypeNew a = UnknownT3FileType a
 
-data T3FieldType = T3Binary | T3String | T3Multiline deriving (Eq, Show)
+data T3FieldType = T3Binary | T3String | T3Multiline | T3Ref deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3FieldType
 t3FieldType (T3Mark NAME) = T3String
@@ -104,7 +104,7 @@ t3FieldType (T3Mark BNAM) = T3String
 t3FieldType (T3Mark RNAM) = T3String
 t3FieldType (T3Mark KNAM) = T3String
 t3FieldType (T3Mark DNAM) = T3String
-t3FieldType (T3Mark NPCO) = T3String
+t3FieldType (T3Mark NPCO) = T3Ref
 t3FieldType (T3Mark SCTX) = T3Multiline
 t3FieldType _ = T3Binary
 
@@ -112,6 +112,7 @@ data T3Field
   = T3BinaryField T3Sign ByteString
   | T3StringField T3Sign String
   | T3MultilineField T3Sign [String]
+  | T3RefField T3Sign Word32 String
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef String Word64 deriving (Eq, Show)

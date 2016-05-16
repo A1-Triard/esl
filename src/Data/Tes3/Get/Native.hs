@@ -29,17 +29,25 @@ stringField = t3StringNew <$> getRemainingLazyByteString
 multilineField :: Get e [String]
 multilineField = splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
 
-fieldBody :: T3Sign -> Get e T3Field
+refField :: Get () (Word32, String)
+refField = do
+  z <- getWord32le
+  n <- getLazyByteString 32
+  return (z, trimNulls $ t3StringNew n)
+
+fieldBody :: T3Sign -> Get () T3Field
 fieldBody s
   | t3FieldType s == T3String = T3StringField s <$> stringField
   | t3FieldType s == T3Multiline = T3MultilineField s <$> multilineField
+  | t3FieldType s == T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
   | otherwise = T3BinaryField s <$> binaryField
 
 field :: Get String T3Field
 field = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  isolate (fromIntegral z) (fieldBody s) $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  let body = fieldBody s `withError` "{0}: unexpected end of field"
+  isolate (fromIntegral z) body $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Get String [T3Field]
 recordBody = whileM (not <$> isEmpty) field

@@ -33,6 +33,7 @@ writeT3Field :: T3Field -> String
 writeT3Field (T3BinaryField sign d) = show sign ++ " " ++ C.unpack (encode d) ++ "\n"
 writeT3Field (T3StringField sign s) = show sign ++ " " ++ (escapeString $ trimNull s) ++ "\n"
 writeT3Field (T3MultilineField sign t) = show sign ++ "\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString) t) ++ "\n"
+writeT3Field (T3RefField sign z n) = show sign ++ " " ++ show z ++ " " ++ escapeString n ++ "\n"
 
 writeT3Record :: T3Record -> String
 writeT3Record (T3Record sign fields)
