@@ -1,11 +1,11 @@
-module Data.Tes3.Disassembler.Spec
+module Data.Tes3.Get.Spec
   ( tests
   ) where
 
 #define TESTS
 #include <haskell>
 import Data.Tes3
-import Data.Tes3.Disassembler
+import Data.Tes3.Get
 
 tests :: Test
 tests = TestList

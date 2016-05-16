@@ -20,6 +20,8 @@ library
                      , Data.Tes3.Native
                      , Data.Tes3.Disassembler
                      , Data.Tes3.Disassembler.Native
+                     , Data.Tes3.Get
+                     , Data.Tes3.Get.Native
                      , Espa.Cli
                      , Espa.Cli.Native
   other-modules:       Paths_esp_assembler
@@ -52,7 +54,7 @@ test-suite esp-assembler-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   other-modules:       Data.Tes3.Spec
-                     , Data.Tes3.Disassembler.Spec
+                     , Data.Tes3.Get.Spec
   build-depends:       base
                      , esp-assembler
                      , bytestring
