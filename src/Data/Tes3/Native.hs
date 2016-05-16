@@ -79,7 +79,11 @@ t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
 
 data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show)
-data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq, Show)
+data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq)
+
+instance Show T3FileType where
+  show (KnownT3FileType t) = show t
+  show (UnknownT3FileType w) = showHex w "h"
 
 t3FileTypeNew :: Word32 -> T3FileType
 t3FileTypeNew 0 = KnownT3FileType ESP
