@@ -105,8 +105,8 @@ data T3Field
   | T3MultilineField T3Sign [String]
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign [T3Field] deriving (Eq, Show)
-data T3FileRef = T3FileRef S.ByteString Word64 deriving (Eq, Show)
-data T3Header = T3Header Word32 T3FileType S.ByteString S.ByteString Word32 [T3FileRef] deriving (Eq, Show)
+data T3FileRef = T3FileRef String Word64 deriving (Eq, Show)
+data T3Header = T3Header Word32 T3FileType String [String] Word32 [T3FileRef] deriving (Eq, Show)
 data T3File = T3File T3Header [T3Record] deriving (Eq, Show)
 
 t3StringValue :: String -> ByteString

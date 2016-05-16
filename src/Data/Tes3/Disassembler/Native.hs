@@ -12,9 +12,6 @@ escapeChar c
 escapeString :: String -> String
 escapeString = concat . map escapeChar
 
-trimNulls :: String -> String
-trimNulls s = reverse $ dropWhile (== '\0') $ reverse s
-
 trimNull :: String -> String
 trimNull s =
   reverse $ check_null $ reverse $ replace "%" "%%" s
@@ -22,23 +19,14 @@ trimNull s =
     check_null ('\0' : t) = t
     check_null t = '%' : t
 
-writeFixedS :: S.ByteString -> String
-writeFixedS = escapeString . trimNulls . t3StringNew . B.fromStrict
-
-writeFixedMultilineS :: S.ByteString -> String
-writeFixedMultilineS = intercalate "\n" . map (("    " ++) . escapeString) . splitOn "\r\n" . trimNulls . t3StringNew . B.fromStrict
-
-writeNulledS :: S.ByteString -> String
-writeNulledS = escapeString . trimNull . t3StringNew . B.fromStrict
-
 writeT3Header :: T3Header -> String
 writeT3Header (T3Header version file_type author description items_count refs)
   =  "VERSION " ++ show version ++ "\n"
   ++ "TYPE " ++ show file_type ++ "\n"
-  ++ "AUTHOR " ++ writeFixedS author ++ "\n"
-  ++ "DESCRIPTION\n" ++ writeFixedMultilineS description ++ "\n"
+  ++ "AUTHOR " ++ escapeString author ++ "\n"
+  ++ "DESCRIPTION\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString) description) ++ "\n"
   ++ "REFS " ++ show (length refs) ++ "\n"
-  ++ concat [writeNulledS n ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
+  ++ concat [(escapeString $ trimNull n) ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
   ++ "\nITEMS " ++ show items_count ++ "\n"
 
 writeT3Field :: T3Field -> String

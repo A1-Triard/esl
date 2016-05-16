@@ -63,11 +63,14 @@ fileRef :: Get (Either String ()) T3FileRef
 fileRef = do
   expect (T3Mark MAST) sign
   m <- size `withError` Right ()
-  name <- getByteString (fromIntegral m) `withError` Right ()
+  name <- t3StringNew <$> B.fromStrict <$> getByteString (fromIntegral m) `withError` Right ()
   expect (T3Mark DATA) sign
   expect 8 size
   z <- getWord64le `withError` Right ()
   return $ T3FileRef name z
+
+trimNulls :: String -> String
+trimNulls = reverse . dropWhile (== '\0') . reverse
 
 fileHeaderData :: Get (Either String ()) T3Header
 fileHeaderData = do
@@ -75,8 +78,8 @@ fileHeaderData = do
   expect 300 size
   version <- getWord32le `withError` Right ()
   file_type <- t3FileTypeNew <$> getWord32le `withError` Right ()
-  author <- getByteString 32 `withError` Right ()
-  description <- getByteString 256 `withError` Right ()
+  author <- trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
+  description <- splitOn "\r\n" <$> trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
   items_count <- getWord32le `withError` Right ()
   refs <- whileM (not <$> isEmpty) fileRef
   return $ T3Header version file_type author description items_count refs

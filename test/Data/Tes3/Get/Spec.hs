@@ -63,9 +63,9 @@ testAuthor = SC.pack $ replace "0" "\0"
   )
 
 testDescription :: S.ByteString
-testDescription = SC.pack $ replace "0" "\0"
+testDescription = SC.pack $ replace "0" "\0" $ replace "\n" "\r\n"
   (  "test description"
-  ++ "AAA0000000000000"
+  ++ "\nAAA\n000000000"
   ++ "0000000000000000"
   ++ "0000000000000000"
   ++ "0000000000000000"
@@ -84,8 +84,8 @@ testDescription = SC.pack $ replace "0" "\0"
 
 testFile1 :: T3File
 testFile1 = T3File
-  ( T3Header 0x07 (KnownT3FileType ESS) testAuthor testDescription 39
-    [ T3FileRef (SC.pack "Morrowind.esm\0") 137
+  ( T3Header 0x07 (KnownT3FileType ESS) "test author" ["test description", "AAA", ""] 39
+    [ T3FileRef "Morrowind.esm\0" 137
     ]
   )
   [ T3Record (read "CLOH")
