@@ -28,6 +28,9 @@ toUtf8 = U.toString . IC.convert "CP1251" "UTF-8"
 writeFixedS :: S.ByteString -> String
 writeFixedS = escapeString . trimNulls . toUtf8 . B.fromStrict
 
+writeFixedMultilineS :: S.ByteString -> String
+writeFixedMultilineS = intercalate "\n" . map (("    " ++) . escapeString) . splitOn "\r\n" . trimNulls . toUtf8 . B.fromStrict
+
 writeNulledS :: S.ByteString -> String
 writeNulledS = escapeString . trimNull . toUtf8 . B.fromStrict
 
@@ -36,7 +39,7 @@ writeT3Header (T3Header version file_type author description items_count refs)
   =  "VERSION " ++ show version ++ "\n"
   ++ "TYPE " ++ show file_type ++ "\n"
   ++ "AUTHOR " ++ writeFixedS author ++ "\n"
-  ++ "DESCRIPTION " ++ writeFixedS description ++ "\n"
+  ++ "DESCRIPTION\n" ++ writeFixedMultilineS description ++ "\n"
   ++ "REFS " ++ show (length refs) ++ "\n"
   ++ concat [writeNulledS n ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
   ++ "ITEMS " ++ show items_count ++ "\n"
