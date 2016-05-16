@@ -4,13 +4,14 @@ module Data.Tes3.Disassembler.Native where
 import Data.Tes3
 import Data.Tes3.Get
 
-escapeChar :: Char -> String
-escapeChar c
+escapeChar :: Bool -> Char -> String
+escapeChar allow_spaces c
+  | not allow_spaces && c == ' ' = "\\ "
   | c == '\\' || c /= '\t' && (ord c < 32 || ord c == 255) = reverse $ drop 1 $ reverse $ drop 1 $ show c
   | otherwise = [c]
 
-escapeString :: String -> String
-escapeString = concat . map escapeChar
+escapeString :: Bool -> String -> String
+escapeString allow_spaces = concat . map (escapeChar allow_spaces)
 
 trimNull :: String -> String
 trimNull s =
@@ -23,15 +24,15 @@ writeT3Header :: T3Header -> String
 writeT3Header (T3Header version file_type author description refs)
   =  "VERSION " ++ show version ++ "\n"
   ++ "TYPE " ++ show file_type ++ "\n"
-  ++ "AUTHOR " ++ escapeString author ++ "\n"
-  ++ "DESCRIPTION\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString) description) ++ "\n"
-  ++ concat [(escapeString $ trimNull n) ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
+  ++ "AUTHOR " ++ escapeString True author ++ "\n"
+  ++ "DESCRIPTION\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString True) description) ++ "\n"
+  ++ concat [(escapeString False $ trimNull n) ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
 
 writeT3Field :: T3Field -> String
 writeT3Field (T3BinaryField sign d) = show sign ++ " " ++ C.unpack (encode d) ++ "\n"
-writeT3Field (T3StringField sign s) = show sign ++ " " ++ (escapeString $ trimNull s) ++ "\n"
-writeT3Field (T3MultilineField sign t) = show sign ++ "\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString) t) ++ "\n"
-writeT3Field (T3RefField sign z n) = show sign ++ " " ++ show z ++ " " ++ escapeString n ++ "\n"
+writeT3Field (T3StringField sign s) = show sign ++ " " ++ (escapeString True $ trimNull s) ++ "\n"
+writeT3Field (T3MultilineField sign t) = show sign ++ "\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString True) t) ++ "\n"
+writeT3Field (T3RefField sign z n) = show sign ++ " " ++ show z ++ " " ++ escapeString True n ++ "\n"
 
 writeT3Record :: T3Record -> String
 writeT3Record (T3Record sign gap fields)
