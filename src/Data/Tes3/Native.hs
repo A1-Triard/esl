@@ -104,6 +104,8 @@ t3FieldType (T3Mark BNAM) = T3String
 t3FieldType (T3Mark RNAM) = T3String
 t3FieldType (T3Mark KNAM) = T3String
 t3FieldType (T3Mark DNAM) = T3String
+t3FieldType (T3Mark STRV) = T3String
+t3FieldType (T3Mark DESC) = T3String
 t3FieldType (T3Mark NPCO) = T3Ref
 t3FieldType (T3Mark SCTX) = T3Multiline
 t3FieldType _ = T3Binary
@@ -116,7 +118,7 @@ data T3Field
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef String Word64 deriving (Eq, Show)
-data T3Header = T3Header Word32 T3FileType String [String] Word32 [T3FileRef] deriving (Eq, Show)
+data T3Header = T3Header Word32 T3FileType String [String] [T3FileRef] deriving (Eq, Show)
 data T3File = T3File T3Header [T3Record] deriving (Eq, Show)
 
 t3StringValue :: String -> ByteString

@@ -81,7 +81,7 @@ fileRef = do
 trimNulls :: String -> String
 trimNulls = reverse . dropWhile (== '\0') . reverse
 
-fileHeaderData :: Get (Either String ()) T3Header
+fileHeaderData :: Get (Either String ()) (Word32, T3Header)
 fileHeaderData = do
   expect (T3Mark HEDR) sign
   expect 300 size
@@ -91,9 +91,9 @@ fileHeaderData = do
   description <- splitOn "\r\n" <$> trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
   items_count <- getWord32le `withError` Right ()
   refs <- whileM (not <$> isEmpty) fileRef
-  return $ T3Header version file_type author description items_count refs
+  return (items_count, T3Header version file_type author description refs)
 
-fileHeader :: Get (Either String ()) T3Header
+fileHeader :: Get (Either String ()) (Word32, T3Header)
 fileHeader = do
   z <- size `withError` Right ()
   expect 0 gap
@@ -103,9 +103,12 @@ fileHeader = do
 getT3File :: Get String T3File
 getT3File = do
   fileSignature
-  header <- onError (either id (const "{0}: unexpected end of file")) fileHeader
+  (items_count, header) <- onError (either id (const "{0}: unexpected end of file")) fileHeader
   records <- whileM (not <$> isEmpty) record
-  return $ T3File header records
+  let actual_items_count = length records
+  if actual_items_count /= fromIntegral items_count
+    then failG $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show actual_items_count ++ " readed."
+    else return $ T3File header records
 
 runGetT3File :: ByteString -> Either String T3File
 runGetT3File b =
