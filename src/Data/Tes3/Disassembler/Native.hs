@@ -41,8 +41,13 @@ writeT3Header (T3Header version file_type author description items_count refs)
   ++ concat [writeNulledS n ++ " " ++ show z ++ "\n" | (T3FileRef n z) <- refs]
   ++ "ITEMS " ++ show items_count ++ "\n"
 
+writeT3Field :: T3Field -> String
+writeT3Field (T3BinaryField sign d) = show sign ++ " " ++ C.unpack (encode d) ++ "\n"
+
 writeT3Record :: T3Record -> String
-writeT3Record _ = ""
+writeT3Record (T3Record sign fields)
+  =  show sign ++ " " ++ show (length fields) ++ "\n"
+  ++ concat [writeT3Field f | f <- fields]
 
 writeT3File :: T3File -> String
 writeT3File (T3File header records)
