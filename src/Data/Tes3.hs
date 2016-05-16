@@ -13,6 +13,10 @@ module Data.Tes3
   , T3FileRef (..)
   , T3Header (..)
   , T3File (..)
+  , T3FieldType (..)
+  , t3FieldType
+  , t3StringValue
+  , t3StringNew
   ) where
 
 import Data.Tes3.Native

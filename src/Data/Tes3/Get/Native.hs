@@ -23,14 +23,23 @@ gap = expect 0 getWord64le
 binaryField :: Get e ByteString
 binaryField = getRemainingLazyByteString
 
-fieldBody :: T3Sign -> Word32 -> Get e T3Field
-fieldBody s _ = (T3BinaryField s) <$> binaryField
+stringField :: Get e String
+stringField = t3StringNew <$> getRemainingLazyByteString
+
+multilineField :: Get e [String]
+multilineField = splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
+
+fieldBody :: T3Sign -> Get e T3Field
+fieldBody s
+  | t3FieldType s == T3String = T3StringField s <$> stringField
+  | t3FieldType s == T3Multiline = T3MultilineField s <$> multilineField
+  | otherwise = T3BinaryField s <$> binaryField
 
 field :: Get String T3Field
 field = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  isolate (fromIntegral z) (fieldBody s z) $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  isolate (fromIntegral z) (fieldBody s) $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Get String [T3Field]
 recordBody = whileM (not <$> isEmpty) field
