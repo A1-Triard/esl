@@ -31,6 +31,7 @@ writeT3Header (T3Header version file_type author description refs)
 writeT3Field :: T3Field -> String
 writeT3Field (T3BinaryField sign d) = show sign ++ " " ++ C.unpack (encode d) ++ "\n"
 writeT3Field (T3StringField sign s) = show sign ++ " " ++ (escapeString True $ trimNull s) ++ "\n"
+writeT3Field (T3FixedStringField sign s) = show sign ++ " " ++ escapeString True s ++ "\n"
 writeT3Field (T3MultilineField sign t) = show sign ++ "\n" ++ (intercalate "\n" $ map (("    " ++) . escapeString True) t) ++ "\n"
 writeT3Field (T3RefField sign z n) = show sign ++ " " ++ show z ++ " " ++ escapeString True n ++ "\n"
 

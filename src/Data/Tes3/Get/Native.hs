@@ -35,34 +35,40 @@ refField = do
   n <- getLazyByteString 32
   return (z, trimNulls $ t3StringNew n)
 
-fieldBody :: T3Sign -> Get () T3Field
-fieldBody s
-  | t3FieldType s == T3String = T3StringField s <$> stringField
-  | t3FieldType s == T3Multiline = T3MultilineField s <$> multilineField
-  | t3FieldType s == T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
-  | otherwise = T3BinaryField s <$> binaryField
+fixedStringField :: Word32 -> Get () String
+fixedStringField z = trimNulls <$> t3StringNew <$> getLazyByteString (fromIntegral z)
 
-field :: Get String T3Field
-field = do
+fieldBody :: T3Sign -> T3Sign -> Get () T3Field
+fieldBody record_sign s =
+  f (t3FieldType record_sign s)
+  where
+    f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
+    f T3String = T3StringField s <$> stringField
+    f T3Multiline = T3MultilineField s <$> multilineField
+    f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
+    f T3Binary = T3BinaryField s <$> binaryField
+
+field :: T3Sign -> Get String T3Field
+field record_sign = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  let body = fieldBody s `withError` "{0}: unexpected end of field"
+  let body = fieldBody record_sign s `withError` "{0}: unexpected end of field"
   isolate (fromIntegral z) body $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
-recordBody :: Get String [T3Field]
-recordBody = whileM (not <$> isEmpty) field
+recordBody :: T3Sign -> Get String [T3Field]
+recordBody s = whileM (not <$> isEmpty) $ field s
 
-recordTail :: Get (Either String ()) (Word64, [T3Field])
-recordTail = do
+recordTail :: T3Sign -> Get (Either String ()) (Word64, [T3Field])
+recordTail s = do
   z <- size `withError` Right ()
   g <- gap `withError` Right ()
-  f <- onError Left $ isolate (fromIntegral z) recordBody $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  f <- onError Left $ isolate (fromIntegral z) (recordBody s) $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
   return (g, f)
 
 record :: Get String T3Record
 record = do
   s <- sign `withError` "{0}: unexpected end of record"
-  (g, f) <- onError (either id (const "{0}: unexpected end of record")) recordTail
+  (g, f) <- onError (either id (const "{0}: unexpected end of record")) $ recordTail s
   return $ T3Record s g f
   
 fileSignature :: Get String ()

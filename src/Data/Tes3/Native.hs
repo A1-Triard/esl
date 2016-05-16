@@ -91,28 +91,38 @@ t3FileTypeNew 1 = KnownT3FileType ESM
 t3FileTypeNew 32 = KnownT3FileType ESS
 t3FileTypeNew a = UnknownT3FileType a
 
-data T3FieldType = T3Binary | T3String | T3Multiline | T3Ref deriving (Eq, Show)
+data T3FieldType
+  = T3Binary
+  | T3String
+  | T3Multiline
+  | T3Ref
+  | T3FixedString Word32
+  deriving (Eq, Show)
 
-t3FieldType :: T3Sign -> T3FieldType
-t3FieldType (T3Mark NAME) = T3String
-t3FieldType (T3Mark FNAM) = T3String
-t3FieldType (T3Mark MODL) = T3String
-t3FieldType (T3Mark ITEX) = T3String
-t3FieldType (T3Mark CNAM) = T3String
-t3FieldType (T3Mark ANAM) = T3String
-t3FieldType (T3Mark BNAM) = T3String
-t3FieldType (T3Mark RNAM) = T3String
-t3FieldType (T3Mark KNAM) = T3String
-t3FieldType (T3Mark DNAM) = T3String
-t3FieldType (T3Mark STRV) = T3String
-t3FieldType (T3Mark DESC) = T3String
-t3FieldType (T3Mark NPCO) = T3Ref
-t3FieldType (T3Mark SCTX) = T3Multiline
-t3FieldType _ = T3Binary
+t3FieldType :: T3Sign -> T3Sign -> T3FieldType
+t3FieldType _ (T3Mark NAME) = T3String
+t3FieldType _ (T3Mark FNAM) = T3String
+t3FieldType _ (T3Mark MODL) = T3String
+t3FieldType _ (T3Mark ITEX) = T3String
+t3FieldType _ (T3Mark CNAM) = T3String
+t3FieldType _ (T3Mark ANAM) = T3String
+t3FieldType _ (T3Mark BNAM) = T3String
+t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
+t3FieldType _ (T3Mark RNAM) = T3String
+t3FieldType _ (T3Mark KNAM) = T3String
+t3FieldType _ (T3Mark DNAM) = T3String
+t3FieldType _ (T3Mark STRV) = T3String
+t3FieldType _ (T3Mark DESC) = T3String
+t3FieldType _ (T3Mark NPCO) = T3Ref
+t3FieldType _ (T3Mark SCTX) = T3Multiline
+t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
+t3FieldType _ (T3Mark NPCS) = T3String
+t3FieldType _ _ = T3Binary
 
 data T3Field
   = T3BinaryField T3Sign ByteString
   | T3StringField T3Sign String
+  | T3FixedStringField T3Sign String
   | T3MultilineField T3Sign [String]
   | T3RefField T3Sign Word32 String
   deriving (Eq, Show)
