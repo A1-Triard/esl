@@ -96,6 +96,15 @@ data T3FieldType = T3Binary | T3String | T3Multiline deriving (Eq, Show)
 t3FieldType :: T3Sign -> T3FieldType
 t3FieldType (T3Mark NAME) = T3String
 t3FieldType (T3Mark FNAM) = T3String
+t3FieldType (T3Mark MODL) = T3String
+t3FieldType (T3Mark ITEX) = T3String
+t3FieldType (T3Mark CNAM) = T3String
+t3FieldType (T3Mark ANAM) = T3String
+t3FieldType (T3Mark BNAM) = T3String
+t3FieldType (T3Mark RNAM) = T3String
+t3FieldType (T3Mark KNAM) = T3String
+t3FieldType (T3Mark DNAM) = T3String
+t3FieldType (T3Mark NPCO) = T3String
 t3FieldType (T3Mark SCTX) = T3Multiline
 t3FieldType _ = T3Binary
 

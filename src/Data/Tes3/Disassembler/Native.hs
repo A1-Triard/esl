@@ -6,7 +6,7 @@ import Data.Tes3.Get
 
 escapeChar :: Char -> String
 escapeChar c
-  | c /= '\t' && (ord c < 32 || ord c == 255) = reverse $ drop 1 $ reverse $ drop 1 $ show c
+  | c == '\\' || c /= '\t' && (ord c < 32 || ord c == 255) = reverse $ drop 1 $ reverse $ drop 1 $ show c
   | otherwise = [c]
 
 escapeString :: String -> String
