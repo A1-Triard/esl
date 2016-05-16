@@ -88,7 +88,7 @@ testFile1 = T3File
     [ T3FileRef "Morrowind.esm\0" 137
     ]
   )
-  [ T3Record (read "CLOH")
+  [ T3Record (read "CLOH") 0
     [ T3BinaryField (read "NAMF") "namename"
     , T3BinaryField (read "IDID") "idid\0"
     ]

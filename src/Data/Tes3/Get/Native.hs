@@ -17,8 +17,8 @@ sign = t3SignNew <$> getWord32le
 size :: Get () Word32
 size = getWord32le
 
-gap :: Get (Either String ()) ()
-gap = expect 0 getWord64le
+gap :: Get () Word64
+gap = getWord64le
 
 binaryField :: Get e ByteString
 binaryField = getRemainingLazyByteString
@@ -52,17 +52,18 @@ field = do
 recordBody :: Get String [T3Field]
 recordBody = whileM (not <$> isEmpty) field
 
-recordTail :: Get (Either String ()) [T3Field]
+recordTail :: Get (Either String ()) (Word64, [T3Field])
 recordTail = do
   z <- size `withError` Right ()
-  gap
-  onError Left $ isolate (fromIntegral z) recordBody $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  g <- gap `withError` Right ()
+  f <- onError Left $ isolate (fromIntegral z) recordBody $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  return (g, f)
 
 record :: Get String T3Record
 record = do
   s <- sign `withError` "{0}: unexpected end of record"
-  t <- onError (either id (const "{0}: unexpected end of record")) recordTail
-  return $ T3Record s t
+  (g, f) <- onError (either id (const "{0}: unexpected end of record")) recordTail
+  return $ T3Record s g f
   
 fileSignature :: Get String ()
 fileSignature = onError (const "File format not recognized.") $ expect (T3Mark TES3) sign
@@ -95,7 +96,7 @@ fileHeaderData = do
 fileHeader :: Get (Either String ()) T3Header
 fileHeader = do
   z <- size `withError` Right ()
-  gap
+  expect 0 gap
   let t = onError (either id (const "{0}: unexpected end of header")) fileHeaderData
   onError Left $ isolate (fromIntegral z) t $ \c -> "{0}: header size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
