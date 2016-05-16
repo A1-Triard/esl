@@ -37,7 +37,7 @@ writeT3Field (T3RefField sign z n) = show sign ++ " " ++ show z ++ " " ++ escape
 
 writeT3Record :: T3Record -> String
 writeT3Record (T3Record sign gap fields)
-  =  "\n" ++ show sign ++ " " ++ show (length fields) ++ (if gap == 0 then "" else " // show gap") ++ "\n"
+  =  "\n" ++ show sign ++ " " ++ show (length fields) ++ (if gap == 0 then "" else " // " ++ show gap) ++ "\n"
   ++ concat [writeT3Field f | f <- fields]
 
 writeT3File :: T3File -> String
