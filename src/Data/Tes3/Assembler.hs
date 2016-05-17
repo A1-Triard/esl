@@ -1,5 +1,7 @@
 module Data.Tes3.Assembler
-  ( parseT3File
+  ( t3File
+  , parseT3File
+  , assembly
   ) where
 
 import Data.Tes3.Assembler.Native

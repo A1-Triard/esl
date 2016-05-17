@@ -78,7 +78,7 @@ t3MarkNew w = SM.lookup w t3MarkNews
 t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
 
-data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show)
+data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Read)
 data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq)
 
 instance Show T3FileType where

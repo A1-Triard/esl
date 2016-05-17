@@ -43,6 +43,7 @@ library
                      , utf8-string
                      , base64-bytestring
                      , attoparsec
+                     , text
   default-language:    Haskell2010
 
 executable espa
@@ -77,6 +78,7 @@ test-suite esp-assembler-test
                      , utf8-string
                      , base64-bytestring
                      , attoparsec
+                     , text
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
