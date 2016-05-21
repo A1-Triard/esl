@@ -103,10 +103,17 @@ espaDisassembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaDisassembly verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
   tryIO $ verbose $ name ++ " -> " ++ output_name
-  withBinaryInputFile name $ \input -> do
-    withTextOutputFile output_name $ \output -> do
-      _ <- runConduit $ (N.sourceHandle input =$= disassembly) `fuseUpstream` N.sinkHandle output
-      return ()
+  r <-
+    withBinaryInputFile name $ \input -> do
+      withTextOutputFile output_name $ \output -> do
+        runConduit $ (N.sourceHandle input =$= disassembly) `fuseUpstream` N.sinkHandle output
+  case r of
+    Right _ -> return ()
+    Left (offset, err) -> do
+      tryIO $ removeFile output_name
+      case err of
+        Right e -> throwE $ userError $ name ++ ": " ++ replace "{0}" (showHex offset "h") e
+        Left e -> throwE $ userError $ name ++ ": " ++ "Internal error: " ++ showHex offset "h: " ++ e
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"
