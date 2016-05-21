@@ -20,8 +20,8 @@ trimNull s =
     check_null ('\0' : t) = t
     check_null t = '%' : t
 
-writeT3Header :: T3Header -> Text
-writeT3Header (T3Header version file_type author description refs)
+writeT3Header :: T3FileHeader -> Text
+writeT3Header (T3FileHeader version file_type author description refs)
   =  "VERSION " <> T.pack (show version) <> "\n"
   <> "TYPE " <> T.pack (show file_type) <> "\n"
   <> "AUTHOR " <> T.pack (escapeString True author) <> "\n"

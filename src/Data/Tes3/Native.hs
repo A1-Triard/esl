@@ -129,7 +129,7 @@ data T3Field
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef String Word64 deriving (Eq, Show)
-data T3Header = T3Header Word32 T3FileType String [String] [T3FileRef] deriving (Eq, Show)
+data T3FileHeader = T3FileHeader Word32 T3FileType String [String] [T3FileRef] deriving (Eq, Show)
 
 t3StringValue :: String -> ByteString
 t3StringValue = IC.convert "UTF-8" "CP1251" . U.fromString

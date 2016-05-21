@@ -87,7 +87,7 @@ fileRef = do
 trimNulls :: String -> String
 trimNulls = reverse . dropWhile (== '\0') . reverse
 
-fileHeaderData :: Get (Either String ()) (T3Header, Word32)
+fileHeaderData :: Get (Either String ()) (T3FileHeader, Word32)
 fileHeaderData = do
   expect (T3Mark HEDR) sign
   expect 300 size
@@ -97,14 +97,14 @@ fileHeaderData = do
   description <- splitOn "\r\n" <$> trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
   items_count <- getWord32le `withError` Right ()
   refs <- whileM (not <$> isEmpty) fileRef
-  return (T3Header version file_type author description refs, items_count)
+  return (T3FileHeader version file_type author description refs, items_count)
 
-fileHeader :: Get (Either String ()) (T3Header, Word32)
+fileHeader :: Get (Either String ()) (T3FileHeader, Word32)
 fileHeader = do
   z <- size `withError` Right ()
   expect 0 gap
   let t = onError (either id (const "{0}: unexpected end of header")) fileHeaderData
   onError Left $ isolate (fromIntegral z) t $ \c -> "{0}: header size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
-getT3FileHeader :: Get String (T3Header, Word32)
-getT3FileHeader = onError (either ("Internal error: " ++) (const "{0}: unexpected end of file")) fileHeader
+getT3FileHeader :: Get String (T3FileHeader, Word32)
+getT3FileHeader = onError (either id (const "{0}: unexpected end of file")) fileHeader
