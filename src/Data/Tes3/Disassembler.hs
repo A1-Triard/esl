@@ -1,5 +1,6 @@
 module Data.Tes3.Disassembler
-  ( writeT3File
+  ( writeT3Header
+  , writeT3Record
   , disassembly
   ) where
 

@@ -12,7 +12,6 @@ module Data.Tes3
   , T3Record (..)
   , T3FileRef (..)
   , T3Header (..)
-  , T3File (..)
   , T3FieldType (..)
   , t3FieldType
   , t3StringValue

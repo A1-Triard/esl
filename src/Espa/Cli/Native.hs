@@ -104,10 +104,9 @@ espaDisassembly verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
   tryIO $ verbose $ name ++ " -> " ++ output_name
   withBinaryInputFile name $ \input -> do
-    input_s <- tryIO $ B.hGetContents input
-    output_s <- withExceptT (handleT3Error name) $ hoistEither $ disassembly input_s
     withTextOutputFile output_name $ \output -> do
-      tryIO $ hPutStr output output_s
+      _ <- runConduit $ (N.sourceHandle input =$= disassembly) `fuseUpstream` N.sinkHandle output
+      return ()
 
 espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"

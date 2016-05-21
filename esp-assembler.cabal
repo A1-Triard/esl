@@ -20,8 +20,6 @@ library
                      , Data.Tes3.Native
                      , Data.Tes3.Disassembler
                      , Data.Tes3.Disassembler.Native
-                     , Data.Tes3.Assembler
-                     , Data.Tes3.Assembler.Native
                      , Data.Tes3.Get
                      , Data.Tes3.Get.Native
                      , Espa.Cli
@@ -44,6 +42,9 @@ library
                      , base64-bytestring
                      , attoparsec
                      , text
+                     , mono-traversable
+                     , conduit
+                     , conduit-combinators
   default-language:    Haskell2010
 
 executable espa
@@ -79,6 +80,9 @@ test-suite esp-assembler-test
                      , base64-bytestring
                      , attoparsec
                      , text
+                     , mono-traversable
+                     , conduit
+                     , conduit-combinators
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
