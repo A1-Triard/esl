@@ -16,6 +16,8 @@ module Data.Tes3
   , t3FieldType
   , t3StringValue
   , t3StringNew
+  , pT3Sign
+  , pT3FileType
   ) where
 
 import Data.Tes3.Native

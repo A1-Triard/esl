@@ -10,7 +10,7 @@ writeT3Header (T3FileHeader version file_type author description refs)
   =  "VERSION " <> T.pack (show version) <> "\n"
   <> "TYPE " <> T.pack (show file_type) <> "\n"
   <> "AUTHOR " <> writeLine author
-  <> "DESCRIPTION\n" <> writeLines description <> "\n"
+  <> "DESCRIPTION\n" <> writeLines description
   <> T.concat [writeNulledRun n <> " " <> T.pack (show z) <> "\n" | (T3FileRef n z) <- refs]
 
 writeT3Field :: T3Field -> Text

@@ -29,13 +29,13 @@ instance Show T3Sign where
     let (a, b, c, d) = toBytes s in
     [chr $ fromIntegral a, chr $ fromIntegral b, chr $ fromIntegral c, chr $ fromIntegral d]
 
-instance Read T3Sign where
-  readPrec = do
-    a <- get
-    b <- get
-    c <- get
-    d <- get
-    return $ t3SignNew $ fromBytes (fromIntegral $ ord a) (fromIntegral $ ord b) (fromIntegral $ ord c) (fromIntegral $ ord d)
+pT3Sign :: Parser T3Sign
+pT3Sign = do
+  a <- Tp.anyChar
+  b <- Tp.anyChar
+  c <- Tp.anyChar
+  d <- Tp.anyChar
+  return $ t3SignNew $ fromBytes (fromIntegral $ ord a) (fromIntegral $ ord b) (fromIntegral $ ord c) (fromIntegral $ ord d)
 
 fromBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Word32
 fromBytes a b c d
@@ -78,7 +78,7 @@ t3MarkNew w = SM.lookup w t3MarkNews
 t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
 
-data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Read)
+data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Bounded)
 data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq)
 
 instance Show T3FileType where
@@ -90,6 +90,12 @@ t3FileTypeNew 0 = KnownT3FileType ESP
 t3FileTypeNew 1 = KnownT3FileType ESM
 t3FileTypeNew 32 = KnownT3FileType ESS
 t3FileTypeNew a = UnknownT3FileType a
+
+pKnownT3FileType :: Parser KnownT3FileType
+pKnownT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [minBound .. maxBound]]
+
+pT3FileType :: Parser T3FileType
+pT3FileType = (KnownT3FileType <$> pKnownT3FileType) <|> (UnknownT3FileType <$> Tp.decimal)
 
 data T3FieldType
   = T3Binary
