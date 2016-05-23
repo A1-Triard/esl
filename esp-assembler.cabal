@@ -62,7 +62,8 @@ test-suite esp-assembler-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  other-modules:       Data.Tes3.Spec
+  other-modules:       Data.Tes3.Utils.Spec
+                     , Data.Tes3.Spec
                      , Data.Tes3.Get.Spec
   build-depends:       base
                      , esp-assembler
