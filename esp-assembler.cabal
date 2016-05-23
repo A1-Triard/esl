@@ -67,6 +67,7 @@ test-suite esp-assembler-test
   other-modules:       Data.Tes3.Utils.Spec
                      , Data.Tes3.Spec
                      , Data.Tes3.Get.Spec
+                     , Data.Tes3.Parser.Spec
   build-depends:       base
                      , esp-assembler
                      , bytestring

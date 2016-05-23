@@ -113,15 +113,21 @@ testDescription = SC.pack $ replace "0" "\0" $ replace "\n" "\r\n"
 
 data T3File = T3File T3FileHeader [T3Record] deriving (Eq, Show)
 
+sign :: S.Text -> T3Sign
+sign t =
+  case Tp.parseOnly (pT3Sign <* Tp.endOfInput) t of
+    Left e -> error e
+    Right r -> r
+
 testFile1 :: T3File
 testFile1 = T3File
   ( T3FileHeader 0x07 (KnownT3FileType ESS) "test author" ["test description", "AAA", ""]
     [ T3FileRef "Morrowind.esm\0" 137
     ]
   )
-  [ T3Record (read "CLOH") 0
-    [ T3BinaryField (read "NAMF") "namename"
-    , T3BinaryField (read "IDID") "idid\0"
+  [ T3Record (sign "CLOH") 0
+    [ T3BinaryField (sign "NAMF") "namename"
+    , T3BinaryField (sign "IDID") "idid\0"
     ]
   ]
 
