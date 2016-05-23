@@ -5,8 +5,11 @@ import Data.Tes3
 import Data.Tes3.Get
 import Data.Tes3.Utils
 
-writeT3Header :: T3FileHeader -> Text
-writeT3Header (T3FileHeader version file_type author description refs)
+writeT3FileSignature :: Text
+writeT3FileSignature = "3SET\n"
+
+writeT3FileHeader :: T3FileHeader -> Text
+writeT3FileHeader (T3FileHeader version file_type author description refs)
   =  "VERSION " <> T.pack (show version) <> "\n"
   <> "TYPE " <> T.pack (show file_type) <> "\n"
   <> "AUTHOR " <> writeLine author
@@ -87,8 +90,8 @@ conduitRepeatE a0 produce =
 
 disassembly :: Monad m => ConduitM S.ByteString Text m (Either (ByteOffset, Either String String) ())
 disassembly = runExceptT $ do
-  (h, _) <- (hoistEither =<<) $ lift $ mapOutput (const "3SET\n") $ conduitGet1 getT3FileSignature 0
-  (r, (_, items_count)) <- (hoistEither =<<) $ lift $ mapOutput (writeT3Header . fst) $ conduitGet1 getT3FileHeader h
+  (h, _) <- (hoistEither =<<) $ lift $ mapOutput (const writeT3FileSignature) $ conduitGet1 getT3FileSignature 0
+  (r, (_, items_count)) <- (hoistEither =<<) $ lift $ mapOutput (writeT3FileHeader . fst) $ conduitGet1 getT3FileHeader h
   (f, n) <- (hoistEither =<<) $ lift $ mapOutput writeT3Record $ conduitRepeatE (r, 0) $ conduitGetN getT3Record
   if n /= items_count
     then hoistEither $ Left (f, Right $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show n ++ " readed.")
