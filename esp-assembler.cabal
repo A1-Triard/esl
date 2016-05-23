@@ -22,6 +22,8 @@ library
                      , Data.Tes3.Disassembler.Native
                      , Data.Tes3.Get
                      , Data.Tes3.Get.Native
+                     , Data.Tes3.Utils
+                     , Data.Tes3.Utils.Native
                      , Espa.Cli
                      , Espa.Cli.Native
   other-modules:       Paths_esp_assembler

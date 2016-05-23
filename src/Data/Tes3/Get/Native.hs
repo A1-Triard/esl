@@ -23,20 +23,20 @@ gap = getWord64le
 binaryField :: Get e ByteString
 binaryField = getRemainingLazyByteString
 
-stringField :: Get e String
+stringField :: Get e Text
 stringField = t3StringNew <$> getRemainingLazyByteString
 
-multilineField :: Get e [String]
-multilineField = splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
+multilineField :: Get e [Text]
+multilineField = T.splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
 
-refField :: Get () (Word32, String)
+refField :: Get () (Word32, Text)
 refField = do
   z <- getWord32le
   n <- getLazyByteString 32
-  return (z, trimNulls $ t3StringNew n)
+  return (z, T.dropWhileEnd (== '\0') $ t3StringNew n)
 
-fixedStringField :: Word32 -> Get () String
-fixedStringField z = trimNulls <$> t3StringNew <$> getLazyByteString (fromIntegral z)
+fixedStringField :: Word32 -> Get () Text
+fixedStringField z = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString (fromIntegral z)
 
 fieldBody :: T3Sign -> T3Sign -> Get () T3Field
 fieldBody record_sign s =
@@ -84,17 +84,14 @@ fileRef = do
   z <- getWord64le `withError` Right ()
   return $ T3FileRef name z
 
-trimNulls :: String -> String
-trimNulls = reverse . dropWhile (== '\0') . reverse
-
 fileHeaderData :: Get (Either String ()) (T3FileHeader, Word32)
 fileHeaderData = do
   expect (T3Mark HEDR) sign
   expect 300 size
   version <- getWord32le `withError` Right ()
   file_type <- t3FileTypeNew <$> getWord32le `withError` Right ()
-  author <- trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
-  description <- splitOn "\r\n" <$> trimNulls <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
+  author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
+  description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
   items_count <- getWord32le `withError` Right ()
   refs <- whileM (not <$> isEmpty) fileRef
   return (T3FileHeader version file_type author description refs, items_count)

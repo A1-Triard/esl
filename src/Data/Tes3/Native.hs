@@ -122,17 +122,17 @@ t3FieldType _ _ = T3Binary
 
 data T3Field
   = T3BinaryField T3Sign ByteString
-  | T3StringField T3Sign String
-  | T3FixedStringField T3Sign String
-  | T3MultilineField T3Sign [String]
-  | T3RefField T3Sign Word32 String
+  | T3StringField T3Sign Text
+  | T3FixedStringField T3Sign Text
+  | T3MultilineField T3Sign [Text]
+  | T3RefField T3Sign Word32 Text
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
-data T3FileRef = T3FileRef String Word64 deriving (Eq, Show)
-data T3FileHeader = T3FileHeader Word32 T3FileType String [String] [T3FileRef] deriving (Eq, Show)
+data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
+data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
 
-t3StringValue :: String -> ByteString
-t3StringValue = IC.convert "UTF-8" "CP1251" . U.fromString
+t3StringValue :: Text -> ByteString
+t3StringValue = IC.convert "UTF-8" "CP1251" . T.encodeUtf8
 
-t3StringNew :: ByteString -> String
-t3StringNew = U.toString . IC.convert "CP1251" "UTF-8"
+t3StringNew :: ByteString -> Text
+t3StringNew = T.decodeUtf8 . IC.convert "CP1251" "UTF-8"
