@@ -1,0 +1,17 @@
+#!/bin/sh
+
+mkdir -p test_data
+cd test_data
+if [ \! -e A1_Alchemy_V4_Apparatus ]; then
+  wget https://raw.githubusercontent.com/A1-Triard/alchemy/master/A1_Alchemy_V4_Apparatus || exit 1
+fi
+cd ..
+
+echo A1_Alchemy_V4_Apparatus
+rm -rf test_data/A1_Alchemy_V4_Apparatus.esp test_data/A1_Alchemy_V4_Apparatus.test.esp test_data/A1_Alchemy_V4_Apparatus.test
+stack exec -- espa -v test_data/A1_Alchemy_V4_Apparatus || exit 1
+mv test_data/A1_Alchemy_V4_Apparatus.esp test_data/A1_Alchemy_V4_Apparatus.test.esp
+stack exec -- espa -vd test_data/A1_Alchemy_V4_Apparatus.test.esp || exit 1
+cmp test_data/A1_Alchemy_V4_Apparatus.test test_data/A1_Alchemy_V4_Apparatus || exit 1
+
+echo "All tests passed."
