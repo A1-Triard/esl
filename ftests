@@ -5,6 +5,10 @@ cd test_data
 if [ \! -e A1_Alchemy_V4_Apparatus ]; then
   wget https://raw.githubusercontent.com/A1-Triard/alchemy/master/A1_Alchemy_V4_Apparatus || exit 1
 fi
+if [ \! -e "Data Files/Aleanne Armor and Clothes 1+2.esp" ]; then
+  wget -O ale-clothing-v1-1c.7z 'http://www.fullrest.ru/files/ale-clothing-v1-1c/files?fid=2379' || exit 1
+  7z x ale-clothing-v1-1c.7z
+fi
 cd ..
 
 echo A1_Alchemy_V4_Apparatus
@@ -13,5 +17,13 @@ stack exec -- espa -v test_data/A1_Alchemy_V4_Apparatus || exit 1
 mv test_data/A1_Alchemy_V4_Apparatus.esp test_data/A1_Alchemy_V4_Apparatus.test.esp
 stack exec -- espa -vd test_data/A1_Alchemy_V4_Apparatus.test.esp || exit 1
 cmp test_data/A1_Alchemy_V4_Apparatus.test test_data/A1_Alchemy_V4_Apparatus || exit 1
+
+test_file="test_data/Data Files/Aleanne Armor and Clothes 1+2"
+echo "${test_file}.esp"
+rm -rf "${test_file}" "${test_file}.test.esp" "${test_file}.test"
+stack exec -- espa -vd "${test_file}.esp" || exit 1
+mv "${test_file}" "${test_file}.test"
+stack exec -- espa -v "${test_file}.test" || exit 1
+cmp "${test_file}.test.esp" "${test_file}.esp" || exit 1
 
 echo "All tests passed."
