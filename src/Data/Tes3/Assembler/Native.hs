@@ -56,7 +56,8 @@ putT3FileHeader (T3FileHeader version file_type author descr refs) =
   let a = t3StringValue author in
   let d = t3StringValue $ T.intercalate "\r\n" descr in
   let r = foldl (<>) B.empty [t3FileRef ref | ref <- refs] in
-  let tes3 = sign (T3Mark HEDR) <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> r in
+  let items_count_placeholder = runPut $ putWord32le 0 in
+  let tes3 = sign (T3Mark HEDR) <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder <> r in
   size tes3 <> tes3
 
 awaitE :: Monad m => ConduitM S.Text a m S.Text
@@ -83,8 +84,52 @@ conduitParser1 parser = do
     go (TP.Fail _ _ err) = do
       return $ Left err
 
-assembly :: Monad m => ConduitM S.Text ByteString m (Either String ())
+conduitParserN :: (Monad m, Num n) => T.Parser a -> n -> ConduitM S.Text a m (Either String n)
+conduitParserN parser n = do
+  go $ TP.parse parser ""
+  where
+    go (TP.Partial p) = do
+      inp <- awaitE
+      go $ p inp
+    go (TP.Done unused result) = do
+      yield result
+      if ST.null unused
+        then return ()
+        else leftover unused
+      return $ Right (n + 1)
+    go (TP.Fail _ _ err) = do
+      return $ Left err
+
+conduitRepeat :: Monad m => a -> (a -> ConduitM seq r m (Either e a)) -> ConduitM seq r m (Either e a)
+conduitRepeat a0 produce =
+  go a0
+  where
+    go an = do
+      end <- N.null
+      if end
+        then return $ Right an
+        else do
+          p <- produce an
+          case p of
+            Left err -> return $ Left err
+            Right an_1 -> go an_1
+
+conduitRepeatE :: (Monad m, MonoFoldable seq) => a -> (a -> ConduitM seq r m (Either e a)) -> ConduitM seq r m (Either e a)
+conduitRepeatE a0 produce =
+  go a0
+  where
+    go an = do
+      end <- N.nullE
+      if end
+        then return $ Right an
+        else do
+          p <- produce an
+          case p of
+            Left err -> return $ Left err
+            Right an_1 -> go an_1
+
+assembly :: Monad m => ConduitM S.Text ByteString m (Either String Word32)
 assembly = runExceptT $ do
   (hoistEither =<<) $ lift $ mapOutput (const putT3FileSignature) $ conduitParser1 pT3FileSignature
   void $ (hoistEither =<<) $ lift $ mapOutput putT3FileHeader $ conduitParser1 pT3FileHeader
-  return ()
+  (hoistEither =<<) $ lift $ mapOutput putT3Record $ conduitRepeatE 0 $ conduitParserN pT3Record
