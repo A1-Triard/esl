@@ -32,32 +32,32 @@ conduitGet1 :: Monad m => Get e a -> ByteOffset -> ConduitM S.ByteString a m (Ei
 conduitGet1 g base_offset = do
   go $ runGetIncremental base_offset g
   where
-    go (Partial p) = do
+    go (G.Partial p) = do
       inp <- await
       go $ p inp
-    go (Done unused offset result) = do
+    go (G.Done unused offset result) = do
       yield result
       if SB.null unused
         then return ()
         else leftover unused
       return $ Right (offset, result)
-    go (Fail _ offset err) = do
+    go (G.Fail _ offset err) = do
       return $ Left (offset, err)
 
 conduitGetN :: (Monad m, Num n) => Get e a -> (ByteOffset, n) -> ConduitM S.ByteString a m (Either (ByteOffset, Either String e) (ByteOffset, n))
 conduitGetN g (base_offset, n) = do
   go $ runGetIncremental base_offset g
   where
-    go (Partial p) = do
+    go (G.Partial p) = do
       inp <- await
       go $ p inp
-    go (Done unused offset result) = do
+    go (G.Done unused offset result) = do
       yield result
       if SB.null unused
         then return ()
         else leftover unused
       return $ Right (offset, n + 1)
-    go (Fail _ offset err) = do
+    go (G.Fail _ offset err) = do
       return $ Left (offset, err)
 
 conduitRepeat :: Monad m => a -> (a -> ConduitM seq r m (Either e a)) -> ConduitM seq r m (Either e a)

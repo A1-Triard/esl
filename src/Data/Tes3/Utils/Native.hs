@@ -21,7 +21,7 @@ toHexDigit 14 = 'E'
 toHexDigit 15 = 'F'
 toHexDigit _ = 'i'
 
-pHexDigit :: Integral a => Parser a
+pHexDigit :: Integral a => T.Parser a
 pHexDigit =
   p_0 <|> p_1 <|> p_2 <|> p_3 <|> p_4 <|> p_5 <|> p_6 <|> p_7 <|> p_8 <|> p_9 <|> p_A <|> p_B <|> p_C <|> p_D <|> p_E <|> p_F
   where
@@ -48,7 +48,7 @@ toHexCode c =
   let (x1, x2) = o `divMod` 16 in
   T.singleton (toHexDigit x1) <> T.singleton (toHexDigit x2)
 
-pHexCode :: Parser Char
+pHexCode :: T.Parser Char
 pHexCode = do
   x1 <- pHexDigit
   x2 <- pHexDigit
@@ -67,7 +67,7 @@ writeEscapedChar escape_percent escape_spaces c
   | ord c < 32 || ord c == 255 = "\\x" <> toHexCode c
   | otherwise = T.singleton c
 
-pEscapedChar :: Bool -> Bool -> Parser Char
+pEscapedChar :: Bool -> Bool -> T.Parser Char
 pEscapedChar allow_percent allow_spaces = do
   c <- Tp.anyChar
   case c of
@@ -94,7 +94,7 @@ pEscapedChar allow_percent allow_spaces = do
 writeEscapedText :: Bool -> Bool -> Text -> Text
 writeEscapedText escape_percent escape_spaces = T.concat . map (writeEscapedChar escape_percent escape_spaces) . T.unpack
 
-pEscapedText :: Bool -> Bool -> Parser Text
+pEscapedText :: Bool -> Bool -> T.Parser Text
 pEscapedText allow_percent allow_spaces = T.pack <$> many (pEscapedChar allow_percent allow_spaces)
 
 writeNulledText :: Bool -> Text -> Text
@@ -107,7 +107,7 @@ writeNulledLine s = writeNulledText False s <> "\n"
 writeNulledRun :: Text -> Text
 writeNulledRun = writeNulledText True
 
-pNulledText :: Bool -> Parser Text
+pNulledText :: Bool -> T.Parser Text
 pNulledText allow_spaces = do
   s <- pEscapedText False allow_spaces
   add_null <- Tp.option True (Tp.char '%' >> return False)
@@ -115,13 +115,13 @@ pNulledText allow_spaces = do
     then return $ s <> "\0"
     else return s
 
-pNulledLine :: Parser Text
+pNulledLine :: T.Parser Text
 pNulledLine = do
   s <- pNulledText True
   Tp.endOfLine
   return s
 
-pNulledRun :: Parser Text
+pNulledRun :: T.Parser Text
 pNulledRun = pNulledText False
 
 writeText :: Bool -> Text -> Text
@@ -133,22 +133,22 @@ writeLine s = writeText False s <> "\n"
 writeRun :: Text -> Text
 writeRun = writeText True
 
-pText :: Bool -> Parser Text
+pText :: Bool -> T.Parser Text
 pText = pEscapedText True
 
-pLine :: Parser Text
+pLine :: T.Parser Text
 pLine = do
   s <- pText True
   Tp.endOfLine
   return s
 
-pRun :: Parser Text
+pRun :: T.Parser Text
 pRun = pText False
 
 writeLines :: [Text] -> Text
 writeLines = T.concat . map (\x -> "    " <> writeEscapedText False False x <> "\n")
 
-pLines :: Parser [Text]
+pLines :: T.Parser [Text]
 pLines = many $ do
   void $ Tp.string "    "
   s <- pEscapedText True True

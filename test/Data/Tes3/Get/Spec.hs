@@ -115,7 +115,7 @@ data T3File = T3File T3FileHeader [T3Record] deriving (Eq, Show)
 
 sign :: S.Text -> T3Sign
 sign t =
-  case Tp.parseOnly (pT3Sign <* Tp.endOfInput) t of
+  case TP.parseOnly (pT3Sign <* Tp.endOfInput) t of
     Left e -> error e
     Right r -> r
 
@@ -143,8 +143,8 @@ getT3File = do
 runGetT3File :: ByteString -> (ByteOffset, Either String T3File)
 runGetT3File inp =
   case pushEndOfInput $ runGetIncremental 0 getT3File `pushChunks` inp of
-    Done (SB.null -> True) offset r -> (offset, Right r)
-    Fail _ offset (Right e) -> (offset, Left e)
+    G.Done (SB.null -> True) offset r -> (offset, Right r)
+    G.Fail _ offset (Right e) -> (offset, Left e)
     _ -> error "runGetT3File"
 
 parseEmptyFile :: Assertion

@@ -23,10 +23,10 @@ writeRunTest = do
 
 pRunTest :: Assertion
 pRunTest = do
-  assertEqual "" (Right "Qa Bc De") $ Tp.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ De"
-  assertEqual "" (Right "Qa Bc De ") $ Tp.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ De\\ "
-  assertEqual "" (Right "Qa Bc \rDe ") $ Tp.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ \\rDe\\ "
-  assertEqual "" (Right "\7\7\7\\ ") $ Tp.parseOnly (pRun <* Tp.endOfInput) "\\x07\\x07\\x07\\\\\\ "
+  assertEqual "" (Right "Qa Bc De") $ TP.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ De"
+  assertEqual "" (Right "Qa Bc De ") $ TP.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ De\\ "
+  assertEqual "" (Right "Qa Bc \rDe ") $ TP.parseOnly (pRun <* Tp.endOfInput) "Qa\\ Bc\\ \\rDe\\ "
+  assertEqual "" (Right "\7\7\7\\ ") $ TP.parseOnly (pRun <* Tp.endOfInput) "\\x07\\x07\\x07\\\\\\ "
 
 writeLinesTest :: Assertion
 writeLinesTest = do
@@ -34,4 +34,4 @@ writeLinesTest = do
 
 pLinesTest :: Assertion
 pLinesTest = do
-  assertEqual "" (Right ["Qa Bc", " De", "", ""]) $ Tp.parseOnly (pLines <* Tp.endOfInput) "    Qa Bc\r\n     De\n    \n    \n"
+  assertEqual "" (Right ["Qa Bc", " De", "", ""]) $ TP.parseOnly (pLines <* Tp.endOfInput) "    Qa Bc\r\n     De\n    \n    \n"

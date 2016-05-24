@@ -7,6 +7,7 @@ module Data.Tes3
   , t3SignNew
   , KnownT3FileType (..)
   , T3FileType (..)
+  , t3FileTypeValue
   , t3FileTypeNew
   , T3Field (..)
   , T3Record (..)

@@ -1,6 +1,7 @@
 module Data.Tes3.Assembler
-  ( t3File
-  , parseT3File
+  ( putT3FileSignature
+  , putT3FileHeader
+  , putT3Record
   , assembly
   ) where
 

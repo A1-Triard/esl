@@ -4,12 +4,12 @@ module Data.Tes3.Parser.Native where
 import Data.Tes3
 import Data.Tes3.Utils
 
-pT3FileSignature :: Parser ()
+pT3FileSignature :: T.Parser ()
 pT3FileSignature = do
   void $ Tp.string "3SET"
   Tp.endOfLine
 
-t3FileRef :: Parser T3FileRef
+t3FileRef :: T.Parser T3FileRef
 t3FileRef = do
   n <- pNulledRun
   void $ Tp.char ' '
@@ -17,7 +17,7 @@ t3FileRef = do
   Tp.endOfLine
   return $ T3FileRef n z
 
-pT3FileHeader :: Parser T3FileHeader
+pT3FileHeader :: T.Parser T3FileHeader
 pT3FileHeader = do
   void $ Tp.string "VERSION "
   version <- Tp.decimal
@@ -33,7 +33,7 @@ pT3FileHeader = do
   refs <- many t3FileRef
   return $ T3FileHeader version file_type author description refs
 
-pT3Record :: Parser T3Record
+pT3Record :: T.Parser T3Record
 pT3Record = do
   Tp.endOfLine
   s <- pT3Sign
@@ -42,12 +42,12 @@ pT3Record = do
   fields <- many $ t3Field s
   return $ T3Record s g fields
 
-t3Field :: T3Sign -> Parser T3Field
+t3Field :: T3Sign -> T.Parser T3Field
 t3Field record_sign = do
   s <- pT3Sign
   t3FieldBody (t3FieldType record_sign s) s
 
-t3FieldBody :: T3FieldType -> T3Sign -> Parser T3Field
+t3FieldBody :: T3FieldType -> T3Sign -> T.Parser T3Field
 t3FieldBody T3Binary s = do
   void $ Tp.char ' '
   b <- decode <$> C.pack <$> ST.unpack <$> Tp.takeTill Tp.isEndOfLine

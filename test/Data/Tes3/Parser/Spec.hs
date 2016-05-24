@@ -85,7 +85,7 @@ testFile1 = T3File
     ]
   ]
 
-pT3File :: Parser T3File
+pT3File :: T.Parser T3File
 pT3File = do
   pT3FileSignature
   h <- pT3FileHeader
@@ -94,8 +94,8 @@ pT3File = do
 
 parseValidFile :: Assertion
 parseValidFile = do
-  assertEqual "" (Right testFile1) $ Tp.parseOnly (pT3File <* Tp.endOfInput) testFile1Text
+  assertEqual "" (Right testFile1) $ TP.parseOnly (pT3File <* Tp.endOfInput) testFile1Text
 
 parseInvalidFile :: Assertion
 parseInvalidFile = do
-  assertEqual "" (Left "endOfInput") $ Tp.parseOnly (pT3File <* Tp.endOfInput) invalidTestFileText
+  assertEqual "" (Left "endOfInput") $ TP.parseOnly (pT3File <* Tp.endOfInput) invalidTestFileText
