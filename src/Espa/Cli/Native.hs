@@ -4,6 +4,7 @@ module Espa.Cli.Native where
 import Paths_esp_assembler
 import Control.Error.Extensions
 import Data.Tes3.Disassembler
+import Data.Tes3.Assembler
 
 espSuffix :: String
 espSuffix = ".esp"
@@ -88,9 +89,23 @@ getDisassembliedFileName name
   | endswith espSuffix name = Right $ take (length name - length espSuffix) name
   | otherwise = Left $ userError $ name ++ ": Filename has an unknown suffix, skipping"
   
+getAssembliedFileName :: FilePath -> Either IOError FilePath
+getAssembliedFileName name
+  | name == "-" = Right "-"
+  | endswith espSuffix name = Left $ userError $ name ++ ": File already has `" ++ espSuffix ++ "' suffix, skipping"
+  | otherwise = Right $ name ++ espSuffix
+
 withBinaryInputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
 withBinaryInputFile "-" action = action stdin
 withBinaryInputFile name action = bracketE (tryIO $ openBinaryFile name ReadMode) (tryIO . hClose) action
+
+withBinaryOutputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
+withBinaryOutputFile "-" action = action stdout
+withBinaryOutputFile name action = bracketE (tryIO $ openBinaryFile name WriteMode) (tryIO . hClose) action
+
+withTextInputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
+withTextInputFile "-" action = action stdin
+withTextInputFile name action = bracketE (tryIO $ openFile name ReadMode) (tryIO . hClose) action
 
 withTextOutputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
 withTextOutputFile "-" action = action stdout
@@ -119,4 +134,15 @@ espaAssemblyErrorText :: IOError -> String
 espaAssemblyErrorText _ = "error"
 
 espaAssembly :: Verboser -> FilePath -> ExceptT IOError IO ()
-espaAssembly v name = tryIO $ v $ "assembly " ++ name
+espaAssembly verbose name = do
+  output_name <- hoistEither $ getAssembliedFileName name
+  tryIO $ verbose $ name ++ " -> " ++ output_name
+  r <-
+    withTextInputFile name $ \input -> do
+      withBinaryOutputFile output_name $ \output -> do
+        runConduit $ (N.sourceHandle input =$= assembly) `fuseUpstream` N.sinkHandle output
+  case r of
+    Right _ -> return ()
+    Left e -> do
+      tryIO $ removeFile output_name
+      throwE $ userError $ name ++ ": " ++ "Parse error: " ++ e
