@@ -58,7 +58,7 @@ putT3FileHeader (T3FileHeader version file_type author descr refs) =
   let r = foldl (<>) B.empty [t3FileRef ref | ref <- refs] in
   let items_count_placeholder = runPut $ putWord32le 0 in
   let tes3 = sign (T3Mark HEDR) <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder <> r in
-  size tes3 <> tes3
+  size tes3 <> gap 0 <> tes3
 
 awaitE :: Monad m => ConduitM S.Text a m S.Text
 awaitE = do
