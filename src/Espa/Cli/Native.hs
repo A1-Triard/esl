@@ -140,9 +140,15 @@ espaAssembly verbose name = do
   r <-
     withTextInputFile name $ \input -> do
       withBinaryOutputFile output_name $ \output -> do
-        runConduit $ (N.sourceHandle input =$= assembly) `fuseUpstream` N.sinkHandle output
+        r <- runConduit $ (N.sourceHandle input =$= assembly) `fuseUpstream` N.sinkHandle output
+        case r of
+          Left e -> return $ Just e
+          Right n -> do
+            tryIO $ hSeek output AbsoluteSeek 320
+            tryIO $ B.hPut output $ runPut $ putWord32le n
+            return Nothing
   case r of
-    Right _ -> return ()
-    Left e -> do
+    Nothing -> return ()
+    Just e -> do
       tryIO $ removeFile output_name
       throwE $ userError $ name ++ ": " ++ "Parse error: " ++ e
