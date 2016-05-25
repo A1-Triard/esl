@@ -105,11 +105,19 @@ data T3FieldType
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType _ (T3Mark ANAM) = T3String
+t3FieldType _ (T3Mark ASND) = T3String
+t3FieldType _ (T3Mark AVFX) = T3String
 t3FieldType _ (T3Mark BNAM) = T3Multiline
+t3FieldType _ (T3Mark BSND) = T3String
+t3FieldType _ (T3Mark BVFX) = T3String
 t3FieldType _ (T3Mark CNAM) = T3String
+t3FieldType _ (T3Mark CSND) = T3String
+t3FieldType _ (T3Mark CVFX) = T3String
 t3FieldType _ (T3Mark DESC) = T3String
 t3FieldType _ (T3Mark DNAM) = T3String
 t3FieldType _ (T3Mark FNAM) = T3String
+t3FieldType _ (T3Mark HSND) = T3String
+t3FieldType _ (T3Mark HVFX) = T3String
 t3FieldType _ (T3Mark INAM) = T3String
 t3FieldType _ (T3Mark ITEX) = T3String
 t3FieldType _ (T3Mark KNAM) = T3String
@@ -121,6 +129,7 @@ t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
 t3FieldType _ (T3Mark NPCS) = T3String
 t3FieldType _ (T3Mark ONAM) = T3String
 t3FieldType _ (T3Mark PNAM) = T3String
+t3FieldType _ (T3Mark PTEX) = T3String
 t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
 t3FieldType _ (T3Mark SCRI) = T3String
