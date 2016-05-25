@@ -84,7 +84,7 @@ conduitParser1 parser = do
     go (TP.Fail _ _ err) = do
       return $ Left err
 
-conduitParserN :: (Monad m, Num n) => T.Parser a -> n -> ConduitM S.Text a m (Either String n)
+conduitParserN :: (Monad m, Num n) => T.Parser (Maybe a) -> n -> ConduitM S.Text a m (Either String (Maybe n))
 conduitParserN parser n = do
   go $ TP.parse parser ""
   where
@@ -92,15 +92,17 @@ conduitParserN parser n = do
       inp <- awaitE
       go $ p inp
     go (TP.Done unused result) = do
-      yield result
+      case result of
+        Nothing -> return ()
+        Just r -> yield r
       if ST.null unused
         then return ()
         else leftover unused
-      return $ Right (n + 1)
-    go (TP.Fail _ _ err) = do
-      return $ Left err
+      return $ Right $ if isJust result then Just (n + 1) else Nothing
+    go (TP.Fail _ c err) = do
+      return $ Left $ err ++ " (" ++ intercalate " -> " c ++ ")"
 
-conduitRepeat :: Monad m => a -> (a -> ConduitM seq r m (Either e a)) -> ConduitM seq r m (Either e a)
+conduitRepeat :: Monad m => a -> (a -> ConduitM seq r m (Either e (Maybe a))) -> ConduitM seq r m (Either e a)
 conduitRepeat a0 produce =
   go a0
   where
@@ -112,9 +114,10 @@ conduitRepeat a0 produce =
           p <- produce an
           case p of
             Left err -> return $ Left err
-            Right an_1 -> go an_1
+            Right (Just an_1) -> go an_1
+            Right Nothing -> return $ Right an
 
-conduitRepeatE :: (Monad m, MonoFoldable seq) => a -> (a -> ConduitM seq r m (Either e a)) -> ConduitM seq r m (Either e a)
+conduitRepeatE :: (Monad m, MonoFoldable seq) => a -> (a -> ConduitM seq r m (Either e (Maybe a))) -> ConduitM seq r m (Either e a)
 conduitRepeatE a0 produce =
   go a0
   where
@@ -126,10 +129,33 @@ conduitRepeatE a0 produce =
           p <- produce an
           case p of
             Left err -> return $ Left err
-            Right an_1 -> go an_1
+            Right (Just an_1) -> go an_1
+            Right Nothing -> return $ Right an
+
+pMaybeT3Record :: T.Parser (Maybe T3Record)
+pMaybeT3Record = do
+  Tp.endOfLine
+  c <- Tp.peekChar
+  if c == Just '#'
+    then return Nothing
+    else Just <$> pT3Record
+
+pRecordsNumber :: T.Parser Word32
+pRecordsNumber = do
+  void $ Tp.char '#'
+  void $ Tp.char ' '
+  n <- Tp.decimal
+  Tp.endOfLine
+  return n
 
 assembly :: Monad m => ConduitM S.Text ByteString m (Either String Word32)
 assembly = runExceptT $ do
-  (hoistEither =<<) $ lift $ mapOutput (const putT3FileSignature) $ conduitParser1 pT3FileSignature
-  void $ (hoistEither =<<) $ lift $ mapOutput putT3FileHeader $ conduitParser1 pT3FileHeader
-  (hoistEither =<<) $ lift $ mapOutput putT3Record $ conduitRepeatE 0 $ conduitParserN pT3Record
+  (hoistEither =<<) $ lift $ mapOutput (const putT3FileSignature) $ conduitParser1 (pT3FileSignature <?> "S")
+  void $ (hoistEither =<<) $ lift $ mapOutput putT3FileHeader $ conduitParser1 (pT3FileHeader <?> "H")
+  n <- (hoistEither =<<) $ lift $ mapOutput putT3Record $ conduitRepeatE 0 $ conduitParserN (pMaybeT3Record <?> "R")
+  items_count <- (hoistEither =<<) $ lift $ mapOutput (const B.empty) $ conduitParser1 (Tp.option n pRecordsNumber <?> "RN")
+  if items_count < n
+    then hoistEither $ Left $ "Records count mismatch: no more than " ++ show items_count ++ " expected, but " ++ show n ++ " readed."
+    else return ()
+  (hoistEither =<<) $ lift $ mapOutput (const B.empty) $ conduitParser1 (Tp.endOfInput <?> "EOF")
+  return items_count

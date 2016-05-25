@@ -93,6 +93,9 @@ disassembly = runExceptT $ do
   (h, _) <- (hoistEither =<<) $ lift $ mapOutput (const writeT3FileSignature) $ conduitGet1 getT3FileSignature 0
   (r, (_, items_count)) <- (hoistEither =<<) $ lift $ mapOutput (writeT3FileHeader . fst) $ conduitGet1 getT3FileHeader h
   (f, n) <- (hoistEither =<<) $ lift $ mapOutput writeT3Record $ conduitRepeatE (r, 0) $ conduitGetN getT3Record
+  if n > items_count
+    then hoistEither $ Left (f, Right $ "Records count mismatch: no more than " ++ show items_count ++ " expected, but " ++ show n ++ " readed.")
+    else return ()
   if n /= items_count
-    then hoistEither $ Left (f, Right $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show n ++ " readed.")
+    then lift $ yield $ "\n" <> "# " <> T.pack (show items_count) <> "\n"
     else return ()

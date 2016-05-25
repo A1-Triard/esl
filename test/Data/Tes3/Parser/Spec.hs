@@ -89,7 +89,7 @@ pT3File :: T.Parser T3File
 pT3File = do
   pT3FileSignature
   h <- pT3FileHeader
-  r <- many pT3Record
+  r <- many (Tp.endOfLine >> pT3Record)
   return $ T3File h r
 
 parseValidFile :: Assertion

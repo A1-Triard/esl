@@ -131,7 +131,9 @@ espaDisassembly verbose name = do
         Left e -> throwE $ userError $ name ++ ": " ++ "Internal error: " ++ showHex offset "h: " ++ e
 
 espaAssemblyErrorText :: IOError -> String
-espaAssemblyErrorText _ = "error"
+espaAssemblyErrorText e
+  | isUserError e = ioeGetErrorString e
+  | otherwise = ioeGetErrorString e
 
 espaAssembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaAssembly verbose name = do

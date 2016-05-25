@@ -35,7 +35,6 @@ pT3FileHeader = do
 
 pT3Record :: T.Parser T3Record
 pT3Record = do
-  Tp.endOfLine
   s <- pT3Sign
   g <- Tp.option 0 $ Tp.char ' ' >> Tp.decimal
   Tp.endOfLine
