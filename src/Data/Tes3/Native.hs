@@ -79,30 +79,21 @@ t3MarkNew w = SM.lookup w t3MarkNews
 t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
 
-data KnownT3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Bounded)
-data T3FileType = KnownT3FileType KnownT3FileType | UnknownT3FileType Word32 deriving (Eq)
-
-instance Show T3FileType where
-  show (KnownT3FileType t) = show t
-  show (UnknownT3FileType w) = showHex w "h"
+data T3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Bounded)
 
 t3FileTypeValue :: T3FileType -> Word32
-t3FileTypeValue (KnownT3FileType ESP) = 0
-t3FileTypeValue (KnownT3FileType ESM) = 1
-t3FileTypeValue (KnownT3FileType ESS) = 32
-t3FileTypeValue (UnknownT3FileType a) = a
+t3FileTypeValue ESP = 0
+t3FileTypeValue ESM = 1
+t3FileTypeValue ESS = 32
 
-t3FileTypeNew :: Word32 -> T3FileType
-t3FileTypeNew 0 = KnownT3FileType ESP
-t3FileTypeNew 1 = KnownT3FileType ESM
-t3FileTypeNew 32 = KnownT3FileType ESS
-t3FileTypeNew a = UnknownT3FileType a
-
-pKnownT3FileType :: T.Parser KnownT3FileType
-pKnownT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [minBound .. maxBound]]
+t3FileTypeNew :: Word32 -> Maybe T3FileType
+t3FileTypeNew 0 = Just ESP
+t3FileTypeNew 1 = Just ESM
+t3FileTypeNew 32 = Just ESS
+t3FileTypeNew _ = Nothing
 
 pT3FileType :: T.Parser T3FileType
-pT3FileType = (KnownT3FileType <$> pKnownT3FileType) <|> (UnknownT3FileType <$> Tp.decimal)
+pT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [minBound .. maxBound]]
 
 data T3FieldType
   = T3Binary

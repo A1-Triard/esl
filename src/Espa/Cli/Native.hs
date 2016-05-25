@@ -3,11 +3,14 @@ module Espa.Cli.Native where
 #include <haskell>
 import Paths_esp_assembler
 import Control.Error.Extensions
+import Data.Tes3
 import Data.Tes3.Disassembler
 import Data.Tes3.Assembler
 
-espSuffix :: String
-espSuffix = ".esp"
+fileSuffix :: T3FileType -> String
+fileSuffix ESP = ".esp"
+fileSuffix ESM = ".esm"
+fileSuffix ESS = ".ess"
 
 espaHelpHeader :: String
 espaHelpHeader
@@ -90,17 +93,26 @@ espaDisassemblyErrorText e
   | isDoesNotExistError e = fromMaybe "" (ioeGetFileName e) ++ ": No such file or directory"
   | otherwise = ioeGetErrorString e
 
+checkFileSuffix :: String -> Maybe (String, T3FileType)
+checkFileSuffix name = do
+  file_type <- find (\t -> endswith (fileSuffix t) name) [minBound .. maxBound]
+  return (take (length name - length (fileSuffix file_type)) name, file_type)
+
 getDisassembliedFileName :: FilePath -> Either IOError FilePath
-getDisassembliedFileName name
-  | name == "-" = Right "-"
-  | endswith espSuffix name = Right $ take (length name - length espSuffix) name
-  | otherwise = Left $ userError $ name ++ ": Filename has an unknown suffix, skipping"
+getDisassembliedFileName "-" = Right "-"
+getDisassembliedFileName name =
+  maybe
+    (Left $ userError $ name ++ ": Filename has an unknown suffix, skipping")
+    (Right . fst)
+    (checkFileSuffix name)
 
 getAssembliedFileName :: FilePath -> Either IOError FilePath
-getAssembliedFileName name
-  | name == "-" = Right "-"
-  | endswith espSuffix name = Left $ userError $ name ++ ": File already has `" ++ espSuffix ++ "' suffix, skipping"
-  | otherwise = Right $ name ++ espSuffix
+getAssembliedFileName "-" = Right "-"
+getAssembliedFileName name =
+  maybe
+    (Right name)
+    (\(_, t) -> Left $ userError $ name ++ ": File already has `" ++ fileSuffix t ++ "' suffix, skipping")
+    (checkFileSuffix name)
 
 withBinaryInputFile :: FilePath -> (Handle -> ExceptT IOError IO a) -> ExceptT IOError IO a
 withBinaryInputFile "-" action = action stdin
@@ -145,19 +157,20 @@ espaAssemblyErrorText e
 espaAssembly :: Verboser -> FilePath -> ExceptT IOError IO ()
 espaAssembly verbose name = do
   output_name <- hoistEither $ getAssembliedFileName name
-  tryIO $ verbose $ name ++ " -> " ++ output_name
+  tryIO $ verbose $ name ++ " -> " ++ output_name ++ ".es?"
   r <-
     withTextInputFile name $ \input -> do
-      withBinaryOutputFile output_name $ \output -> do
+      withBinaryOutputFile (output_name ++ ".es_") $ \output -> do
         r <- runConduit $ (N.sourceHandle input =$= assembly) `fuseUpstream` N.sinkHandle output
         case r of
-          Left e -> return $ Just e
-          Right n -> do
+          Left e -> return $ Left e
+          Right (file_type, n) -> do
             tryIO $ hSeek output AbsoluteSeek 320
             tryIO $ B.hPut output $ runPut $ putWord32le n
-            return Nothing
+            return $ Right file_type
   case r of
-    Nothing -> return ()
-    Just e -> do
-      tryIO $ removeFile output_name
+    Left e -> do
+      tryIO $ removeFile (output_name ++ ".es_")
       throwE $ userError $ name ++ ": " ++ "Parse error: " ++ e
+    Right file_type -> do
+      tryIO $ renameFile (output_name ++ ".es_") (output_name ++ fileSuffix file_type)

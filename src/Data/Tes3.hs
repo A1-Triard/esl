@@ -5,7 +5,6 @@ module Data.Tes3
   , t3SignValue
   , t3MarkNew
   , t3SignNew
-  , KnownT3FileType (..)
   , T3FileType (..)
   , t3FileTypeValue
   , t3FileTypeNew

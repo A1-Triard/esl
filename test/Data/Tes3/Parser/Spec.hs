@@ -65,7 +65,7 @@ data T3File = T3File T3FileHeader [T3Record] deriving (Eq, Show)
 
 testFile1 :: T3File
 testFile1 = T3File
-  ( T3FileHeader 1067869798 (KnownT3FileType ESP) "Ath" ["Descr descr descr."]
+  ( T3FileHeader 1067869798 ESP "Ath" ["Descr descr descr."]
     [ T3FileRef "Morrowind.esm\0" 79764287
     ]
   )

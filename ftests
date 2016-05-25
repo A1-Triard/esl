@@ -12,7 +12,6 @@ fi
 if [ \! -e Morrowind.esm ]; then
   echo "Put Morrowind.esm into test_data"
   exit 1
-  7z x ale-clothing-v1-1c.7z || exit 1
 fi
 cd ..
 
@@ -31,5 +30,13 @@ stack exec -- espa -vd "${test_file}.esp" || exit 1
 mv "${test_file}" "${test_file}.test"
 stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esp" "${test_file}.esp" || exit 1
+
+test_file="test_data/Morrowind"
+echo "${test_file}.esm"
+rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
+stack exec -- espa -vd "${test_file}.esm" || exit 1
+mv "${test_file}" "${test_file}.test"
+stack exec -- espa -v "${test_file}.test" || exit 1
+cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
 
 echo "All tests passed."

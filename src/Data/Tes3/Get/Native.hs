@@ -89,7 +89,10 @@ fileHeaderData = do
   expect (T3Mark HEDR) sign
   expect 300 size
   version <- getWord32le `withError` Right ()
-  file_type <- t3FileTypeNew <$> getWord32le `withError` Right ()
+  file_type_value <- getWord32le `withError` Right ()
+  file_type <- case t3FileTypeNew file_type_value of
+    Nothing -> failG $ Left $ "Unknown file type: " ++ show file_type_value
+    Just x -> return x
   author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
   description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
   items_count <- getWord32le `withError` Right ()

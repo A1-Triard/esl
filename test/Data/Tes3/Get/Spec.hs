@@ -121,7 +121,7 @@ sign t =
 
 testFile1 :: T3File
 testFile1 = T3File
-  ( T3FileHeader 0x07 (KnownT3FileType ESS) "test author" ["test description", "AAA", ""]
+  ( T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""]
     [ T3FileRef "Morrowind.esm\0" 137
     ]
   )

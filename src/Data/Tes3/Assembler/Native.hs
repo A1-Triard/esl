@@ -145,14 +145,14 @@ pRecordsNumber = do
   Tp.endOfLine
   return n
 
-assembly :: Monad m => ConduitM S.Text ByteString m (Either String Word32)
+assembly :: Monad m => ConduitM S.Text ByteString m (Either String (T3FileType, Word32))
 assembly = runExceptT $ do
   (hoistEither =<<) $ lift $ mapOutput (const putT3FileSignature) $ conduitParser1 (pT3FileSignature <?> "S")
-  void $ (hoistEither =<<) $ lift $ mapOutput putT3FileHeader $ conduitParser1 (pT3FileHeader <?> "H")
+  T3FileHeader _ file_type _ _ _ <- (hoistEither =<<) $ lift $ mapOutput putT3FileHeader $ conduitParser1 (pT3FileHeader <?> "H")
   n <- (hoistEither =<<) $ lift $ mapOutput putT3Record $ conduitRepeatE 0 $ conduitParserN (pMaybeT3Record <?> "R")
   items_count <- (hoistEither =<<) $ lift $ mapOutput (const B.empty) $ conduitParser1 (Tp.option n pRecordsNumber <?> "RN")
   if items_count < n
     then hoistEither $ Left $ "Records count mismatch: no more than " ++ show items_count ++ " expected, but " ++ show n ++ " readed."
     else return ()
   (hoistEither =<<) $ lift $ mapOutput (const B.empty) $ conduitParser1 (Tp.endOfInput <?> "EOF")
-  return items_count
+  return (file_type, items_count)
