@@ -10,9 +10,6 @@ sign = runPut . putWord32le . t3SignValue
 size :: ByteString -> ByteString
 size = runPut . putWord32le . fromIntegral . B.length
 
-size' :: Word32 -> ByteString -> ByteString
-size' a = runPut . putWord32le . (a +) . fromIntegral . B.length
-
 gap :: Word64 -> ByteString
 gap = runPut . putWord64le
 
@@ -36,7 +33,7 @@ putT3Field _ (T3MultilineField s t) =
   sign s <> size b <> b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s <> size' 4 b <> runPut (putWord32le n) <> b
+  sign s <> runPut (putWord32le 36) <> runPut (putWord32le n) <> b <> tail b 32
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =
