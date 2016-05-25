@@ -134,6 +134,7 @@ t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
 t3FieldType _ (T3Mark SCRI) = T3String
 t3FieldType _ (T3Mark SCTX) = T3Multiline
+t3FieldType _ (T3Mark SCVR) = T3String
 t3FieldType _ (T3Mark SNAM) = T3String
 t3FieldType _ (T3Mark STRV) = T3String
 t3FieldType _ _ = T3Binary

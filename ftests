@@ -9,6 +9,11 @@ if [ \! -e "Data Files/Aleanne Armor and Clothes 1+2.esp" ]; then
   wget -O ale-clothing-v1-1c.7z 'http://www.fullrest.ru/files/ale-clothing-v1-1c/files?fid=2379' || exit 1
   7z x ale-clothing-v1-1c.7z || exit 1
 fi
+if [ \! -e Morrowind.esm ]; then
+  echo "Put Morrowind.esm into test_data"
+  exit 1
+  7z x ale-clothing-v1-1c.7z || exit 1
+fi
 cd ..
 
 test_file="test_data/A1_Alchemy_V4_Apparatus"
