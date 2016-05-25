@@ -61,8 +61,12 @@ espa = do
       | optShowHelp options = putStrLn $ usageInfo espaHelpHeader espaOptionsDescr ++ espaHelpFooter
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
-      | optDisassembly options = forM_ (filenames names) $ printErrors espaDisassemblyErrorText . espaDisassembly (verboser options)
-      | otherwise = forM_ (filenames names) $ printErrors espaAssemblyErrorText . espaAssembly (verboser options)
+      | optDisassembly options = do
+        err <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaDisassemblyErrorText . espaDisassembly (verboser options)
+        if err then exitFailure else exitSuccess
+      | otherwise = do
+        err <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaAssemblyErrorText . espaAssembly (verboser options)
+        if err then exitFailure else exitSuccess
     filenames names = if null names then ["-"] else names
     verboser options
       | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . hPutStrLn stderr
@@ -70,12 +74,15 @@ espa = do
 
 type Verboser = String -> IO ()
 
-printErrors :: (e -> String) -> ExceptT e IO () -> IO ()
+printErrors :: (e -> String) -> ExceptT e IO () -> IO Bool
 printErrors error_text action = do
   result <- runExceptT action
   case result of
-    Left e -> handle (\x -> let _ = x :: IOError in return ()) $ hPutStrLn stderr $ error_text e
-    Right _ -> return ()
+    Left e -> do
+      handle (\x -> let _ = x :: IOError in return ()) $ hPutStrLn stderr $ error_text e
+      return True
+    Right _ ->
+      return False
     
 espaDisassemblyErrorText :: IOError -> String
 espaDisassemblyErrorText e
@@ -88,7 +95,7 @@ getDisassembliedFileName name
   | name == "-" = Right "-"
   | endswith espSuffix name = Right $ take (length name - length espSuffix) name
   | otherwise = Left $ userError $ name ++ ": Filename has an unknown suffix, skipping"
-  
+
 getAssembliedFileName :: FilePath -> Either IOError FilePath
 getAssembliedFileName name
   | name == "-" = Right "-"
