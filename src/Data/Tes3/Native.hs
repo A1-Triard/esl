@@ -99,6 +99,7 @@ data T3FieldType
   = T3Binary
   | T3String
   | T3Multiline
+  | T3MultiString
   | T3Ref
   | T3FixedString Word32
   deriving (Eq, Show)
@@ -134,6 +135,7 @@ t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
 t3FieldType _ (T3Mark SCRI) = T3String
 t3FieldType _ (T3Mark SCTX) = T3Multiline
+t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
 t3FieldType _ (T3Mark SCVR) = T3String
 t3FieldType _ (T3Mark SNAM) = T3String
 t3FieldType _ (T3Mark STRV) = T3String
@@ -144,6 +146,7 @@ data T3Field
   | T3StringField T3Sign Text
   | T3FixedStringField T3Sign Text
   | T3MultilineField T3Sign [Text]
+  | T3MultiStringField T3Sign [Text]
   | T3RefField T3Sign Word32 Text
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)

@@ -29,6 +29,9 @@ stringField = t3StringNew <$> getRemainingLazyByteString
 multilineField :: Get e [Text]
 multilineField = T.splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
 
+multiStringField :: Get e [Text]
+multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
+
 refField :: Get () (Word32, Text)
 refField = do
   z <- getWord32le
@@ -45,6 +48,7 @@ fieldBody record_sign s =
     f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
     f T3String = T3StringField s <$> stringField
     f T3Multiline = T3MultilineField s <$> multilineField
+    f T3MultiString = T3MultiStringField s <$> multiStringField
     f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
     f T3Binary = T3BinaryField s <$> binaryField
 

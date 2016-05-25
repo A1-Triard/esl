@@ -31,6 +31,9 @@ putT3Field record_sign (T3FixedStringField s t) =
 putT3Field _ (T3MultilineField s t) =
   let b = t3StringValue $ T.intercalate "\r\n" t in
   sign s <> size b <> b
+putT3Field _ (T3MultiStringField s t) =
+  let b = t3StringValue $ T.intercalate "\0" t in
+  sign s <> size b <> b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
   sign s <> runPut (putWord32le 36) <> runPut (putWord32le n) <> b <> tail b 32

@@ -21,6 +21,7 @@ writeT3Field (T3BinaryField sign d) = T.pack (show sign) <> " " <> T.pack (C.unp
 writeT3Field (T3StringField sign s) = T.pack (show sign) <> " " <> writeNulledLine s
 writeT3Field (T3FixedStringField sign s) = T.pack (show sign) <> " " <> writeLine s
 writeT3Field (T3MultilineField sign t) = T.pack (show sign) <> "\n" <> writeLines t
+writeT3Field (T3MultiStringField sign t) = T.pack (show sign) <> "\n" <> writeLines t
 writeT3Field (T3RefField sign z n) = T.pack (show sign) <> " " <> T.pack (show z) <> " " <> writeLine n
 
 writeT3Record :: T3Record -> Text
