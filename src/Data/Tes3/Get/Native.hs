@@ -70,7 +70,7 @@ getT3Record = do
   s <- sign `withError` "{0}: unexpected end of record"
   (g, f) <- onError (either id (const "{0}: unexpected end of record")) $ recordTail s
   return $ T3Record s g f
-  
+
 getT3FileSignature :: Get String ()
 getT3FileSignature = onError (const "File format not recognized.") $ expect (T3Mark TES3) sign
 

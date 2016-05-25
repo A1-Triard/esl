@@ -144,7 +144,7 @@ data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
 
 t3StringValue :: Text -> ByteString
-t3StringValue = IC.convert "UTF-8" "CP1251" . T.encodeUtf8
+t3StringValue = IC.convertFuzzy IC.Transliterate "UTF-8" "CP1251" . T.encodeUtf8
 
 t3StringNew :: ByteString -> Text
 t3StringNew = T.decodeUtf8 . IC.convert "CP1251" "UTF-8"

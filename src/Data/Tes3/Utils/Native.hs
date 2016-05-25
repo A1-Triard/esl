@@ -83,6 +83,7 @@ pEscapedChar allow_percent allow_spaces = do
       c <- Tp.anyChar
       case c of
         '0' -> return '\0'
+        '%' -> return '%'
         'r' -> return '\r'
         'n' -> return '\n'
         't' -> return '\t'
