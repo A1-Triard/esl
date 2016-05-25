@@ -19,6 +19,7 @@ data T3Mark
   | DESC | WHGT | FADT | AMBI | FRMR | RADT | NAM0 | NPCS
   | DNAM | XSCL | SKDT | DELE | MEDT | PTEX | CVFX | BVFX
   | HVFX | AVFX | BSND | CSND | HSND | ASND | WEAT | SNAM
+  | INAM | NNAM | PNAM
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -112,24 +113,28 @@ data T3FieldType
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
-t3FieldType _ (T3Mark SCRI) = T3String
-t3FieldType _ (T3Mark NAME) = T3String
-t3FieldType _ (T3Mark FNAM) = T3String
-t3FieldType _ (T3Mark MODL) = T3String
-t3FieldType _ (T3Mark ITEX) = T3String
-t3FieldType _ (T3Mark CNAM) = T3String
 t3FieldType _ (T3Mark ANAM) = T3String
 t3FieldType _ (T3Mark BNAM) = T3String
-t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
-t3FieldType _ (T3Mark RNAM) = T3String
-t3FieldType _ (T3Mark KNAM) = T3String
-t3FieldType _ (T3Mark DNAM) = T3String
-t3FieldType _ (T3Mark STRV) = T3String
+t3FieldType _ (T3Mark CNAM) = T3String
 t3FieldType _ (T3Mark DESC) = T3String
+t3FieldType _ (T3Mark DNAM) = T3String
+t3FieldType _ (T3Mark FNAM) = T3String
+t3FieldType _ (T3Mark INAM) = T3String
+t3FieldType _ (T3Mark ITEX) = T3String
+t3FieldType _ (T3Mark KNAM) = T3String
+t3FieldType _ (T3Mark MODL) = T3String
+t3FieldType _ (T3Mark NAME) = T3String
+t3FieldType _ (T3Mark NNAM) = T3String
 t3FieldType _ (T3Mark NPCO) = T3Ref
-t3FieldType _ (T3Mark SCTX) = T3Multiline
 t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
 t3FieldType _ (T3Mark NPCS) = T3String
+t3FieldType _ (T3Mark PNAM) = T3String
+t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
+t3FieldType _ (T3Mark RNAM) = T3String
+t3FieldType _ (T3Mark SCRI) = T3String
+t3FieldType _ (T3Mark SCTX) = T3Multiline
+t3FieldType _ (T3Mark SNAM) = T3String
+t3FieldType _ (T3Mark STRV) = T3String
 t3FieldType _ _ = T3Binary
 
 data T3Field
