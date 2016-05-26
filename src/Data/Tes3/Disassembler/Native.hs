@@ -23,6 +23,7 @@ writeT3Field (T3FixedStringField sign s) = T.pack (show sign) <> " " <> writeLin
 writeT3Field (T3MultilineField sign t) = T.pack (show sign) <> "\n" <> writeLines t
 writeT3Field (T3MultiStringField sign t) = T.pack (show sign) <> "\n" <> writeLines t
 writeT3Field (T3RefField sign z n) = T.pack (show sign) <> " " <> T.pack (show z) <> " " <> writeLine n
+writeT3Field (T3FloatField sign v) = T.pack (show sign) <> " " <> T.pack (show $ float2Double v) <> "\n"
 
 writeT3Record :: T3Record -> Text
 writeT3Record (T3Record sign gap fields)

@@ -37,6 +37,7 @@ putT3Field _ (T3MultiStringField s t) =
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
   sign s <> runPut (putWord32le 36) <> runPut (putWord32le n) <> b <> tail b 32
+putT3Field _ (T3FloatField s v) = sign s <> runPut (putWord32le 4) <> runPut (putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

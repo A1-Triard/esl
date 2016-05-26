@@ -1,5 +1,8 @@
 test_data/
-/00*
+*.esp
+*.esm
+*.ess
+*.test
 *.lkshs
 dist
 cabal-dev

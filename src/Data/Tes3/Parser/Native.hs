@@ -76,3 +76,8 @@ t3FieldBody (T3FixedString _) s = do
   void $ Tp.char ' '
   t <- pNulledLine
   return $ T3FixedStringField s t
+t3FieldBody T3Float s = do
+  void $ Tp.char ' '
+  v <- (double2Float <$> Tp.double) <|> (const (0/0) <$> Tp.string "NaN")
+  Tp.endOfLine
+  return $ T3FloatField s v

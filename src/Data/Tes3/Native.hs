@@ -102,6 +102,7 @@ data T3FieldType
   | T3MultiString
   | T3Ref
   | T3FixedString Word32
+  | T3Float
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
@@ -116,6 +117,7 @@ t3FieldType _ (T3Mark CSND) = T3String
 t3FieldType _ (T3Mark CVFX) = T3String
 t3FieldType _ (T3Mark DESC) = T3String
 t3FieldType _ (T3Mark DNAM) = T3String
+t3FieldType _ (T3Mark FLTV) = T3Float
 t3FieldType _ (T3Mark FNAM) = T3String
 t3FieldType _ (T3Mark HSND) = T3String
 t3FieldType _ (T3Mark HVFX) = T3String
@@ -148,6 +150,7 @@ data T3Field
   | T3MultilineField T3Sign [Text]
   | T3MultiStringField T3Sign [Text]
   | T3RefField T3Sign Word32 Text
+  | T3FloatField T3Sign Float
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)

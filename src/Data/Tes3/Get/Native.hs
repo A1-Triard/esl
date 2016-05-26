@@ -41,6 +41,9 @@ refField = do
 fixedStringField :: Word32 -> Get () Text
 fixedStringField z = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString (fromIntegral z)
 
+floatField :: Get () Float
+floatField = wordToFloat <$> getWord32le
+
 fieldBody :: T3Sign -> T3Sign -> Get () T3Field
 fieldBody record_sign s =
   f (t3FieldType record_sign s)
@@ -51,6 +54,7 @@ fieldBody record_sign s =
     f T3MultiString = T3MultiStringField s <$> multiStringField
     f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
     f T3Binary = T3BinaryField s <$> binaryField
+    f T3Float = T3FloatField s <$> floatField
 
 field :: T3Sign -> Get String T3Field
 field record_sign = do
