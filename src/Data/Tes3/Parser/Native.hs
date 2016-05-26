@@ -81,3 +81,18 @@ t3FieldBody T3Float s = do
   v <- (double2Float <$> Tp.double) <|> (const (0/0) <$> Tp.string "NaN")
   Tp.endOfLine
   return $ T3FloatField s v
+t3FieldBody T3Int s = do
+  void $ Tp.char ' '
+  v <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  return $ T3IntField s v
+t3FieldBody T3Short s = do
+  void $ Tp.char ' '
+  v <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  return $ T3ShortField s v
+t3FieldBody T3Long s = do
+  void $ Tp.char ' '
+  v <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  return $ T3LongField s v

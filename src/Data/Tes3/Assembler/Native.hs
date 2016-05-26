@@ -38,6 +38,9 @@ putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
   sign s <> runPut (putWord32le 36) <> runPut (putWord32le n) <> b <> tail b 32
 putT3Field _ (T3FloatField s v) = sign s <> runPut (putWord32le 4) <> runPut (putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
+putT3Field _ (T3IntField s v) = sign s <> runPut (putWord32le 4) <> BB.toLazyByteString (BB.int32LE v)
+putT3Field _ (T3ShortField s v) = sign s <> runPut (putWord32le 2) <> BB.toLazyByteString (BB.int16LE v)
+putT3Field _ (T3LongField s v) = sign s <> runPut (putWord32le 8) <> BB.toLazyByteString (BB.int64LE v)
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

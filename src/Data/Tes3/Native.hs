@@ -103,6 +103,9 @@ data T3FieldType
   | T3Ref
   | T3FixedString Word32
   | T3Float
+  | T3Int
+  | T3Short
+  | T3Long
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
@@ -122,6 +125,10 @@ t3FieldType _ (T3Mark FNAM) = T3String
 t3FieldType _ (T3Mark HSND) = T3String
 t3FieldType _ (T3Mark HVFX) = T3String
 t3FieldType _ (T3Mark INAM) = T3String
+t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
+t3FieldType (T3Mark LEVC) (T3Mark INTV) = T3Short
+t3FieldType (T3Mark LAND) (T3Mark INTV) = T3Long
+t3FieldType _ (T3Mark INTV) = T3Int
 t3FieldType _ (T3Mark ITEX) = T3String
 t3FieldType _ (T3Mark KNAM) = T3String
 t3FieldType _ (T3Mark MODL) = T3String
@@ -151,6 +158,9 @@ data T3Field
   | T3MultiStringField T3Sign [Text]
   | T3RefField T3Sign Word32 Text
   | T3FloatField T3Sign Float
+  | T3IntField T3Sign Int32
+  | T3ShortField T3Sign Int16
+  | T3LongField T3Sign Int64
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
