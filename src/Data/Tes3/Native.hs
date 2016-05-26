@@ -113,9 +113,11 @@ t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType _ (T3Mark ANAM) = T3String
 t3FieldType _ (T3Mark ASND) = T3String
 t3FieldType _ (T3Mark AVFX) = T3String
+t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String
 t3FieldType _ (T3Mark BNAM) = T3Multiline
 t3FieldType _ (T3Mark BSND) = T3String
 t3FieldType _ (T3Mark BVFX) = T3String
+t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
 t3FieldType _ (T3Mark CNAM) = T3String
 t3FieldType _ (T3Mark CSND) = T3String
 t3FieldType _ (T3Mark CVFX) = T3String
@@ -150,8 +152,10 @@ t3FieldType _ (T3Mark SCRI) = T3String
 t3FieldType _ (T3Mark SCTX) = T3Multiline
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
 t3FieldType _ (T3Mark SCVR) = T3String
+t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
 t3FieldType _ (T3Mark SNAM) = T3String
 t3FieldType _ (T3Mark STRV) = T3String
+t3FieldType _ (T3Mark WEAT) = T3Long
 t3FieldType _ _ = T3Binary
 
 data T3Field
