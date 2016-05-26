@@ -58,6 +58,7 @@ fieldBody record_sign s =
     f T3Int = T3IntField s <$> getInt32le
     f T3Short = T3ShortField s <$> getInt16le
     f T3Long = T3LongField s <$> getInt64le
+    f T3Byte = T3ByteField s <$> getWord8
 
 field :: T3Sign -> Get String T3Field
 field record_sign = do

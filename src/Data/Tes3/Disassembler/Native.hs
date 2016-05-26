@@ -27,6 +27,7 @@ writeT3Field (T3FloatField sign v) = T.pack (show sign) <> " " <> T.pack (show $
 writeT3Field (T3IntField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
 writeT3Field (T3ShortField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
 writeT3Field (T3LongField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
+writeT3Field (T3ByteField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
 
 writeT3Record :: T3Record -> Text
 writeT3Record (T3Record sign gap fields)

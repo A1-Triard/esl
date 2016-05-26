@@ -96,3 +96,8 @@ t3FieldBody T3Long s = do
   v <- Tp.signed Tp.decimal
   Tp.endOfLine
   return $ T3LongField s v
+t3FieldBody T3Byte s = do
+  void $ Tp.char ' '
+  v <- Tp.decimal
+  Tp.endOfLine
+  return $ T3ByteField s v
