@@ -15,7 +15,7 @@ fileSuffix ESS = ".ess"
 espaHelpHeader :: String
 espaHelpHeader
   =  "Usage: espa [OPTION]... [FILE]...\n"
-  ++ "Assembly or disassembly FILEs in the .esp format.\n"
+  ++ "Assembly or disassembly FILEs in the .esm/.esp/.ess format.\n"
 
 espaHelpFooter :: String
 espaHelpFooter
@@ -32,6 +32,7 @@ data EspaOptions = EspaOptions
   , optShowVersion :: Bool
   , optShowHelp :: Bool
   , optVerbose :: Bool
+  , optExclude :: [String]
   }
 
 defaultEspaOptions :: EspaOptions
@@ -40,14 +41,16 @@ defaultEspaOptions = EspaOptions
   , optShowVersion = False
   , optShowHelp = False
   , optVerbose = False
+  , optExclude = []
   }
-  
+
 espaOptionsDescr :: [OptDescr (EspaOptions -> EspaOptions)]
 espaOptionsDescr =
   [ Option ['d'] ["disassembly"] (NoArg (\o -> o {optDisassembly = True})) "force disassembliation"
   , Option ['V'] ["version"] (NoArg (\o -> o {optShowVersion = True})) "display the version number and exit"
   , Option ['h'] ["help"] (NoArg (\o -> o {optShowHelp = True})) "display this help and exit"
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
+  , Option ['e'] ["exclude"] (ReqArg (\e o -> o {optExclude = e : optExclude o}) "MARK") "skip MARK records"
   ]
 
 espaOptions :: [String] -> (EspaOptions, [FilePath], [String])
@@ -65,15 +68,23 @@ espa = do
       | optShowVersion options = putStrLn $ "espa " ++ showVersion version
       | not $ null errors = hPutStrLn stderr $ concat errors ++ espaUsageErrorFooter
       | optDisassembly options = do
-        err <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaDisassemblyErrorText . espaDisassembly (verboser options)
+        err
+          <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaDisassemblyErrorText
+           . espaDisassembly (skip_record options) (verboser options)
         if err then exitFailure else exitSuccess
       | otherwise = do
-        err <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaAssemblyErrorText . espaAssembly (verboser options)
+        err
+          <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaAssemblyErrorText
+           . espaAssembly (verboser options)
         if err then exitFailure else exitSuccess
     filenames names = if null names then ["-"] else names
     verboser options
       | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . hPutStrLn stderr
       | otherwise = \_ -> return ()
+    skip_record options record =
+      case find (== show record) (optExclude options) of
+        Nothing -> False
+        Just _ -> True
 
 type Verboser = String -> IO ()
 
@@ -133,14 +144,14 @@ withTextOutputFile name action = bracketE (tryIO $ openFile name WriteMode) (try
 handleT3Error :: FilePath -> String -> IOError
 handleT3Error name e = userError $ showString name $ showString ": " e
 
-espaDisassembly :: Verboser -> FilePath -> ExceptT IOError IO ()
-espaDisassembly verbose name = do
+espaDisassembly :: (T3Sign -> Bool) -> Verboser -> FilePath -> ExceptT IOError IO ()
+espaDisassembly skip_record verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
   tryIO $ verbose $ name ++ " -> " ++ output_name
   r <-
     withBinaryInputFile name $ \input -> do
       withTextOutputFile output_name $ \output -> do
-        runConduit $ (N.sourceHandle input =$= disassembly) `fuseUpstream` N.sinkHandle output
+        runConduit $ (N.sourceHandle input =$= disassembly skip_record) `fuseUpstream` N.sinkHandle output
   case r of
     Right _ -> return ()
     Left (offset, err) -> do
