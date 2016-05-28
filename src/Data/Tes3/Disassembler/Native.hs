@@ -29,6 +29,19 @@ writeT3Field (T3ShortField sign v) = T.pack (show sign) <> " " <> T.pack (show v
 writeT3Field (T3LongField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
 writeT3Field (T3ByteField sign v) = T.pack (show sign) <> " " <> T.pack (show v) <> "\n"
 writeT3Field (T3CompressedField sign d) = T.pack (show sign) <> " " <> T.pack (C.unpack (encode d)) <> "\n"
+writeT3Field
+  ( T3IngredientField sign
+    ( T3IngredientData weight value
+      (T3IngredientEffects e1 e2 e3 e4)
+      (T3IngredientSkills s1 s2 s3 s4)
+      (T3IngredientAttributes a1 a2 a3 a4)
+    )
+  ) =
+  T.pack (show sign) <> "\n"
+    <> "    " <> T.pack (show weight) <> " " <> T.pack (show value) <> "\n"
+    <> "    " <> T.pack (show e1) <> " " <> T.pack (show e2) <> " " <> T.pack (show e3) <> " " <> T.pack (show e4) <> "\n"
+    <> "    " <> T.pack (show s1) <> " " <> T.pack (show s2) <> " " <> T.pack (show s3) <> " " <> T.pack (show s4) <> "\n"
+    <> "    " <> T.pack (show a1) <> " " <> T.pack (show a2) <> " " <> T.pack (show a3) <> " " <> T.pack (show a4) <> "\n"
 
 writeT3Record :: T3Record -> Text
 writeT3Record (T3Record sign gap fields)

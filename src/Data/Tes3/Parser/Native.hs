@@ -46,6 +46,9 @@ t3Field record_sign = do
   s <- pT3Sign
   t3FieldBody (t3FieldType record_sign s) s
 
+pFloat :: T.Parser Float
+pFloat = (double2Float <$> Tp.double) <|> (const (0/0) <$> Tp.string "NaN")
+
 t3FieldBody :: T3FieldType -> T3Sign -> T.Parser T3Field
 t3FieldBody T3Binary s = do
   void $ Tp.char ' '
@@ -78,7 +81,7 @@ t3FieldBody (T3FixedString _) s = do
   return $ T3FixedStringField s t
 t3FieldBody T3Float s = do
   void $ Tp.char ' '
-  v <- (double2Float <$> Tp.double) <|> (const (0/0) <$> Tp.string "NaN")
+  v <- pFloat
   Tp.endOfLine
   return $ T3FloatField s v
 t3FieldBody T3Int s = do
@@ -108,3 +111,42 @@ t3FieldBody T3Compressed s = do
   case b of
     Left e -> fail e
     Right r -> return $ T3CompressedField s r
+t3FieldBody T3Ingredient s = do
+  Tp.endOfLine
+  void $ Tp.string "    "
+  weight <- pFloat
+  void $ Tp.char ' '
+  value <- Tp.decimal
+  Tp.endOfLine
+  void $ Tp.string "    "
+  e1 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  e2 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  e3 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  e4 <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  void $ Tp.string "    "
+  s1 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  s2 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  s3 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  s4 <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  void $ Tp.string "    "
+  a1 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  a2 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  a3 <- Tp.signed Tp.decimal
+  void $ Tp.char ' '
+  a4 <- Tp.signed Tp.decimal
+  Tp.endOfLine
+  return $ T3IngredientField s $ T3IngredientData
+    weight value
+    (T3IngredientEffects e1 e2 e3 e4)
+    (T3IngredientSkills s1 s2 s3 s4)
+    (T3IngredientAttributes a1 a2 a3 a4)

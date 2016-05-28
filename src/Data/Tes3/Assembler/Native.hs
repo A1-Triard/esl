@@ -19,6 +19,15 @@ tail b n = runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIn
 putT3FileSignature :: ByteString
 putT3FileSignature = sign (T3Mark TES3)
 
+w32 :: Word32 -> ByteString
+w32 = runPut . putWord32le
+
+f32 :: Float -> ByteString
+f32 v = runPut (putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
+
+i32 :: Int32 -> ByteString
+i32 = BB.toLazyByteString . BB.int32LE
+
 putT3Field :: T3Sign -> T3Field -> ByteString
 putT3Field _ (T3BinaryField s b) = sign s <> size b <> b
 putT3Field _ (T3StringField s t) =
@@ -27,7 +36,7 @@ putT3Field _ (T3StringField s t) =
 putT3Field record_sign (T3FixedStringField s t) =
   let b = t3StringValue t in
   let (T3FixedString n) = t3FieldType record_sign s in
-  sign s <> runPut (putWord32le n) <> b <> tail b n
+  sign s <> w32 n <> b <> tail b n
 putT3Field _ (T3MultilineField s t) =
   let b = t3StringValue $ T.intercalate "\r\n" t in
   sign s <> size b <> b
@@ -36,15 +45,27 @@ putT3Field _ (T3MultiStringField s t) =
   sign s <> size b <> b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s <> runPut (putWord32le 36) <> runPut (putWord32le n) <> b <> tail b 32
-putT3Field _ (T3FloatField s v) = sign s <> runPut (putWord32le 4) <> runPut (putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
-putT3Field _ (T3IntField s v) = sign s <> runPut (putWord32le 4) <> BB.toLazyByteString (BB.int32LE v)
-putT3Field _ (T3ShortField s v) = sign s <> runPut (putWord32le 2) <> BB.toLazyByteString (BB.int16LE v)
-putT3Field _ (T3LongField s v) = sign s <> runPut (putWord32le 8) <> BB.toLazyByteString (BB.int64LE v)
-putT3Field _ (T3ByteField s v) = sign s <> runPut (putWord32le 1) <> runPut (putWord8 v)
+  sign s <> w32 36 <> w32 n <> b <> tail b 32
+putT3Field _ (T3FloatField s v) = sign s <> w32 4 <> f32 v
+putT3Field _ (T3IntField s v) = sign s <> w32 4 <> i32 v
+putT3Field _ (T3ShortField s v) = sign s <> w32 2 <> BB.toLazyByteString (BB.int16LE v)
+putT3Field _ (T3LongField s v) = sign s <> w32 8 <> BB.toLazyByteString (BB.int64LE v)
+putT3Field _ (T3ByteField s v) = sign s <> w32 1 <> runPut (putWord8 v)
 putT3Field _ (T3CompressedField s b) =
   let u = GZip.decompress b in
   sign s <> size u <> u
+putT3Field _
+  ( T3IngredientField s
+    ( T3IngredientData weight value
+      (T3IngredientEffects e1 e2 e3 e4)
+      (T3IngredientSkills s1 s2 s3 s4)
+      (T3IngredientAttributes a1 a2 a3 a4)
+    )
+  ) =
+  sign s <> w32 56 <> f32 weight <> w32 value
+    <> i32 e1 <> i32 e2 <> i32 e3 <> i32 e4
+    <> i32 s1 <> i32 s2 <> i32 s3 <> i32 s4
+    <> i32 a1 <> i32 a2 <> i32 a3 <> i32 a4
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

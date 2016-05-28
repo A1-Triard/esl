@@ -47,6 +47,27 @@ floatField = wordToFloat <$> getWord32le
 compressedField :: Get e ByteString
 compressedField = GZip.compress <$> getRemainingLazyByteString
 
+ingredientField :: Get () T3IngredientData
+ingredientField = do
+  weight <- wordToFloat <$> getWord32le
+  value <- getWord32le
+  e1 <- getInt32le
+  e2 <- getInt32le
+  e3 <- getInt32le
+  e4 <- getInt32le
+  s1 <- getInt32le
+  s2 <- getInt32le
+  s3 <- getInt32le
+  s4 <- getInt32le
+  a1 <- getInt32le
+  a2 <- getInt32le
+  a3 <- getInt32le
+  a4 <- getInt32le
+  return $ T3IngredientData weight value
+    (T3IngredientEffects e1 e2 e3 e4)
+    (T3IngredientSkills s1 s2 s3 s4)
+    (T3IngredientAttributes a1 a2 a3 a4)
+
 fieldBody :: T3Sign -> T3Sign -> Get () T3Field
 fieldBody record_sign s =
   f (t3FieldType record_sign s)
@@ -63,6 +84,7 @@ fieldBody record_sign s =
     f T3Long = T3LongField s <$> getInt64le
     f T3Byte = T3ByteField s <$> getWord8
     f T3Compressed = T3CompressedField s <$> compressedField
+    f T3Ingredient = T3IngredientField s <$> ingredientField
 
 field :: T3Sign -> Get String T3Field
 field record_sign = do

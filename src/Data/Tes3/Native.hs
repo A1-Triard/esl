@@ -109,6 +109,7 @@ data T3FieldType
   | T3Long
   | T3Byte
   | T3Compressed
+  | T3Ingredient
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
@@ -178,7 +179,14 @@ t3FieldType _ (T3Mark VNML) = T3Compressed
 t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Long
 t3FieldType _ (T3Mark WNAM) = T3Compressed
+t3FieldType (T3Mark INGR) (T3Mark IRDT) = T3Ingredient
 t3FieldType _ _ = T3Binary
+
+data T3IngredientEffects = T3IngredientEffects Int32 Int32 Int32 Int32 deriving (Eq, Show)
+data T3IngredientSkills = T3IngredientSkills Int32 Int32 Int32 Int32 deriving (Eq, Show)
+data T3IngredientAttributes = T3IngredientAttributes Int32 Int32 Int32 Int32 deriving (Eq, Show)
+
+data T3IngredientData = T3IngredientData Float Word32 T3IngredientEffects T3IngredientSkills T3IngredientAttributes deriving (Eq, Show)
 
 data T3Field
   = T3BinaryField T3Sign ByteString
@@ -193,6 +201,7 @@ data T3Field
   | T3LongField T3Sign Int64
   | T3ByteField T3Sign Word8
   | T3CompressedField T3Sign ByteString
+  | T3IngredientField T3Sign T3IngredientData
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)

@@ -18,6 +18,10 @@ module Data.Tes3
   , t3StringNew
   , pT3Sign
   , pT3FileType
+  , T3IngredientEffects (..)
+  , T3IngredientSkills (..)
+  , T3IngredientAttributes (..)
+  , T3IngredientData (..)
   ) where
 
 import Data.Tes3.Native
