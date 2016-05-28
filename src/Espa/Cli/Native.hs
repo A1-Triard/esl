@@ -33,6 +33,7 @@ data EspaOptions = EspaOptions
   , optShowHelp :: Bool
   , optVerbose :: Bool
   , optExclude :: [String]
+  , optInclude :: [String]
   }
 
 defaultEspaOptions :: EspaOptions
@@ -42,6 +43,7 @@ defaultEspaOptions = EspaOptions
   , optShowHelp = False
   , optVerbose = False
   , optExclude = []
+  , optInclude = []
   }
 
 espaOptionsDescr :: [OptDescr (EspaOptions -> EspaOptions)]
@@ -51,6 +53,7 @@ espaOptionsDescr =
   , Option ['h'] ["help"] (NoArg (\o -> o {optShowHelp = True})) "display this help and exit"
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
   , Option ['e'] ["exclude"] (ReqArg (\e o -> o {optExclude = e : optExclude o}) "MARK") "skip MARK records"
+  , Option ['i'] ["include"] (ReqArg (\i o -> o {optInclude = i : optInclude o}) "MARK") "skip all but MARK records"
   ]
 
 espaOptions :: [String] -> (EspaOptions, [FilePath], [String])
@@ -81,10 +84,9 @@ espa = do
     verboser options
       | optVerbose options = handle (\x -> let _ = x :: IOError in return ()) . hPutStrLn stderr
       | otherwise = \_ -> return ()
-    skip_record options record =
-      case find (== show record) (optExclude options) of
-        Nothing -> False
-        Just _ -> True
+    skip_record options record
+      | null $ optInclude options = isJust $ find (== show record) (optExclude options)
+      | otherwise = isNothing $ find (== show record) (optInclude options)
 
 type Verboser = String -> IO ()
 
