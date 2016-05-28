@@ -42,6 +42,9 @@ putT3Field _ (T3IntField s v) = sign s <> runPut (putWord32le 4) <> BB.toLazyByt
 putT3Field _ (T3ShortField s v) = sign s <> runPut (putWord32le 2) <> BB.toLazyByteString (BB.int16LE v)
 putT3Field _ (T3LongField s v) = sign s <> runPut (putWord32le 8) <> BB.toLazyByteString (BB.int64LE v)
 putT3Field _ (T3ByteField s v) = sign s <> runPut (putWord32le 1) <> runPut (putWord8 v)
+putT3Field _ (T3CompressedField s b) =
+  let u = GZip.decompress b in
+  sign s <> size u <> u
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

@@ -101,3 +101,10 @@ t3FieldBody T3Byte s = do
   v <- Tp.decimal
   Tp.endOfLine
   return $ T3ByteField s v
+t3FieldBody T3Compressed s = do
+  void $ Tp.char ' '
+  b <- decode <$> C.pack <$> ST.unpack <$> Tp.takeTill Tp.isEndOfLine
+  Tp.endOfLine
+  case b of
+    Left e -> fail e
+    Right r -> return $ T3CompressedField s r

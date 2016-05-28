@@ -19,7 +19,8 @@ data T3Mark
   | DESC | WHGT | FADT | AMBI | FRMR | RADT | NAM0 | NPCS
   | DNAM | XSCL | SKDT | DELE | MEDT | PTEX | CVFX | BVFX
   | HVFX | AVFX | BSND | CSND | HSND | ASND | WEAT | SNAM
-  | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT
+  | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
+  | VHGT | VCLR | VTEX | WNAM
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -107,6 +108,7 @@ data T3FieldType
   | T3Short
   | T3Long
   | T3Byte
+  | T3Compressed
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
@@ -156,6 +158,7 @@ t3FieldType _ (T3Mark NPCS) = T3String
 t3FieldType _ (T3Mark ONAM) = T3String
 t3FieldType _ (T3Mark PNAM) = T3String
 t3FieldType _ (T3Mark PTEX) = T3String
+t3FieldType _ (T3Mark RGNN) = T3String
 t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
 t3FieldType _ (T3Mark SCRI) = T3String
@@ -168,7 +171,12 @@ t3FieldType _ (T3Mark STRV) = T3String
 t3FieldType (T3Mark ALCH) (T3Mark TEXT) = T3String
 t3FieldType _ (T3Mark TEXT) = T3Multiline
 t3FieldType _ (T3Mark TNAM) = T3String
+t3FieldType _ (T3Mark VCLR) = T3Compressed
+t3FieldType _ (T3Mark VHGT) = T3Compressed
+t3FieldType _ (T3Mark VNML) = T3Compressed
+t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Long
+t3FieldType _ (T3Mark WNAM) = T3Compressed
 t3FieldType _ _ = T3Binary
 
 data T3Field
@@ -183,6 +191,7 @@ data T3Field
   | T3ShortField T3Sign Int16
   | T3LongField T3Sign Int64
   | T3ByteField T3Sign Word8
+  | T3CompressedField T3Sign ByteString
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)

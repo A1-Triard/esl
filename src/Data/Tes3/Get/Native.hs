@@ -44,6 +44,9 @@ fixedStringField z = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteStr
 floatField :: Get () Float
 floatField = wordToFloat <$> getWord32le
 
+compressedField :: Get e ByteString
+compressedField = GZip.compress <$> getRemainingLazyByteString
+
 fieldBody :: T3Sign -> T3Sign -> Get () T3Field
 fieldBody record_sign s =
   f (t3FieldType record_sign s)
@@ -59,6 +62,7 @@ fieldBody record_sign s =
     f T3Short = T3ShortField s <$> getInt16le
     f T3Long = T3LongField s <$> getInt64le
     f T3Byte = T3ByteField s <$> getWord8
+    f T3Compressed = T3CompressedField s <$> compressedField
 
 field :: T3Sign -> Get String T3Field
 field record_sign = do
