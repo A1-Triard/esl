@@ -9,6 +9,8 @@ module Data.Tes3.Utils
   , pRun
   , writeLines
   , pLines
+  , writeNames
+  , pNames
   ) where
 
 import Data.Tes3.Utils.Native

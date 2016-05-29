@@ -158,3 +158,17 @@ pLines = many $ do
   s <- pEscapedText True True True
   Tp.endOfLine
   return s
+
+writeNames :: [Text] -> Text
+writeNames names = (T.concat $ map (\x -> writeEscapedText True False False x <> ";") names) <> "\n"
+
+pNames :: T.Parser [Text]
+pNames = do
+  s <- p
+  Tp.endOfLine
+  return s
+  where
+    p = many $ do
+      s <- pEscapedText False True True
+      void $ Tp.char ';'
+      return s

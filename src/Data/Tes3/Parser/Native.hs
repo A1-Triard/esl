@@ -66,8 +66,8 @@ t3FieldBody T3Multiline s = do
   t <- pLines
   return $ T3MultilineField s t
 t3FieldBody T3MultiString s = do
-  Tp.endOfLine
-  t <- pLines
+  void $ Tp.char ' '
+  t <- pNames
   return $ T3MultiStringField s t
 t3FieldBody T3Ref s = do
   void $ Tp.char ' '

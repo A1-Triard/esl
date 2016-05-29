@@ -12,6 +12,8 @@ tests = TestList
   , TestCase pRunTest
   , TestCase writeLinesTest
   , TestCase pLinesTest
+  , TestCase writeNamesTest
+  , TestCase pNamesTest
   ]
 
 writeRunTest :: Assertion
@@ -35,3 +37,11 @@ writeLinesTest = do
 pLinesTest :: Assertion
 pLinesTest = do
   assertEqual "" (Right ["Qa Bc", " De", "", ""]) $ TP.parseOnly (pLines <* Tp.endOfInput) "    Qa Bc\r\n     De\n    \n    \n"
+
+writeNamesTest :: Assertion
+writeNamesTest = do
+  assertEqual "" "abcd;Defg;;\n" $ writeNames ["abcd", "Defg", ""]
+
+pNamesTest :: Assertion
+pNamesTest = do
+  assertEqual "" (Right ["abcd", "Defg", ""]) $ TP.parseOnly (pNames <* Tp.endOfInput) "abcd;Defg;;\n"
