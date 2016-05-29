@@ -54,21 +54,22 @@ pHexCode = do
   x2 <- pHexDigit
   return $ chr $ x1 * 16 + x2
 
-writeEscapedChar :: Bool -> Bool -> Char -> Text
-writeEscapedChar escape_percent escape_spaces c
+writeEscapedChar :: Bool -> Bool -> Bool -> Char -> Text
+writeEscapedChar escape_semicolon escape_percent escape_spaces c
   | c == '\0' = "\\0"
   | c == '\\' = "\\\\"
   | c == '\r' = "\\r"
   | c == '\n' = "\\n"
+  | escape_semicolon && c == ';' = "\\;"
   | escape_percent && c == '%' = "\\%"
   | escape_spaces && c == ' ' = "\\ "
   | escape_spaces && c == '\t' = "\\t"
   | c == '\t' = "\t"
-  | ord c < 32 || ord c == 255 = "\\x" <> toHexCode c
+  | ord c < 32 || ord c == 127 = "\\x" <> toHexCode c
   | otherwise = T.singleton c
 
-pEscapedChar :: Bool -> Bool -> T.Parser Char
-pEscapedChar allow_percent allow_spaces = do
+pEscapedChar :: Bool -> Bool -> Bool -> T.Parser Char
+pEscapedChar allow_semicolon allow_percent allow_spaces = do
   c <- Tp.anyChar
   case c of
     '\r' -> fail "<r>"
@@ -77,6 +78,7 @@ pEscapedChar allow_percent allow_spaces = do
     '\t' -> if allow_spaces then return '\t' else fail "tab"
     ' ' -> if allow_spaces then return ' ' else fail "space"
     '%' -> if allow_percent then return '%' else fail "percent"
+    ';' -> if allow_semicolon then return ';' else fail "semicolon"
     s -> return s
   where
     tail = do
@@ -84,6 +86,7 @@ pEscapedChar allow_percent allow_spaces = do
       case c of
         '0' -> return '\0'
         '%' -> return '%'
+        ';' -> return ';'
         'r' -> return '\r'
         'n' -> return '\n'
         't' -> return '\t'
@@ -92,15 +95,15 @@ pEscapedChar allow_percent allow_spaces = do
         'x' -> pHexCode
         _ -> return '\xFFFD'
 
-writeEscapedText :: Bool -> Bool -> Text -> Text
-writeEscapedText escape_percent escape_spaces = T.concat . map (writeEscapedChar escape_percent escape_spaces) . T.unpack
+writeEscapedText :: Bool -> Bool -> Bool -> Text -> Text
+writeEscapedText escape_semicolon escape_percent escape_spaces = T.concat . map (writeEscapedChar escape_semicolon escape_percent escape_spaces) . T.unpack
 
-pEscapedText :: Bool -> Bool -> T.Parser Text
-pEscapedText allow_percent allow_spaces = T.pack <$> many (pEscapedChar allow_percent allow_spaces)
+pEscapedText :: Bool -> Bool -> Bool -> T.Parser Text
+pEscapedText allow_semicolon allow_percent allow_spaces = T.pack <$> many (pEscapedChar allow_semicolon allow_percent allow_spaces)
 
 writeNulledText :: Bool -> Text -> Text
-writeNulledText escape_spaces (T.stripSuffix "\0" -> Just s) = writeEscapedText True escape_spaces s
-writeNulledText escape_spaces s = writeEscapedText True escape_spaces s <> "%"
+writeNulledText escape_spaces (T.stripSuffix "\0" -> Just s) = writeEscapedText False True escape_spaces s
+writeNulledText escape_spaces s = writeEscapedText False True escape_spaces s <> "%"
 
 writeNulledLine :: Text -> Text
 writeNulledLine s = writeNulledText False s <> "\n"
@@ -110,7 +113,7 @@ writeNulledRun = writeNulledText True
 
 pNulledText :: Bool -> T.Parser Text
 pNulledText allow_spaces = do
-  s <- pEscapedText False allow_spaces
+  s <- pEscapedText True False allow_spaces
   add_null <- Tp.option True (Tp.char '%' >> return False)
   if add_null
     then return $ s <> "\0"
@@ -126,7 +129,7 @@ pNulledRun :: T.Parser Text
 pNulledRun = pNulledText False
 
 writeText :: Bool -> Text -> Text
-writeText = writeEscapedText False
+writeText = writeEscapedText False False
 
 writeLine :: Text -> Text
 writeLine s = writeText False s <> "\n"
@@ -135,7 +138,7 @@ writeRun :: Text -> Text
 writeRun = writeText True
 
 pText :: Bool -> T.Parser Text
-pText = pEscapedText True
+pText = pEscapedText True True
 
 pLine :: T.Parser Text
 pLine = do
@@ -147,11 +150,11 @@ pRun :: T.Parser Text
 pRun = pText False
 
 writeLines :: [Text] -> Text
-writeLines = T.concat . map (\x -> "    " <> writeEscapedText False False x <> "\n")
+writeLines = T.concat . map (\x -> "    " <> writeEscapedText False False False x <> "\n")
 
 pLines :: T.Parser [Text]
 pLines = many $ do
   void $ Tp.string "    "
-  s <- pEscapedText True True
+  s <- pEscapedText True True True
   Tp.endOfLine
   return s
