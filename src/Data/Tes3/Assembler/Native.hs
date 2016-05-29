@@ -66,6 +66,17 @@ putT3Field _
     <> i32 e1 <> i32 e2 <> i32 e3 <> i32 e4
     <> i32 s1 <> i32 s2 <> i32 s3 <> i32 s4
     <> i32 a1 <> i32 a2 <> i32 a3 <> i32 a4
+putT3Field _
+  ( T3ScriptField s
+    ( T3ScriptHeader name
+      shorts longs floats
+      data_size var_table_size
+    )
+  ) =
+  let b = t3StringValue name in
+  sign s <> w32 52 <> b <> tail b 32
+    <> w32 shorts <> w32 longs <> w32 floats
+    <> w32 data_size <> w32 var_table_size
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

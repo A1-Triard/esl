@@ -22,6 +22,7 @@ module Data.Tes3
   , T3IngredientSkills (..)
   , T3IngredientAttributes (..)
   , T3IngredientData (..)
+  , T3ScriptHeader (..)
   ) where
 
 import Data.Tes3.Native

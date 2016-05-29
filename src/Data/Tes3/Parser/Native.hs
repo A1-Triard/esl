@@ -150,3 +150,21 @@ t3FieldBody T3Ingredient s = do
     (T3IngredientEffects e1 e2 e3 e4)
     (T3IngredientSkills s1 s2 s3 s4)
     (T3IngredientAttributes a1 a2 a3 a4)
+t3FieldBody T3Script s = do
+  void $ Tp.char ' '
+  name <- pRun
+  void $ Tp.char ' '
+  shorts <- Tp.decimal
+  void $ Tp.char ' '
+  longs <- Tp.decimal
+  void $ Tp.char ' '
+  floats <- Tp.decimal
+  void $ Tp.char ' '
+  data_size <- Tp.decimal
+  void $ Tp.char ' '
+  var_table_size <- Tp.decimal
+  Tp.endOfLine
+  return $ T3ScriptField s $ T3ScriptHeader
+    name
+    shorts longs floats
+    data_size var_table_size

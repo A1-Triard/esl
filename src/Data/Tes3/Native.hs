@@ -110,6 +110,7 @@ data T3FieldType
   | T3Byte
   | T3Compressed
   | T3Ingredient
+  | T3Script
   deriving (Eq, Show)
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
@@ -163,6 +164,7 @@ t3FieldType _ (T3Mark PTEX) = T3String
 t3FieldType _ (T3Mark RGNN) = T3String
 t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
+t3FieldType (T3Mark SCPT) (T3Mark SCHD) = T3Script
 t3FieldType _ (T3Mark SCRI) = T3String
 t3FieldType _ (T3Mark SCTX) = T3Multiline
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
@@ -187,6 +189,7 @@ data T3IngredientSkills = T3IngredientSkills Int32 Int32 Int32 Int32 deriving (E
 data T3IngredientAttributes = T3IngredientAttributes Int32 Int32 Int32 Int32 deriving (Eq, Show)
 
 data T3IngredientData = T3IngredientData Float Word32 T3IngredientEffects T3IngredientSkills T3IngredientAttributes deriving (Eq, Show)
+data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 deriving (Eq, Show)
 
 data T3Field
   = T3BinaryField T3Sign ByteString
@@ -202,6 +205,7 @@ data T3Field
   | T3ByteField T3Sign Word8
   | T3CompressedField T3Sign ByteString
   | T3IngredientField T3Sign T3IngredientData
+  | T3ScriptField T3Sign T3ScriptHeader
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)

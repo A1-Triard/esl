@@ -42,6 +42,18 @@ writeT3Field
     <> "    " <> T.pack (show e1) <> " " <> T.pack (show e2) <> " " <> T.pack (show e3) <> " " <> T.pack (show e4) <> "\n"
     <> "    " <> T.pack (show s1) <> " " <> T.pack (show s2) <> " " <> T.pack (show s3) <> " " <> T.pack (show s4) <> "\n"
     <> "    " <> T.pack (show a1) <> " " <> T.pack (show a2) <> " " <> T.pack (show a3) <> " " <> T.pack (show a4) <> "\n"
+writeT3Field
+  ( T3ScriptField sign
+    ( T3ScriptHeader name
+      shorts longs floats
+      data_size var_table_size
+    )
+  ) =
+  T.pack (show sign)
+    <> " " <> writeRun name
+    <> " " <> T.pack (show shorts) <> " " <> T.pack (show longs) <> " " <> T.pack (show floats)
+    <> " " <> T.pack (show data_size) <> " " <> T.pack (show var_table_size)
+    <> "\n"
 
 writeT3Record :: T3Record -> Text
 writeT3Record (T3Record sign gap fields)

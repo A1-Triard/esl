@@ -68,6 +68,16 @@ ingredientField = do
     (T3IngredientSkills s1 s2 s3 s4)
     (T3IngredientAttributes a1 a2 a3 a4)
 
+scriptField :: Get () T3ScriptHeader
+scriptField = do
+  name <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString 32
+  shorts <- getWord32le
+  longs <- getWord32le
+  floats <- getWord32le
+  data_size <- getWord32le
+  var_table_size <- getWord32le
+  return $ T3ScriptHeader name shorts longs floats data_size var_table_size
+
 fieldBody :: T3Sign -> T3Sign -> Get () T3Field
 fieldBody record_sign s =
   f (t3FieldType record_sign s)
@@ -85,6 +95,7 @@ fieldBody record_sign s =
     f T3Byte = T3ByteField s <$> getWord8
     f T3Compressed = T3CompressedField s <$> compressedField
     f T3Ingredient = T3IngredientField s <$> ingredientField
+    f T3Script = T3ScriptField s <$> scriptField
 
 field :: T3Sign -> Get String T3Field
 field record_sign = do
