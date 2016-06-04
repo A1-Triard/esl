@@ -10,6 +10,14 @@ if [ \! -e Morrowind.esm ]; then
   echo "Put Morrowind.esm into test_data"
   exit 1
 fi
+if [ \! -e Tribunal.esm ]; then
+  echo "Put Tribunal.esm into test_data"
+  exit 1
+fi
+if [ \! -e Bloodmoon.esm ]; then
+  echo "Put Bloodmoon.esm into test_data"
+  exit 1
+fi
 cd ..
 
 test_file="test_data/Data Files/Aleanne Armor and Clothes 1+2"
@@ -21,6 +29,22 @@ stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esp" "${test_file}.esp" || exit 1
 
 test_file="test_data/Morrowind"
+echo "${test_file}.esm"
+rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
+stack exec -- espa -vd "${test_file}.esm" || exit 1
+mv "${test_file}" "${test_file}.test"
+stack exec -- espa -v "${test_file}.test" || exit 1
+cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
+
+test_file="test_data/Tribunal"
+echo "${test_file}.esm"
+rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
+stack exec -- espa -vd "${test_file}.esm" || exit 1
+mv "${test_file}" "${test_file}.test"
+stack exec -- espa -v "${test_file}.test" || exit 1
+cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
+
+test_file="test_data/Bloodmoon"
 echo "${test_file}.esm"
 rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
 stack exec -- espa -vd "${test_file}.esm" || exit 1
