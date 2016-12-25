@@ -98,10 +98,8 @@ pT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [min
 
 data T3FieldType
   = T3Binary
-  | T3String
-  | T3AdjustableString (Text -> Text)
-  | T3Multiline
-  | T3AdjustableMultiline
+  | T3String (Text -> Text)
+  | T3Multiline (Text -> Text)
   | T3MultiString
   | T3Ref
   | T3FixedString Word32
@@ -115,34 +113,36 @@ data T3FieldType
   | T3Script
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
-t3FieldType _ (T3Mark ANAM) = T3String
-t3FieldType _ (T3Mark ASND) = T3String
-t3FieldType _ (T3Mark AVFX) = T3String
-t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String
-t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String
-t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String
-t3FieldType _ (T3Mark BNAM) = T3Multiline
-t3FieldType _ (T3Mark BSND) = T3String
-t3FieldType _ (T3Mark BVFX) = T3String
+t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType _ (T3Mark ANAM) = T3String id
+t3FieldType _ (T3Mark ASND) = T3String id
+t3FieldType _ (T3Mark AVFX) = T3String id
+t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String id
+t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String id
+t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String id
+t3FieldType _ (T3Mark BNAM) = T3Multiline id
+t3FieldType _ (T3Mark BSND) = T3String id
+t3FieldType _ (T3Mark BVFX) = T3String id
 t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
-t3FieldType _ (T3Mark CNAM) = T3String
-t3FieldType _ (T3Mark CSND) = T3String
-t3FieldType _ (T3Mark CVFX) = T3String
+t3FieldType _ (T3Mark CNAM) = T3String id
+t3FieldType _ (T3Mark CSND) = T3String id
+t3FieldType _ (T3Mark CVFX) = T3String id
 t3FieldType (T3Mark DIAL) (T3Mark DATA) = T3Byte
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
-t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String
-t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3AdjustableString $ T.dropWhileEnd (== '\0')
-t3FieldType _ (T3Mark DESC) = T3String
-t3FieldType _ (T3Mark DNAM) = T3String
-t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String
+t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
+t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType _ (T3Mark DESC) = T3String id
+t3FieldType _ (T3Mark DNAM) = T3String id
+t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String id
 t3FieldType _ (T3Mark FLAG) = T3Int
 t3FieldType _ (T3Mark FLTV) = T3Float
-t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3AdjustableString $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
-t3FieldType _ (T3Mark FNAM) = T3String
-t3FieldType _ (T3Mark HSND) = T3String
-t3FieldType _ (T3Mark HVFX) = T3String
-t3FieldType _ (T3Mark INAM) = T3String
+t3FieldType (T3Mark ACTI) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType _ (T3Mark FNAM) = T3String id
+t3FieldType _ (T3Mark HSND) = T3String id
+t3FieldType _ (T3Mark HVFX) = T3String id
+t3FieldType _ (T3Mark INAM) = T3String id
 t3FieldType (T3Mark ARMO) (T3Mark INDX) = T3Byte
 t3FieldType (T3Mark CLOT) (T3Mark INDX) = T3Byte
 t3FieldType _ (T3Mark INDX) = T3Int
@@ -150,36 +150,36 @@ t3FieldType (T3Mark LAND) (T3Mark INTV) = T3Long
 t3FieldType (T3Mark LEVC) (T3Mark INTV) = T3Short
 t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
 t3FieldType _ (T3Mark INTV) = T3Int
-t3FieldType _ (T3Mark ITEX) = T3String
-t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3AdjustableString $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark SPEL) (T3Mark KNAM) = T3AdjustableString $ T.dropWhileEnd (== '\0')
-t3FieldType _ (T3Mark KNAM) = T3String
-t3FieldType _ (T3Mark MODL) = T3String
-t3FieldType _ (T3Mark NAME) = T3String
+t3FieldType _ (T3Mark ITEX) = T3String id
+t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark SPEL) (T3Mark KNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType _ (T3Mark KNAM) = T3String id
+t3FieldType _ (T3Mark MODL) = T3String id
+t3FieldType _ (T3Mark NAME) = T3String id
 t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
 t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
-t3FieldType _ (T3Mark NNAM) = T3String
+t3FieldType _ (T3Mark NNAM) = T3String id
 t3FieldType _ (T3Mark NPCO) = T3Ref
 t3FieldType (T3Mark BSGN) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
-t3FieldType _ (T3Mark NPCS) = T3String
-t3FieldType _ (T3Mark ONAM) = T3String
-t3FieldType _ (T3Mark PNAM) = T3String
-t3FieldType _ (T3Mark PTEX) = T3String
-t3FieldType _ (T3Mark RGNN) = T3String
+t3FieldType _ (T3Mark NPCS) = T3String id
+t3FieldType _ (T3Mark ONAM) = T3String id
+t3FieldType _ (T3Mark PNAM) = T3String id
+t3FieldType _ (T3Mark PTEX) = T3String id
+t3FieldType _ (T3Mark RGNN) = T3String id
 t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
-t3FieldType _ (T3Mark RNAM) = T3String
+t3FieldType _ (T3Mark RNAM) = T3String id
 t3FieldType (T3Mark SCPT) (T3Mark SCHD) = T3Script
-t3FieldType _ (T3Mark SCRI) = T3String
-t3FieldType _ (T3Mark SCTX) = T3AdjustableMultiline
+t3FieldType _ (T3Mark SCRI) = T3String id
+t3FieldType _ (T3Mark SCTX) = T3Multiline $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
-t3FieldType _ (T3Mark SCVR) = T3String
+t3FieldType _ (T3Mark SCVR) = T3String id
 t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
-t3FieldType _ (T3Mark SNAM) = T3String
-t3FieldType _ (T3Mark STRV) = T3String
-t3FieldType (T3Mark ALCH) (T3Mark TEXT) = T3String
-t3FieldType _ (T3Mark TEXT) = T3Multiline
-t3FieldType _ (T3Mark TNAM) = T3String
+t3FieldType _ (T3Mark SNAM) = T3String id
+t3FieldType _ (T3Mark STRV) = T3String id
+t3FieldType (T3Mark ALCH) (T3Mark TEXT) = T3String id
+t3FieldType _ (T3Mark TEXT) = T3Multiline id
+t3FieldType _ (T3Mark TNAM) = T3String id
 t3FieldType _ (T3Mark VCLR) = T3Compressed
 t3FieldType _ (T3Mark VHGT) = T3Compressed
 t3FieldType _ (T3Mark VNML) = T3Compressed

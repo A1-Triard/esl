@@ -57,19 +57,11 @@ t3FieldBody T3Binary s = do
   case b of
     Left e -> fail e
     Right r -> return $ T3BinaryField s r
-t3FieldBody T3String s = do
+t3FieldBody (T3String _) s = do
   void $ Tp.char ' '
   t <- pNulledLine
   return $ T3StringField s t
-t3FieldBody (T3AdjustableString _) s = do
-  void $ Tp.char ' '
-  t <- pNulledLine
-  return $ T3StringField s t
-t3FieldBody T3Multiline s = do
-  Tp.endOfLine
-  t <- pLines
-  return $ T3MultilineField s t
-t3FieldBody T3AdjustableMultiline s = do
+t3FieldBody (T3Multiline _) s = do
   Tp.endOfLine
   t <- pLines
   return $ T3MultilineField s t

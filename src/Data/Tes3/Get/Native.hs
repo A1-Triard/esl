@@ -26,11 +26,8 @@ binaryField = getRemainingLazyByteString
 stringField :: Get e Text
 stringField = t3StringNew <$> getRemainingLazyByteString
 
-multilineField :: Get e [Text]
-multilineField = T.splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
-
-adjustedMultilineField :: Get e [Text]
-adjustedMultilineField = T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> getRemainingLazyByteString
+multilineField :: (Text -> Text) -> Get e [Text]
+multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemainingLazyByteString
 
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
@@ -86,10 +83,8 @@ fieldBody adjust record_sign s =
   f (t3FieldType record_sign s)
   where
     f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
-    f T3String = T3StringField s <$> stringField
-    f (T3AdjustableString a) = T3StringField s <$> (if adjust then a else id) <$> stringField
-    f T3Multiline = T3MultilineField s <$> multilineField
-    f T3AdjustableMultiline = T3MultilineField s <$> if adjust then adjustedMultilineField else multilineField
+    f (T3String a) = T3StringField s <$> (if adjust then a else id) <$> stringField
+    f (T3Multiline a) = T3MultilineField s <$> multilineField (if adjust then a else id)
     f T3MultiString = T3MultiStringField s <$> multiStringField
     f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
     f T3Binary = T3BinaryField s <$> binaryField
