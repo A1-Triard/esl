@@ -26,6 +26,9 @@ binaryField = getRemainingLazyByteString
 stringField :: Get e Text
 stringField = t3StringNew <$> getRemainingLazyByteString
 
+adjustedStringField :: Get e Text
+adjustedStringField = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getRemainingLazyByteString
+
 multilineField :: Get e [Text]
 multilineField = T.splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
 
@@ -87,6 +90,7 @@ fieldBody adjust record_sign s =
   where
     f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
     f T3String = T3StringField s <$> stringField
+    f T3AdjustableString = T3StringField s <$> if adjust then adjustedStringField else stringField
     f T3Multiline = T3MultilineField s <$> multilineField
     f T3AdjustableMultiline = T3MultilineField s <$> if adjust then adjustedMultilineField else multilineField
     f T3MultiString = T3MultiStringField s <$> multiStringField

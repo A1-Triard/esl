@@ -99,6 +99,7 @@ pT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [min
 data T3FieldType
   = T3Binary
   | T3String
+  | T3AdjustableString
   | T3Multiline
   | T3AdjustableMultiline
   | T3MultiString
@@ -132,11 +133,13 @@ t3FieldType (T3Mark DIAL) (T3Mark DATA) = T3Byte
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String
+t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3AdjustableString
 t3FieldType _ (T3Mark DESC) = T3String
 t3FieldType _ (T3Mark DNAM) = T3String
 t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String
 t3FieldType _ (T3Mark FLAG) = T3Int
 t3FieldType _ (T3Mark FLTV) = T3Float
+t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3AdjustableString
 t3FieldType _ (T3Mark FNAM) = T3String
 t3FieldType _ (T3Mark HSND) = T3String
 t3FieldType _ (T3Mark HVFX) = T3String
@@ -149,6 +152,7 @@ t3FieldType (T3Mark LEVC) (T3Mark INTV) = T3Short
 t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
 t3FieldType _ (T3Mark INTV) = T3Int
 t3FieldType _ (T3Mark ITEX) = T3String
+t3FieldType (T3Mark SPEL) (T3Mark KNAM) = T3AdjustableString
 t3FieldType _ (T3Mark KNAM) = T3String
 t3FieldType _ (T3Mark MODL) = T3String
 t3FieldType _ (T3Mark NAME) = T3String
