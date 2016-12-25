@@ -139,7 +139,6 @@ t3FieldType _ (T3Mark DNAM) = T3String
 t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String
 t3FieldType _ (T3Mark FLAG) = T3Int
 t3FieldType _ (T3Mark FLTV) = T3Float
-t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3AdjustableString
 t3FieldType _ (T3Mark FNAM) = T3String
 t3FieldType _ (T3Mark HSND) = T3String
 t3FieldType _ (T3Mark HVFX) = T3String

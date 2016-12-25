@@ -23,7 +23,7 @@ cd ..
 test_file="test_data/Data Files/Aleanne Armor and Clothes 1+2"
 echo "${test_file}.esp"
 rm -rf "${test_file}" "${test_file}.test.esp" "${test_file}.test"
-stack exec -- espa -vd "${test_file}.esp" || exit 1
+stack exec -- espa -vad "${test_file}.esp" || exit 1
 mv "${test_file}" "${test_file}.test"
 stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esp" "${test_file}.esp" || exit 1
@@ -31,7 +31,7 @@ cmp "${test_file}.test.esp" "${test_file}.esp" || exit 1
 test_file="test_data/Morrowind"
 echo "${test_file}.esm"
 rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
-stack exec -- espa -vd "${test_file}.esm" || exit 1
+stack exec -- espa -vad "${test_file}.esm" || exit 1
 mv "${test_file}" "${test_file}.test"
 stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
@@ -39,7 +39,7 @@ cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
 test_file="test_data/Tribunal"
 echo "${test_file}.esm"
 rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
-stack exec -- espa -vd "${test_file}.esm" || exit 1
+stack exec -- espa -vad "${test_file}.esm" || exit 1
 mv "${test_file}" "${test_file}.test"
 stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
@@ -47,7 +47,7 @@ cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1
 test_file="test_data/Bloodmoon"
 echo "${test_file}.esm"
 rm -rf "${test_file}" "${test_file}.test.esm" "${test_file}.test"
-stack exec -- espa -vd "${test_file}.esm" || exit 1
+stack exec -- espa -vad "${test_file}.esm" || exit 1
 mv "${test_file}" "${test_file}.test"
 stack exec -- espa -v "${test_file}.test" || exit 1
 cmp "${test_file}.test.esm" "${test_file}.esm" || exit 1

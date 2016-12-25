@@ -54,7 +54,7 @@ espaOptionsDescr =
   , Option ['V'] ["version"] (NoArg (\o -> o {optShowVersion = True})) "display the version number and exit"
   , Option ['h'] ["help"] (NoArg (\o -> o {optShowHelp = True})) "display this help and exit"
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
-  , Option ['a'] ["adjust"] (NoArg (\o -> o {optAdjust = True})) "remove trailing zeros from SCTX records"
+  , Option ['a'] ["adjust"] (NoArg (\o -> o {optAdjust = True})) "remove redundant trailing zeros"
   , Option ['e'] ["exclude"] (ReqArg (\e o -> o {optExclude = e : optExclude o}) "MARK") "skip MARK records"
   , Option ['i'] ["include"] (ReqArg (\i o -> o {optInclude = i : optInclude o}) "MARK") "skip all but MARK records"
   ]
