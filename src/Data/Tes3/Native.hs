@@ -151,6 +151,7 @@ t3FieldType (T3Mark LEVC) (T3Mark INTV) = T3Short
 t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
 t3FieldType _ (T3Mark INTV) = T3Int
 t3FieldType _ (T3Mark ITEX) = T3String
+t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3AdjustableString $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark SPEL) (T3Mark KNAM) = T3AdjustableString $ T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark KNAM) = T3String
 t3FieldType _ (T3Mark MODL) = T3String
