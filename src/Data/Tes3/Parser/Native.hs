@@ -61,7 +61,7 @@ t3FieldBody T3String s = do
   void $ Tp.char ' '
   t <- pNulledLine
   return $ T3StringField s t
-t3FieldBody T3AdjustableString s = do
+t3FieldBody (T3AdjustableString _) s = do
   void $ Tp.char ' '
   t <- pNulledLine
   return $ T3StringField s t
