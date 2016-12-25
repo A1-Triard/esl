@@ -120,12 +120,12 @@ conduitRepeatE a0 produce =
             Left err -> return $ Left err
             Right an_1 -> go an_1
 
-disassembly :: Monad m => (T3Sign -> Bool) -> ConduitM S.ByteString Text m (Either (ByteOffset, Either String String) ())
-disassembly skip_record = runExceptT $ do
+disassembly :: Monad m => Bool -> (T3Sign -> Bool) -> ConduitM S.ByteString Text m (Either (ByteOffset, Either String String) ())
+disassembly adjust skip_record = runExceptT $ do
   (h, _) <- (hoistEither =<<) $ lift $ mapOutput (const writeT3FileSignature) $ conduitGet1 getT3FileSignature 0
   (r, (_, items_count)) <- (hoistEither =<<) $ lift $ mapOutput (writeT3FileHeader . fst) $ conduitGet1 getT3FileHeader h
   let write_rec (T3Record s a b) = if skip_record s then T.empty else writeT3Record (T3Record s a b)
-  (f, n) <- (hoistEither =<<) $ lift $ mapOutput write_rec $ conduitRepeatE (r, 0) $ conduitGetN getT3Record
+  (f, n) <- (hoistEither =<<) $ lift $ mapOutput write_rec $ conduitRepeatE (r, 0) $ conduitGetN $ getT3Record adjust
   if n > items_count
     then hoistEither $ Left (f, Right $ "Records count mismatch: no more than " ++ show items_count ++ " expected, but " ++ show n ++ " readed.")
     else return ()

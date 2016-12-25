@@ -32,6 +32,7 @@ data EspaOptions = EspaOptions
   , optShowVersion :: Bool
   , optShowHelp :: Bool
   , optVerbose :: Bool
+  , optAdjust :: Bool
   , optExclude :: [String]
   , optInclude :: [String]
   }
@@ -42,6 +43,7 @@ defaultEspaOptions = EspaOptions
   , optShowVersion = False
   , optShowHelp = False
   , optVerbose = False
+  , optAdjust = False
   , optExclude = []
   , optInclude = []
   }
@@ -52,6 +54,7 @@ espaOptionsDescr =
   , Option ['V'] ["version"] (NoArg (\o -> o {optShowVersion = True})) "display the version number and exit"
   , Option ['h'] ["help"] (NoArg (\o -> o {optShowHelp = True})) "display this help and exit"
   , Option ['v'] ["verbose"] (NoArg (\o -> o {optVerbose = True})) "be verbose"
+  , Option ['a'] ["adjust"] (NoArg (\o -> o {optAdjust = True})) "remove trailing zeros from SCTX records"
   , Option ['e'] ["exclude"] (ReqArg (\e o -> o {optExclude = e : optExclude o}) "MARK") "skip MARK records"
   , Option ['i'] ["include"] (ReqArg (\i o -> o {optInclude = i : optInclude o}) "MARK") "skip all but MARK records"
   ]
@@ -73,7 +76,7 @@ espa = do
       | optDisassembly options = do
         err
           <- (foldl (||) False <$>) $ forM (filenames names) $ printErrors espaDisassemblyErrorText
-           . espaDisassembly (skip_record options) (verboser options)
+           . espaDisassembly (optAdjust options) (skip_record options) (verboser options)
         if err then exitFailure else exitSuccess
       | otherwise = do
         err
@@ -146,14 +149,14 @@ withTextOutputFile name action = bracketE (tryIO $ openFile name WriteMode) (try
 handleT3Error :: FilePath -> String -> IOError
 handleT3Error name e = userError $ showString name $ showString ": " e
 
-espaDisassembly :: (T3Sign -> Bool) -> Verboser -> FilePath -> ExceptT IOError IO ()
-espaDisassembly skip_record verbose name = do
+espaDisassembly :: Bool -> (T3Sign -> Bool) -> Verboser -> FilePath -> ExceptT IOError IO ()
+espaDisassembly adjust skip_record verbose name = do
   output_name <- hoistEither $ getDisassembliedFileName name
   tryIO $ verbose $ name ++ " -> " ++ output_name
   r <-
     withBinaryInputFile name $ \input -> do
       withTextOutputFile output_name $ \output -> do
-        runConduit $ (N.sourceHandle input =$= disassembly skip_record) `fuseUpstream` N.sinkHandle output
+        runConduit $ (N.sourceHandle input =$= disassembly adjust skip_record) `fuseUpstream` N.sinkHandle output
   case r of
     Right _ -> return ()
     Left (offset, err) -> do

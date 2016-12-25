@@ -29,6 +29,9 @@ stringField = t3StringNew <$> getRemainingLazyByteString
 multilineField :: Get e [Text]
 multilineField = T.splitOn "\r\n" <$> t3StringNew <$> getRemainingLazyByteString
 
+adjustedMultilineField :: Get e [Text]
+adjustedMultilineField = T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> getRemainingLazyByteString
+
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
@@ -78,13 +81,14 @@ scriptField = do
   var_table_size <- getWord32le
   return $ T3ScriptHeader name shorts longs floats data_size var_table_size
 
-fieldBody :: T3Sign -> T3Sign -> Get () T3Field
-fieldBody record_sign s =
+fieldBody :: Bool -> T3Sign -> T3Sign -> Get () T3Field
+fieldBody adjust record_sign s =
   f (t3FieldType record_sign s)
   where
     f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
     f T3String = T3StringField s <$> stringField
     f T3Multiline = T3MultilineField s <$> multilineField
+    f T3AdjustableMultiline = T3MultilineField s <$> if adjust then adjustedMultilineField else multilineField
     f T3MultiString = T3MultiStringField s <$> multiStringField
     f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
     f T3Binary = T3BinaryField s <$> binaryField
@@ -97,27 +101,27 @@ fieldBody record_sign s =
     f T3Ingredient = T3IngredientField s <$> ingredientField
     f T3Script = T3ScriptField s <$> scriptField
 
-field :: T3Sign -> Get String T3Field
-field record_sign = do
+field :: Bool -> T3Sign -> Get String T3Field
+field adjust record_sign = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  let body = fieldBody record_sign s `withError` "{0}: unexpected end of field"
+  let body = fieldBody adjust record_sign s `withError` "{0}: unexpected end of field"
   isolate (fromIntegral z) body $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
-recordBody :: T3Sign -> Get String [T3Field]
-recordBody s = whileM (not <$> isEmpty) $ field s
+recordBody :: Bool -> T3Sign -> Get String [T3Field]
+recordBody adjust s = whileM (not <$> isEmpty) $ field adjust s
 
-recordTail :: T3Sign -> Get (Either String ()) (Word64, [T3Field])
-recordTail s = do
+recordTail :: Bool -> T3Sign -> Get (Either String ()) (Word64, [T3Field])
+recordTail adjust s = do
   z <- size `withError` Right ()
   g <- gap `withError` Right ()
-  f <- onError Left $ isolate (fromIntegral z) (recordBody s) $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  f <- onError Left $ isolate (fromIntegral z) (recordBody adjust s) $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
   return (g, f)
 
-getT3Record :: Get String T3Record
-getT3Record = do
+getT3Record :: Bool -> Get String T3Record
+getT3Record adjust = do
   s <- sign `withError` "{0}: unexpected end of record"
-  (g, f) <- onError (either id (const "{0}: unexpected end of record")) $ recordTail s
+  (g, f) <- onError (either id (const "{0}: unexpected end of record")) $ recordTail adjust s
   return $ T3Record s g f
 
 getT3FileSignature :: Get String ()

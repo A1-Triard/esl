@@ -100,6 +100,7 @@ data T3FieldType
   = T3Binary
   | T3String
   | T3Multiline
+  | T3AdjustableMultiline
   | T3MultiString
   | T3Ref
   | T3FixedString Word32
@@ -166,7 +167,7 @@ t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String
 t3FieldType (T3Mark SCPT) (T3Mark SCHD) = T3Script
 t3FieldType _ (T3Mark SCRI) = T3String
-t3FieldType _ (T3Mark SCTX) = T3Multiline
+t3FieldType _ (T3Mark SCTX) = T3AdjustableMultiline
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
 t3FieldType _ (T3Mark SCVR) = T3String
 t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
