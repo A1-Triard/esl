@@ -121,6 +121,7 @@ t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark BODY) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark CLOT) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark CONT) (T3Mark BNAM) = T3Multiline $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark INFO) (T3Mark BNAM) = T3Multiline $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String id
 t3FieldType _ (T3Mark BNAM) = T3Multiline id
