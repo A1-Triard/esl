@@ -117,12 +117,17 @@ t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhi
 t3FieldType _ (T3Mark ANAM) = T3String id
 t3FieldType _ (T3Mark ASND) = T3String id
 t3FieldType _ (T3Mark AVFX) = T3String id
-t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String id
+t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark BODY) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark CLOT) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark CONT) (T3Mark BNAM) = T3Multiline $ T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String id
 t3FieldType _ (T3Mark BNAM) = T3Multiline id
 t3FieldType _ (T3Mark BSND) = T3String id
 t3FieldType _ (T3Mark BVFX) = T3String id
+t3FieldType (T3Mark ARMO) (T3Mark CNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark NPC_) (T3Mark CNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
 t3FieldType _ (T3Mark CNAM) = T3String id
 t3FieldType _ (T3Mark CSND) = T3String id
@@ -156,6 +161,7 @@ t3FieldType _ (T3Mark KNAM) = T3String id
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
 t3FieldType (T3Mark INFO) (T3Mark NNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
@@ -181,6 +187,7 @@ t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
 t3FieldType _ (T3Mark SNAM) = T3String id
 t3FieldType _ (T3Mark STRV) = T3String id
 t3FieldType (T3Mark ALCH) (T3Mark TEXT) = T3String id
+t3FieldType (T3Mark BOOK) (T3Mark TEXT) = T3Multiline $ T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark TEXT) = T3Multiline id
 t3FieldType _ (T3Mark TNAM) = T3String id
 t3FieldType _ (T3Mark VCLR) = T3Compressed
