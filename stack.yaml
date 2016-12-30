@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-5.15
+resolver: lts-7.5
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,13 +37,11 @@ resolver: lts-5.15
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- location:
-    git: https://github.com/A1-Triard/binary-ext.git
-    commit: ee1fa762fa41398b392dcc2edb4ce390484cbe4c
-  extra-dep: true
+
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+- binary-ext-1.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
@@ -52,9 +50,9 @@ flags: {}
 extra-package-dbs: []
 
 ghc-options:
-  esp-assembler: -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
-  espa: -rtsopts -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
-  esp-assembler-test: -rtsopts -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
+  esp-assembler: -fmax-pmcheck-iterations=10000000 -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
+  espa: -rtsopts -fmax-pmcheck-iterations=10000000 -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
+  esp-assembler-test: -rtsopts -fmax-pmcheck-iterations=10000000 -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
 
 # Control whether we use the GHC we find on the path
 # system-ghc: true
