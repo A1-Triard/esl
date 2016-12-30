@@ -1,13 +1,13 @@
 name:                esp-assembler
-version:             0.1.0.0
-synopsis:            Initial project template from stack
-description:         Please see README.md
-homepage:            https://github.com/githubuser/esp-assembler#readme
-license:             BSD3
+version:             0.2
+synopsis:            A tool for converting ESM/ESP/ESS files to and from text format. 
+description:         A tool for converting ESM/ESP/ESS files to and from text format. 
+homepage:            https://github.com/A1-Triard/esp-assembler
+license:             Apache
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2016 Author name here
+author:              Warlock <internalmike@gmail.com>
+maintainer:          Warlock <internalmike@gmail.com>
+copyright:           2016 Warlock
 category:            Web
 build-type:          Simple
 -- extra-source-files:
@@ -102,4 +102,4 @@ test-suite esp-assembler-test
 
 source-repository head
   type:     git
-  location: git@github.com:A1-Triard/esp-assembler.git
+  location: https://github.com/A1-Triard/esp-assembler.git
