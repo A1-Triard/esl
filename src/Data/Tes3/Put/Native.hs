@@ -1,4 +1,4 @@
-module Data.Tes3.Assembler.Native where
+module Data.Tes3.Put.Native where
 
 #include <haskell>
 import Data.Tes3

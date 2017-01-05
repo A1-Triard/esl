@@ -21,8 +21,8 @@ library
                      , Data.Tes3.Get.Native
                      , Data.Tes3.Utils
                      , Data.Tes3.Utils.Native
-                     , Data.Tes3.Assembler
-                     , Data.Tes3.Assembler.Native
+                     , Data.Tes3.Put
+                     , Data.Tes3.Put.Native
   build-depends:       base >= 4.7 && < 5
                      , MissingH
                      , bytestring
