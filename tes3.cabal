@@ -17,14 +17,10 @@ library
   hs-source-dirs:      src
   exposed-modules:     Data.Tes3
                      , Data.Tes3.Native
-                     , Data.Tes3.Disassembler
-                     , Data.Tes3.Disassembler.Native
                      , Data.Tes3.Get
                      , Data.Tes3.Get.Native
                      , Data.Tes3.Utils
                      , Data.Tes3.Utils.Native
-                     , Data.Tes3.Parser
-                     , Data.Tes3.Parser.Native
                      , Data.Tes3.Assembler
                      , Data.Tes3.Assembler.Native
   build-depends:       base >= 4.7 && < 5
@@ -45,9 +41,6 @@ library
                      , attoparsec
                      , text
                      , mono-traversable
-                     , conduit
-                     , conduit-combinators
-                     , directory
                      , data-binary-ieee754
                      , zlib
   default-language:    Haskell2010
@@ -59,9 +52,8 @@ test-suite tes3-test
   other-modules:       Data.Tes3.Utils.Spec
                      , Data.Tes3.Spec
                      , Data.Tes3.Get.Spec
-                     , Data.Tes3.Parser.Spec
   build-depends:       base
-                     , esp-assembler
+                     , tes3
                      , bytestring
                      , transformers
                      , errors
@@ -80,9 +72,6 @@ test-suite tes3-test
                      , attoparsec
                      , text
                      , mono-traversable
-                     , conduit
-                     , conduit-combinators
-                     , directory
                      , data-binary-ieee754
                      , zlib
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
