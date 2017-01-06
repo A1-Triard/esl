@@ -49,10 +49,6 @@ flags: {}
 # Extra package databases containing global packages
 extra-package-dbs: []
 
-ghc-options:
-  tes3: -fmax-pmcheck-iterations=10000000 -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
-  tes3-test: -rtsopts -fmax-pmcheck-iterations=10000000 -O2 -cpp -Iinclude -Wall -Werror -fno-warn-unused-imports -XTemplateHaskell -XViewPatterns -XMultiParamTypeClasses -XDeriveDataTypeable -XDeriveGeneric -XDeriveFoldable -XDeriveTraversable -XStandaloneDeriving -XUnicodeSyntax -XMagicHash -XDefaultSignatures -XNegativeLiterals -XPatternSynonyms -XParallelListComp -XTransformListComp -XMonadComprehensions -XUnboxedTuples -XLambdaCase -XEmptyCase -XEmptyDataDecls -XMultiWayIf -XTypeOperators -XTypeFamilies -XKindSignatures -XLiberalTypeSynonyms -XExistentialQuantification -XGADTs -XDeriveAnyClass -XFlexibleContexts -XFlexibleInstances -XOverloadedStrings -XDataKinds -XExplicitForAll -XBangPatterns
-
 # Control whether we use the GHC we find on the path
 # system-ghc: true
 # 
