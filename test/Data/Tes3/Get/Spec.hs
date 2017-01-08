@@ -150,9 +150,16 @@ data T3File = T3File T3FileHeader [T3Record] deriving (Eq, Show)
 
 sign :: S.Text -> T3Sign
 sign t =
-  case TP.parseOnly (pT3Sign <* Tp.endOfInput) t of
-    Left e -> error e
-    Right r -> r
+  case ST.unpack t of
+    [a, b, c, d] -> t3SignNew $ fromBytes (fromIntegral $ ord a) (fromIntegral $ ord b) (fromIntegral $ ord c) (fromIntegral $ ord d)
+    _ -> error "sign"
+
+fromBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Word32
+fromBytes a b c d
+  =  (fromIntegral a)
+  .|. (shift (fromIntegral b) 8)
+  .|. (shift (fromIntegral c) 16)
+  .|. (shift (fromIntegral d) 24)
 
 testFile1 :: T3File
 testFile1 = T3File

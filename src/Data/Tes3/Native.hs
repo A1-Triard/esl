@@ -31,14 +31,6 @@ instance Show T3Sign where
     let (a, b, c, d) = toBytes s in
     [chr $ fromIntegral a, chr $ fromIntegral b, chr $ fromIntegral c, chr $ fromIntegral d]
 
-pT3Sign :: T.Parser T3Sign
-pT3Sign = do
-  a <- Tp.anyChar
-  b <- Tp.anyChar
-  c <- Tp.anyChar
-  d <- Tp.anyChar
-  return $ t3SignNew $ fromBytes (fromIntegral $ ord a) (fromIntegral $ ord b) (fromIntegral $ ord c) (fromIntegral $ ord d)
-
 fromBytes :: Word8 -> Word8 -> Word8 -> Word8 -> Word32
 fromBytes a b c d
   =  (fromIntegral a)
@@ -92,9 +84,6 @@ t3FileTypeNew 0 = Just ESP
 t3FileTypeNew 1 = Just ESM
 t3FileTypeNew 32 = Just ESS
 t3FileTypeNew _ = Nothing
-
-pT3FileType :: T.Parser T3FileType
-pT3FileType = foldl1 (<|>) [Tp.string (ST.pack $ show t) >> return t | t <- [minBound .. maxBound]]
 
 data T3FieldType
   = T3Binary
@@ -228,7 +217,21 @@ data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
 
 t3StringValue :: Text -> ByteString
-t3StringValue = IC.convertFuzzy IC.Transliterate "UTF-8" "CP1251" . T.encodeUtf8
+t3StringValue =
+  B.pack . map convert . T.unpack
+  where
+    convert :: Char -> Word8
+    convert c
+      | c < '\128' = (fromIntegral . ord) c
+      | c >='А' && c <= 'я' = 192 + ((fromIntegral . ord) c - (fromIntegral . ord) 'А')
+      | otherwise = (fromIntegral . ord) '?'
 
 t3StringNew :: ByteString -> Text
-t3StringNew = T.decodeUtf8 . IC.convert "CP1251" "UTF-8"
+t3StringNew =
+  T.pack . map convert . B.unpack
+  where
+    convert :: Word8 -> Char
+    convert c
+      | c < 128 = (chr . fromIntegral) c
+      | c < 192 = '?'
+      | otherwise = (chr . fromIntegral) ((fromIntegral . ord) 'А' + (c - 192))
