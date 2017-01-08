@@ -8,12 +8,19 @@ import Data.Tes3
 
 tests :: Test
 tests = TestList
-  [ TestCase t3MarkValueTest
+  [ TestCase t3StringTest
+  , TestCase t3MarkValueTest
   , TestCase t3SignValueTest
   , TestCase t3MarkNewTest
   , TestCase t3SignNewTest
   , TestCase t3SignShowTest
   ]
+
+t3StringTest :: Assertion
+t3StringTest = do
+  assertEqual "" (B.pack [192]) $ t3StringValue "А"
+  assertEqual "" (B.pack [192, 225, 226, 32, 49, 51, 50]) $ t3StringValue "Абв 132"
+  assertEqual "" "Абв 132" $ t3StringNew (B.pack [192, 225, 226, 32, 49, 51, 50])
 
 t3MarkValueTest :: Assertion
 t3MarkValueTest = do

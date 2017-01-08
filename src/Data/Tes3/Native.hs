@@ -222,9 +222,9 @@ t3StringValue =
   where
     convert :: Char -> Word8
     convert c
-      | c < '\128' = (fromIntegral . ord) c
-      | c >='А' && c <= 'я' = 192 + ((fromIntegral . ord) c - (fromIntegral . ord) 'А')
-      | otherwise = (fromIntegral . ord) '?'
+      | c < '\128' = fromIntegral (ord c)
+      | c >='А' && c <= 'я' = 192 + fromIntegral (ord c - ord 'А')
+      | otherwise = fromIntegral (ord '?')
 
 t3StringNew :: ByteString -> Text
 t3StringNew =
@@ -232,6 +232,6 @@ t3StringNew =
   where
     convert :: Word8 -> Char
     convert c
-      | c < 128 = (chr . fromIntegral) c
+      | c < 128 = chr (fromIntegral c)
       | c < 192 = '?'
-      | otherwise = (chr . fromIntegral) ((fromIntegral . ord) 'А' + (c - 192))
+      | otherwise = chr (ord 'А' + fromIntegral (c - 192))
