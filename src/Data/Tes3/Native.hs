@@ -122,7 +122,6 @@ t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
 t3FieldType _ (T3Mark CNAM) = T3String id
 t3FieldType _ (T3Mark CSND) = T3String id
 t3FieldType _ (T3Mark CVFX) = T3String id
-t3FieldType (T3Mark DIAL) (T3Mark DATA) = T3Byte
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
@@ -145,6 +144,7 @@ t3FieldType (T3Mark LAND) (T3Mark INTV) = T3Long
 t3FieldType (T3Mark LEVC) (T3Mark INTV) = T3Short
 t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
 t3FieldType _ (T3Mark INTV) = T3Int
+t3FieldType (T3Mark INGR) (T3Mark IRDT) = T3Ingredient
 t3FieldType _ (T3Mark ITEX) = T3String id
 t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark KNAM) = T3String id
@@ -186,7 +186,6 @@ t3FieldType _ (T3Mark VNML) = T3Compressed
 t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Binary
 t3FieldType _ (T3Mark WNAM) = T3Compressed
-t3FieldType (T3Mark INGR) (T3Mark IRDT) = T3Ingredient
 t3FieldType _ _ = T3Binary
 
 data T3IngredientEffects = T3IngredientEffects Int32 Int32 Int32 Int32 deriving (Eq, Show)
