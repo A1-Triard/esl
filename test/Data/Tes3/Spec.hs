@@ -21,6 +21,7 @@ t3StringTest = do
   assertEqual "" (B.pack [192]) $ t3StringValue "А"
   assertEqual "" (B.pack [192, 225, 226, 32, 49, 51, 50]) $ t3StringValue "Абв 132"
   assertEqual "" "Абв 132" $ t3StringNew (B.pack [192, 225, 226, 32, 49, 51, 50])
+  assertEqual "" (B.pack [0 .. 255]) $ t3StringValue $ t3StringNew (B.pack [0 .. 255])
 
 t3MarkValueTest :: Assertion
 t3MarkValueTest = do
