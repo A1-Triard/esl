@@ -159,6 +159,7 @@ t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
 t3FieldType _ (T3Mark NNAM) = T3String id
 t3FieldType _ (T3Mark NPCO) = T3Ref
 t3FieldType (T3Mark BSGN) (T3Mark NPCS) = T3FixedString 32
+t3FieldType (T3Mark NPC_) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
 t3FieldType _ (T3Mark NPCS) = T3String id
 t3FieldType _ (T3Mark ONAM) = T3String id
@@ -201,7 +202,7 @@ data T3Field
   | T3FixedStringField T3Sign Text
   | T3MultilineField T3Sign [Text]
   | T3MultiStringField T3Sign [Text]
-  | T3RefField T3Sign Word32 Text
+  | T3RefField T3Sign Int32 Text
   | T3FloatField T3Sign Float
   | T3IntField T3Sign Int32
   | T3ShortField T3Sign Int16

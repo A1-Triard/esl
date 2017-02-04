@@ -44,7 +44,7 @@ putT3Field _ (T3MultiStringField s t) =
   sign s <> size b <> b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s <> w32 36 <> w32 n <> b <> tail b 32
+  sign s <> w32 36 <> i32 n <> b <> tail b 32
 putT3Field _ (T3FloatField s v) = sign s <> w32 4 <> f32 v
 putT3Field _ (T3IntField s v) = sign s <> w32 4 <> i32 v
 putT3Field _ (T3ShortField s v) = sign s <> w32 2 <> BB.toLazyByteString (BB.int16LE v)

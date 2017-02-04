@@ -32,9 +32,9 @@ multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemai
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
-refField :: Get () (Word32, Text)
+refField :: Get () (Int32, Text)
 refField = do
-  z <- getWord32le
+  z <- getInt32le
   n <- getLazyByteString 32
   return (z, T.dropWhileEnd (== '\0') $ t3StringNew n)
 
