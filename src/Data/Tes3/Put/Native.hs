@@ -29,13 +29,12 @@ i32 = BB.toLazyByteString . BB.int32LE
 
 putT3Field :: T3Sign -> T3Field -> ByteString
 putT3Field _ (T3BinaryField s b) = sign s <> size b <> b
-putT3Field _ (T3StringField s t) =
+putT3Field record_sign (T3StringField s t) =
   let b = t3StringValue t in
-  sign s <> size b <> b
-putT3Field record_sign (T3FixedStringField s t) =
-  let b = t3StringValue t in
-  let (T3FixedString n) = t3FieldType record_sign s in
-  sign s <> w32 n <> b <> tail b n
+  case t3FieldType record_sign s of
+    T3FixedString n -> sign s <> w32 n <> b <> tail b n
+    T3String _ -> sign s <> size b <> b
+    _ -> error "putT3Field T3StringField"
 putT3Field _ (T3MultilineField s t) =
   let b = t3StringValue $ T.intercalate "\r\n" t in
   sign s <> size b <> b

@@ -82,7 +82,7 @@ fieldBody :: Bool -> T3Sign -> T3Sign -> Get () T3Field
 fieldBody adjust record_sign s =
   f (t3FieldType record_sign s)
   where
-    f (T3FixedString z) = T3FixedStringField s <$> fixedStringField z
+    f (T3FixedString z) = T3StringField s <$> fixedStringField z
     f (T3String a) = T3StringField s <$> (if adjust then a else id) <$> stringField
     f (T3Multiline a) = T3MultilineField s <$> multilineField (if adjust then a else id)
     f T3MultiString = T3MultiStringField s <$> multiStringField

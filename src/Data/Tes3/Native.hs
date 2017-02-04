@@ -199,7 +199,6 @@ data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 der
 data T3Field
   = T3BinaryField T3Sign ByteString
   | T3StringField T3Sign Text
-  | T3FixedStringField T3Sign Text
   | T3MultilineField T3Sign [Text]
   | T3MultiStringField T3Sign [Text]
   | T3RefField T3Sign Int32 Text
