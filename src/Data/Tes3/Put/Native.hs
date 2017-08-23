@@ -75,6 +75,7 @@ putT3Field _
   sign s <> w32 52 <> b <> tail b 32
     <> w32 shorts <> w32 longs <> w32 floats
     <> w32 data_size <> w32 var_table_size
+putT3Field _ (T3DialField s v) = sign s <> w32 1 <> runPut (putWord8 $ t3DialTypeValue v)
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

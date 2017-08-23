@@ -8,6 +8,9 @@ module Data.Tes3
   , T3FileType (..)
   , t3FileTypeValue
   , t3FileTypeNew
+  , T3DialType (..)
+  , t3DialTypeValue
+  , t3DialTypeNew
   , T3Field (..)
   , T3Record (..)
   , T3FileRef (..)

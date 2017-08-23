@@ -32,6 +32,13 @@ multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemai
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
+dialField :: Get String T3DialType
+dialField = do
+  b <- getWord8 `withError` "{0}: unexpected end of field"
+  case t3DialTypeNew b of
+    Just t -> return t
+    Nothing -> failG $ "{0}: invalid dial type: " ++ showHex b "h."
+
 refField :: Get () (Int32, Text)
 refField = do
   z <- getInt32le
@@ -78,30 +85,34 @@ scriptField = do
   var_table_size <- getWord32le
   return $ T3ScriptHeader name shorts longs floats data_size var_table_size
 
-fieldBody :: Bool -> T3Sign -> T3Sign -> Get () T3Field
+eof :: Get () a -> Get (Maybe e) a
+eof = onError (const Nothing)
+
+fieldBody :: Bool -> T3Sign -> T3Sign -> Get (Maybe String) T3Field
 fieldBody adjust record_sign s =
   f (t3FieldType record_sign s)
   where
-    f (T3FixedString z) = T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
-    f (T3String a) = T3StringField s <$> (if adjust then a else id) <$> stringField
-    f (T3Multiline a) = T3MultilineField s <$> multilineField (if adjust then a else id)
-    f T3MultiString = T3MultiStringField s <$> multiStringField
-    f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField
-    f T3Binary = T3BinaryField s <$> binaryField
-    f T3Float = T3FloatField s <$> floatField
-    f T3Int = T3IntField s <$> getInt32le
-    f T3Short = T3ShortField s <$> getInt16le
-    f T3Long = T3LongField s <$> getInt64le
-    f T3Byte = T3ByteField s <$> getWord8
-    f T3Compressed = T3CompressedField s <$> compressedField
-    f T3Ingredient = T3IngredientField s <$> ingredientField
-    f T3Script = T3ScriptField s <$> scriptField
+    f (T3FixedString z) = eof $ T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
+    f (T3String a) = eof $ T3StringField s <$> (if adjust then a else id) <$> stringField
+    f (T3Multiline a) = eof $ T3MultilineField s <$> multilineField (if adjust then a else id)
+    f T3MultiString = eof $ T3MultiStringField s <$> multiStringField
+    f T3Ref = eof $ (\(z, n) -> T3RefField s z n) <$> refField
+    f T3Binary = eof $ T3BinaryField s <$> binaryField
+    f T3Float = eof $ T3FloatField s <$> floatField
+    f T3Int = eof $ T3IntField s <$> getInt32le
+    f T3Short = eof $ T3ShortField s <$> getInt16le
+    f T3Long = eof $ T3LongField s <$> getInt64le
+    f T3Byte = eof $ T3ByteField s <$> getWord8
+    f T3Compressed = eof $ T3CompressedField s <$> compressedField
+    f T3Ingredient = eof $ T3IngredientField s <$> ingredientField
+    f T3Script = eof $ T3ScriptField s <$> scriptField
+    f T3Dial = onError Just $ T3DialField s <$> dialField
 
 field :: Bool -> T3Sign -> Get String T3Field
 field adjust record_sign = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  let body = fieldBody adjust record_sign s `withError` "{0}: unexpected end of field"
+  let body = onError (fromMaybe "{0}: unexpected end of field") $ fieldBody adjust record_sign s
   isolate (fromIntegral z) body $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Bool -> T3Sign -> Get String [T3Field]

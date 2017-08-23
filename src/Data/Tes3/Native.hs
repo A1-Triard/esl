@@ -85,6 +85,23 @@ t3FileTypeNew 1 = Just ESM
 t3FileTypeNew 32 = Just ESS
 t3FileTypeNew _ = Nothing
 
+data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal deriving (Eq, Enum, Show, Bounded)
+
+t3DialTypeValue :: T3DialType -> Word8
+t3DialTypeValue T3Topic = 0
+t3DialTypeValue T3Voice = 1
+t3DialTypeValue T3Greeting = 2
+t3DialTypeValue T3Persuasion = 3
+t3DialTypeValue T3Journal = 4
+
+t3DialTypeNew :: Word8 -> Maybe T3DialType
+t3DialTypeNew 0 = Just T3Topic
+t3DialTypeNew 1 = Just T3Voice
+t3DialTypeNew 2 = Just T3Greeting
+t3DialTypeNew 3 = Just T3Persuasion
+t3DialTypeNew 4 = Just T3Journal
+t3DialTypeNew _ = Nothing
+
 data T3FieldType
   = T3Binary
   | T3String (Text -> Text)
@@ -100,6 +117,7 @@ data T3FieldType
   | T3Compressed
   | T3Ingredient
   | T3Script
+  | T3Dial
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
@@ -122,6 +140,7 @@ t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
 t3FieldType _ (T3Mark CNAM) = T3String id
 t3FieldType _ (T3Mark CSND) = T3String id
 t3FieldType _ (T3Mark CVFX) = T3String id
+t3FieldType (T3Mark DIAL) (T3Mark DATA) = T3Dial
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
@@ -210,6 +229,7 @@ data T3Field
   | T3CompressedField T3Sign ByteString
   | T3IngredientField T3Sign T3IngredientData
   | T3ScriptField T3Sign T3ScriptHeader
+  | T3DialField T3Sign T3DialType
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
