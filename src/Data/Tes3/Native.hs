@@ -85,21 +85,23 @@ t3FileTypeNew 1 = Just ESM
 t3FileTypeNew 32 = Just ESS
 t3FileTypeNew _ = Nothing
 
-data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal deriving (Eq, Ord, Enum, Bounded, Show)
+data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal | T3Deleted deriving (Eq, Ord, Enum, Bounded, Show)
 
-t3DialTypeValue :: T3DialType -> Word8
-t3DialTypeValue T3Topic = 0
-t3DialTypeValue T3Voice = 1
-t3DialTypeValue T3Greeting = 2
-t3DialTypeValue T3Persuasion = 3
-t3DialTypeValue T3Journal = 4
+t3DialTypeValue :: T3DialType -> Maybe Word8
+t3DialTypeValue T3Topic = Just 0
+t3DialTypeValue T3Voice = Just 1
+t3DialTypeValue T3Greeting = Just 2
+t3DialTypeValue T3Persuasion = Just 3
+t3DialTypeValue T3Journal = Just 4
+t3DialTypeValue T3Deleted = Nothing
 
-t3DialTypeNew :: Word8 -> Maybe T3DialType
-t3DialTypeNew 0 = Just T3Topic
-t3DialTypeNew 1 = Just T3Voice
-t3DialTypeNew 2 = Just T3Greeting
-t3DialTypeNew 3 = Just T3Persuasion
-t3DialTypeNew 4 = Just T3Journal
+t3DialTypeNew :: Maybe Word8 -> Maybe T3DialType
+t3DialTypeNew (Just 0) = Just T3Topic
+t3DialTypeNew (Just 1) = Just T3Voice
+t3DialTypeNew (Just 2) = Just T3Greeting
+t3DialTypeNew (Just 3) = Just T3Persuasion
+t3DialTypeNew (Just 4) = Just T3Journal
+t3DialTypeNew Nothing = Just T3Deleted
 t3DialTypeNew _ = Nothing
 
 data T3FieldType

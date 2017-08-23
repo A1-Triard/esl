@@ -32,12 +32,15 @@ multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemai
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
-dialField :: Get String T3DialType
-dialField = do
-  b <- getWord8 `withError` "{0}: unexpected end of field"
+dialField :: Bool -> Get String T3DialType
+dialField deleted = do
+  b <-
+    if deleted
+      then Just <$> getWord8 `withError` "{0}: unexpected end of field"
+      else onError (either id $ const "{0}: unexpected end of field") (expect 0 getWord32le) >> return Nothing
   case t3DialTypeNew b of
     Just t -> return t
-    Nothing -> failG $ "{0}: invalid dial type: " ++ showHex b "h."
+    Nothing -> failG $ "{0}: invalid dial type."
 
 refField :: Get () (Int32, Text)
 refField = do
@@ -88,8 +91,8 @@ scriptField = do
 eof :: Get () a -> Get (Maybe e) a
 eof = onError (const Nothing)
 
-fieldBody :: Bool -> T3Sign -> T3Sign -> Get (Maybe String) T3Field
-fieldBody adjust record_sign s =
+fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Maybe String) T3Field
+fieldBody adjust record_sign s field_size =
   f (t3FieldType record_sign s)
   where
     f (T3FixedString z) = eof $ T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
@@ -106,13 +109,13 @@ fieldBody adjust record_sign s =
     f T3Compressed = eof $ T3CompressedField s <$> compressedField
     f T3Ingredient = eof $ T3IngredientField s <$> ingredientField
     f T3Script = eof $ T3ScriptField s <$> scriptField
-    f T3Dial = onError Just $ T3DialField s <$> dialField
+    f T3Dial = onError Just $ T3DialField s <$> dialField (field_size == 1)
 
 field :: Bool -> T3Sign -> Get String T3Field
 field adjust record_sign = do
   s <- sign `withError` "{0}: unexpected end of field"
   z <- size `withError` "{0}: unexpected end of field"
-  let body = onError (fromMaybe "{0}: unexpected end of field") $ fieldBody adjust record_sign s
+  let body = onError (fromMaybe "{0}: unexpected end of field") $ fieldBody adjust record_sign s z
   isolate (fromIntegral z) body $ \c -> "{0}: field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Bool -> T3Sign -> Get String [T3Field]
