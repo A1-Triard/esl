@@ -72,7 +72,7 @@ t3MarkNew w = SM.lookup w t3MarkNews
 t3SignNew :: Word32 -> T3Sign
 t3SignNew w = fromMaybe (T3Sign w) $ T3Mark <$> t3MarkNew w
 
-data T3FileType = ESP | ESM | ESS deriving (Eq, Enum, Show, Bounded)
+data T3FileType = ESP | ESM | ESS deriving (Eq, Ord, Enum, Bounded, Show)
 
 t3FileTypeValue :: T3FileType -> Word32
 t3FileTypeValue ESP = 0
@@ -85,7 +85,7 @@ t3FileTypeNew 1 = Just ESM
 t3FileTypeNew 32 = Just ESS
 t3FileTypeNew _ = Nothing
 
-data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal deriving (Eq, Enum, Show, Bounded)
+data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal deriving (Eq, Ord, Enum, Bounded, Show)
 
 t3DialTypeValue :: T3DialType -> Word8
 t3DialTypeValue T3Topic = 0
