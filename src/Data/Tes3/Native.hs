@@ -85,23 +85,21 @@ t3FileTypeNew 1 = Just ESM
 t3FileTypeNew 32 = Just ESS
 t3FileTypeNew _ = Nothing
 
-data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal | T3Deleted deriving (Eq, Ord, Enum, Bounded, Show)
+data T3DialType = T3Topic | T3Voice | T3Greeting | T3Persuasion | T3Journal deriving (Eq, Ord, Enum, Bounded, Show)
 
-t3DialTypeValue :: T3DialType -> Maybe Word8
-t3DialTypeValue T3Topic = Just 0
-t3DialTypeValue T3Voice = Just 1
-t3DialTypeValue T3Greeting = Just 2
-t3DialTypeValue T3Persuasion = Just 3
-t3DialTypeValue T3Journal = Just 4
-t3DialTypeValue T3Deleted = Nothing
+t3DialTypeValue :: T3DialType -> Word8
+t3DialTypeValue T3Topic = 0
+t3DialTypeValue T3Voice = 1
+t3DialTypeValue T3Greeting = 2
+t3DialTypeValue T3Persuasion = 3
+t3DialTypeValue T3Journal = 4
 
-t3DialTypeNew :: Maybe Word8 -> Maybe T3DialType
-t3DialTypeNew (Just 0) = Just T3Topic
-t3DialTypeNew (Just 1) = Just T3Voice
-t3DialTypeNew (Just 2) = Just T3Greeting
-t3DialTypeNew (Just 3) = Just T3Persuasion
-t3DialTypeNew (Just 4) = Just T3Journal
-t3DialTypeNew Nothing = Just T3Deleted
+t3DialTypeNew :: Word8 -> Maybe T3DialType
+t3DialTypeNew 0 = Just T3Topic
+t3DialTypeNew 1 = Just T3Voice
+t3DialTypeNew 2 = Just T3Greeting
+t3DialTypeNew 3 = Just T3Persuasion
+t3DialTypeNew 4 = Just T3Journal
 t3DialTypeNew _ = Nothing
 
 data T3FieldType
@@ -120,6 +118,7 @@ data T3FieldType
   | T3Ingredient
   | T3Script
   | T3Dial
+  | T3None
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
@@ -147,6 +146,7 @@ t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
 t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark DIAL) (T3Mark DELE) = T3None
 t3FieldType _ (T3Mark DESC) = T3String id
 t3FieldType _ (T3Mark DNAM) = T3String id
 t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String id
@@ -231,7 +231,8 @@ data T3Field
   | T3CompressedField T3Sign ByteString
   | T3IngredientField T3Sign T3IngredientData
   | T3ScriptField T3Sign T3ScriptHeader
-  | T3DialField T3Sign T3DialType
+  | T3DialField T3Sign (Either Word32 T3DialType)
+  | T3NoneField T3Sign
   deriving (Eq, Show)
 data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)

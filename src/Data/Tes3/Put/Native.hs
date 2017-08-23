@@ -18,6 +18,9 @@ tail b n = runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIn
 putT3FileSignature :: ByteString
 putT3FileSignature = sign (T3Mark TES3)
 
+w8 :: Word8 -> ByteString
+w8 = runPut . putWord8
+
 w32 :: Word32 -> ByteString
 w32 = runPut . putWord32le
 
@@ -75,7 +78,8 @@ putT3Field _
   sign s <> w32 52 <> b <> tail b 32
     <> w32 shorts <> w32 longs <> w32 floats
     <> w32 data_size <> w32 var_table_size
-putT3Field _ (T3DialField s v) = sign s <> maybe (w32 4 <> w32 0) ((w32 1 <>) . runPut . putWord8) (t3DialTypeValue v)
+putT3Field _ (T3DialField s v) = sign s <> either ((w32 4 <>) . w32) ((w32 1 <>) . w8 . t3DialTypeValue) v
+putT3Field _ (T3NoneField s) = sign s <> w32 4 <> w32 0
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

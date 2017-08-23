@@ -32,15 +32,15 @@ multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemai
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
-dialField :: Bool -> Get String T3DialType
-dialField deleted = do
-  b <-
-    if deleted
-      then Just <$> getWord8 `withError` "{0}: unexpected end of field"
-      else onError (either id $ const "{0}: unexpected end of field") (expect 0 getWord32le) >> return Nothing
-  case t3DialTypeNew b of
-    Just t -> return t
-    Nothing -> failG $ "{0}: invalid dial type."
+dialField :: Bool -> Get String (Either Word32 T3DialType)
+dialField deleted =
+  if deleted
+    then Left <$> getWord32le `withError` "{0}: unexpected end of field"
+    else do
+      b <- getWord8 `withError` "{0}: unexpected end of field"
+      case t3DialTypeNew b of
+        Just t -> return $ Right t
+        Nothing -> failG $ "{0}: invalid dial type."
 
 refField :: Get () (Int32, Text)
 refField = do
@@ -109,7 +109,8 @@ fieldBody adjust record_sign s field_size =
     f T3Compressed = eof $ T3CompressedField s <$> compressedField
     f T3Ingredient = eof $ T3IngredientField s <$> ingredientField
     f T3Script = eof $ T3ScriptField s <$> scriptField
-    f T3Dial = onError Just $ T3DialField s <$> dialField (field_size == 1)
+    f T3Dial = onError Just $ T3DialField s <$> dialField (field_size /= 1)
+    f T3None = onError (either Just (const Nothing)) $ (const $ T3NoneField s) <$> expect 0 getWord32le
 
 field :: Bool -> T3Sign -> Get String T3Field
 field adjust record_sign = do
