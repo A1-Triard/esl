@@ -167,7 +167,7 @@ testFile1 = T3File
     [ T3FileRef "Morrowind.esm\0" 137
     ]
   )
-  [ T3Record (sign "CLOH") 0
+  [ T3Record (sign "CLOH") t3FlagsEmpty
     [ T3BinaryField (sign "NAMF") "namename"
     , T3BinaryField (sign "IDID") "idid\0"
     ]
@@ -179,11 +179,11 @@ testFile2 = T3File
     [ T3FileRef "Morrowind.esm\0" 137
     ]
   )
-  [ T3Record (sign "CLOH") 0
+  [ T3Record (sign "CLOH") t3FlagsEmpty
     [ T3BinaryField (sign "NAMF") "namename"
     , T3BinaryField (sign "IDID") "idid\0"
     ]
-  , T3Record (sign "SCPT") 0
+  , T3Record (sign "SCPT") t3FlagsEmpty
     [ T3MultilineField (sign "SCTX") ["script\0", "text"]
     ]
   ]

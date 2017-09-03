@@ -17,6 +17,10 @@ module Data.Tes3
   , T3FileHeader (..)
   , T3FieldType (..)
   , t3FieldType
+  , T3Flags (..)
+  , t3FlagsEmpty
+  , t3FlagsValue
+  , t3FlagsNew
   , t3StringValue
   , t3StringNew
   , T3IngredientEffects (..)

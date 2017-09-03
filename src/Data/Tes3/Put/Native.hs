@@ -9,8 +9,8 @@ sign = runPut . putWord32le . t3SignValue
 size :: ByteString -> ByteString
 size = runPut . putWord32le . fromIntegral . B.length
 
-gap :: Word64 -> ByteString
-gap = runPut . putWord64le
+flags :: T3Flags -> ByteString
+flags = runPut . putWord64le . t3FlagsValue
 
 tail :: ByteString -> Word32 -> ByteString
 tail b n = runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIntegral (B.length b)) (putWord8 0))
@@ -84,7 +84,7 @@ putT3Field _ (T3NoneField s) = sign s <> w32 4 <> w32 0
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =
   let b = foldl (<>) B.empty [putT3Field s f | f <- fields] in
-  sign s <> size b <> gap g <> b
+  sign s <> size b <> flags g <> b
 
 t3FileRef :: T3FileRef -> ByteString
 t3FileRef (T3FileRef n z) =
@@ -101,4 +101,4 @@ putT3FileHeader (T3FileHeader version file_type author descr refs) =
   let r = foldl (<>) B.empty [t3FileRef ref | ref <- refs] in
   let items_count_placeholder = runPut $ putWord32le 0 in
   let tes3 = sign (T3Mark HEDR) <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder <> r in
-  size tes3 <> gap 0 <> tes3
+  size tes3 <> flags t3FlagsEmpty <> tes3

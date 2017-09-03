@@ -234,9 +234,35 @@ data T3Field
   | T3DialField T3Sign (Either Word32 T3DialType)
   | T3NoneField T3Sign
   deriving (Eq, Show)
-data T3Record = T3Record T3Sign Word64 [T3Field] deriving (Eq, Show)
+data T3Flags = T3Flags
+  { corpsesPersist :: Bool
+  , blocked :: Bool
+  } deriving (Eq, Show)
+data T3Record = T3Record T3Sign T3Flags [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
+
+fCorpsesPersist, fBlocked :: Word64
+fCorpsesPersist = 0x40000000000
+fBlocked = 0x200000000000
+
+t3FlagsEmpty :: T3Flags
+t3FlagsEmpty = T3Flags False False
+
+t3FlagsValue :: T3Flags -> Word64
+t3FlagsValue f
+   =  (if corpsesPersist f then fCorpsesPersist else 0)
+  .|. (if blocked f then fBlocked else 0)
+
+t3FlagsNew :: Word64 -> Maybe T3Flags
+t3FlagsNew d =
+  let cp = (d .&. fCorpsesPersist) /= 0 in
+  let d1 = (d .&. complement fCorpsesPersist) in
+  let bl = (d .&. fBlocked) /= 0 in
+  let d2 = (d1 .&. complement fBlocked) in
+  if d2 == 0
+    then Just $ T3Flags { corpsesPersist = cp, blocked = bl }
+    else Nothing
 
 t3StringValue :: Text -> ByteString
 t3StringValue =

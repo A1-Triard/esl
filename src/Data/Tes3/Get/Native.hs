@@ -3,6 +3,11 @@ module Data.Tes3.Get.Native where
 #include <haskell>
 import Data.Tes3
 
+ee :: Either e (Either e a) -> Either e a
+ee (Left e) = Left e
+ee (Right (Left e)) = Left e
+ee (Right (Right a)) = Right a
+
 expect :: (Show a, Eq a) => a -> Get e a -> Get (Either String e) ()
 expect expected getter = do
   offset <- totalBytesRead
@@ -17,8 +22,12 @@ sign = t3SignNew <$> getWord32le
 size :: Get () Word32
 size = getWord32le
 
-gap :: Get () Word64
-gap = getWord64le
+flags :: Get (Either String ()) T3Flags
+flags = do
+  w <- onError Right getWord64le
+  case t3FlagsNew w of
+    Nothing -> failG $ Left $ "{0}: invalid record flags (" ++ showHex w "h)."
+    Just f -> return f
 
 binaryField :: Get e ByteString
 binaryField = getRemainingLazyByteString
@@ -122,10 +131,10 @@ field adjust record_sign = do
 recordBody :: Bool -> T3Sign -> Get String [T3Field]
 recordBody adjust s = whileM (not <$> isEmpty) $ field adjust s
 
-recordTail :: Bool -> T3Sign -> Get (Either String ()) (Word64, [T3Field])
+recordTail :: Bool -> T3Sign -> Get (Either String ()) (T3Flags, [T3Field])
 recordTail adjust s = do
   z <- size `withError` Right ()
-  g <- gap `withError` Right ()
+  g <- flags
   f <- onError Left $ isolate (fromIntegral z) (recordBody adjust s) $ \c -> "{0}: record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
   return (g, f)
 
@@ -166,7 +175,7 @@ fileHeaderData = do
 fileHeader :: Get (Either String ()) (T3FileHeader, Word32)
 fileHeader = do
   z <- size `withError` Right ()
-  expect 0 gap
+  onError ee $ expect t3FlagsEmpty flags
   let t = onError (either id (const "{0}: unexpected end of header")) fileHeaderData
   onError Left $ isolate (fromIntegral z) t $ \c -> "{0}: header size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
