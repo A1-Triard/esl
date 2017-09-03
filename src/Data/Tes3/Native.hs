@@ -237,22 +237,25 @@ data T3Field
 data T3Flags = T3Flags
   { corpsesPersist :: Bool
   , blocked :: Bool
+  , deleted :: Bool
   } deriving (Eq, Show)
 data T3Record = T3Record T3Sign T3Flags [T3Field] deriving (Eq, Show)
 data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
 
-fCorpsesPersist, fBlocked :: Word64
+fCorpsesPersist, fBlocked, fDeleted :: Word64
 fCorpsesPersist = 0x40000000000
 fBlocked = 0x200000000000
+fDeleted = 0x2000000000
 
 t3FlagsEmpty :: T3Flags
-t3FlagsEmpty = T3Flags False False
+t3FlagsEmpty = T3Flags False False False
 
 t3FlagsValue :: T3Flags -> Word64
 t3FlagsValue f
    =  (if corpsesPersist f then fCorpsesPersist else 0)
   .|. (if blocked f then fBlocked else 0)
+  .|. (if deleted f then fDeleted else 0)
 
 t3FlagsNew :: Word64 -> Maybe T3Flags
 t3FlagsNew d =
@@ -260,8 +263,10 @@ t3FlagsNew d =
   let d1 = (d .&. complement fCorpsesPersist) in
   let bl = (d .&. fBlocked) /= 0 in
   let d2 = (d1 .&. complement fBlocked) in
-  if d2 == 0
-    then Just $ T3Flags { corpsesPersist = cp, blocked = bl }
+  let del = (d .&. fDeleted) /= 0 in
+  let d3 = (d2 .&. complement fDeleted) in
+  if d3 == 0
+    then Just $ T3Flags { corpsesPersist = cp, blocked = bl, deleted = del }
     else Nothing
 
 t3StringValue :: Text -> ByteString

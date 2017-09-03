@@ -43,8 +43,8 @@ multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
 dialField :: Bool -> Get String (Either Word32 T3DialType)
-dialField deleted =
-  if deleted
+dialField del =
+  if del
     then Left <$> getWord32le `withError` "{0}: unexpected end of field"
     else do
       b <- getWord8 `withError` "{0}: unexpected end of field"
