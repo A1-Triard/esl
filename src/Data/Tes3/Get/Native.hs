@@ -24,9 +24,10 @@ size = getWord32le
 
 flags :: Get (Either String ()) T3Flags
 flags = do
+  offset <- totalBytesRead
   w <- onError Right getWord64le
   case t3FlagsNew w of
-    Nothing -> failG $ Left $ "{0}: invalid record flags (" ++ showHex w "h)."
+    Nothing -> failG $ Left $ showHex offset $ "h: invalid record flags (" ++ showHex w "h)."
     Just f -> return f
 
 binaryField :: Get e ByteString

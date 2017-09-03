@@ -16,6 +16,7 @@ tests = TestList
   , TestCase parseFileWithInvalidItemsCount
   , TestCase parseValidFile
   , TestCase parseAdjustableFile
+  , TestCase parseFileWithInvalidFlags
   ]
 
 leBytes :: (Integral a, FiniteBits a) => a -> ByteString
@@ -29,6 +30,34 @@ w32 = leBytes
 
 w64 :: Word64 -> ByteString
 w64 = leBytes
+
+testFileWithInvalidFlagsBytes :: ByteString
+testFileWithInvalidFlagsBytes
+  =  C.pack "TES3"
+  <> w32 346
+  <> w64 0
+  <> C.pack "HEDR"
+  <> w32 300
+  <> w32 0x07
+  <> w32 32
+  <> B.fromStrict testAuthor
+  <> B.fromStrict testDescription
+  <> w32 1
+  <> C.pack "MAST"
+  <> w32 14
+  <> C.pack "Morrowind.esm\0"
+  <> C.pack "DATA"
+  <> w32 8
+  <> w64 137
+  <> C.pack "CLOH"
+  <> w32 29
+  <> w64 137
+  <> C.pack "NAMF"
+  <> w32 8
+  <> C.pack "namename"
+  <> C.pack "IDID"
+  <> w32 5
+  <> C.pack "idid\0"
 
 testFile1Bytes :: ByteString
 testFile1Bytes
@@ -233,3 +262,7 @@ parseValidFile = do
 parseAdjustableFile :: Assertion
 parseAdjustableFile = do
   assertEqual "" (445, Right testFile2) $ runGetT3File True testFile2Bytes
+
+parseFileWithInvalidFlags :: Assertion
+parseFileWithInvalidFlags = do
+  assertEqual "" (378, Left "172h: invalid record flags (89h).") $ runGetT3File False testFileWithInvalidFlagsBytes
