@@ -155,6 +155,7 @@ t3FieldType _ (T3Mark FLTV) = T3Float
 t3FieldType (T3Mark ACTI) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark FNAM) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark FRMR) = T3Int
 t3FieldType _ (T3Mark HSND) = T3String id
 t3FieldType _ (T3Mark HVFX) = T3String id
 t3FieldType _ (T3Mark INAM) = T3String id
@@ -171,6 +172,7 @@ t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.dropWhi
 t3FieldType _ (T3Mark KNAM) = T3String id
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
@@ -208,6 +210,7 @@ t3FieldType _ (T3Mark VNML) = T3Compressed
 t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Binary
 t3FieldType _ (T3Mark WNAM) = T3Compressed
+t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
 t3FieldType _ _ = T3Binary
 
 data T3IngredientEffects = T3IngredientEffects Int32 Int32 Int32 Int32 deriving (Eq, Show)
