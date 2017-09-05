@@ -20,7 +20,7 @@ data T3Mark
   | DNAM | XSCL | SKDT | DELE | MEDT | PTEX | CVFX | BVFX
   | HVFX | AVFX | BSND | CSND | HSND | ASND | WEAT | SNAM
   | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
-  | VHGT | VCLR | VTEX | WNAM
+  | VHGT | VCLR | VTEX | WNAM | NAM9
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -174,6 +174,8 @@ t3FieldType _ (T3Mark KNAM) = T3String id
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
+t3FieldType (T3Mark CELL) (T3Mark NAM5) = T3Int
+t3FieldType (T3Mark CELL) (T3Mark NAM9) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
