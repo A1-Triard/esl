@@ -213,6 +213,7 @@ t3FieldType _ (T3Mark VHGT) = T3Compressed
 t3FieldType _ (T3Mark VNML) = T3Compressed
 t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Binary
+t3FieldType (T3Mark CELL) (T3Mark WHGT) = T3Int
 t3FieldType _ (T3Mark WNAM) = T3Compressed
 t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
 t3FieldType _ _ = T3Binary
