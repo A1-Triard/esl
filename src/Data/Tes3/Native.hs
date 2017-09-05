@@ -143,6 +143,7 @@ t3FieldType _ (T3Mark CNAM) = T3String id
 t3FieldType _ (T3Mark CSND) = T3String id
 t3FieldType _ (T3Mark CVFX) = T3String id
 t3FieldType (T3Mark DIAL) (T3Mark DATA) = T3Dial
+t3FieldType (T3Mark LAND) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
