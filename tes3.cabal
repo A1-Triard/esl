@@ -1,5 +1,5 @@
 name:                tes3
-version:             0.7.4
+version:             0.7.5
 synopsis:            A library for reading, writing and processing ESM/ESP/ESS files.
 description:         A library for reading, writing and processing ESM/ESP/ESS files.
 homepage:            https://github.com/A1-Triard/tes3
