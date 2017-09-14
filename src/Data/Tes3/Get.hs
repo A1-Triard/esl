@@ -1,6 +1,6 @@
 module Data.Tes3.Get
   ( getT3FileSignature
-  , getT3FileHeader
+  , getT3FirstRecord
   , getT3Record
   ) where
 

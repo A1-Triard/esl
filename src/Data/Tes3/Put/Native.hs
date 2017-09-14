@@ -15,9 +15,6 @@ flags = runPut . putWord64le . t3FlagsValue
 tail :: ByteString -> Word32 -> ByteString
 tail b n = runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIntegral (B.length b)) (putWord8 0))
 
-putT3FileSignature :: ByteString
-putT3FileSignature = sign (T3Mark TES3)
-
 w8 :: Word8 -> ByteString
 w8 = runPut . putWord8
 
@@ -80,25 +77,15 @@ putT3Field _
     <> w32 data_size <> w32 var_table_size
 putT3Field _ (T3DialField s v) = sign s <> either ((w32 4 <>) . w32) ((w32 1 <>) . w8 . t3DialTypeValue) v
 putT3Field _ (T3NoneField s) = sign s <> w32 4 <> w32 0
+putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr count)) =
+  let v = runPut $ putWord32le version in
+  let f = runPut $ putWord32le $ t3FileTypeValue file_type in
+  let a = t3StringValue author in
+  let d = t3StringValue $ T.intercalate "\r\n" descr in
+  let items_count = runPut $ putWord32le count in
+  sign s <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =
   let b = foldl (<>) B.empty [putT3Field s f | f <- fields] in
   sign s <> size b <> flags g <> b
-
-t3FileRef :: T3FileRef -> ByteString
-t3FileRef (T3FileRef n z) =
-  let mast = t3StringValue n in
-  let dat = runPut $ putWord64le z in
-  sign (T3Mark MAST) <> size mast <> mast <> sign (T3Mark DATA) <> size dat <> dat
-
-putT3FileHeader :: T3FileHeader -> ByteString
-putT3FileHeader (T3FileHeader version file_type author descr refs) =
-  let v = runPut $ putWord32le version in
-  let f = runPut $ putWord32le $ t3FileTypeValue file_type in
-  let a = t3StringValue author in
-  let d = t3StringValue $ T.intercalate "\r\n" descr in
-  let r = foldl (<>) B.empty [t3FileRef ref | ref <- refs] in
-  let items_count_placeholder = runPut $ putWord32le 0 in
-  let tes3 = sign (T3Mark HEDR) <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder <> r in
-  size tes3 <> flags t3FlagsEmpty <> tes3

@@ -175,8 +175,6 @@ testDescription = SC.pack $ replace "0" "\0" $ replace "\n" "\r\n"
   ++ "0000000000000000"
   )
 
-data T3File = T3File T3FileHeader [T3Record] deriving (Eq, Show)
-
 sign :: S.Text -> T3Sign
 sign t =
   case ST.unpack t of
@@ -190,25 +188,27 @@ fromBytes a b c d
   .|. (shift (fromIntegral c) 16)
   .|. (shift (fromIntegral d) 24)
 
-testFile1 :: T3File
-testFile1 = T3File
-  ( T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""]
-    [ T3FileRef "Morrowind.esm\0" 137
+testFile1 :: [T3Record]
+testFile1 =
+  [ T3Record (sign "TES3") t3FlagsEmpty
+    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""] 1)
+    , T3StringField (sign "MAST") "Morrowind.esm\0"
+    , T3LongField (sign "DATA") 137
     ]
-  )
-  [ T3Record (sign "CLOH") t3FlagsEmpty
+  , T3Record (sign "CLOH") t3FlagsEmpty
     [ T3BinaryField (sign "NAMF") "namename"
     , T3BinaryField (sign "IDID") "idid\0"
     ]
   ]
 
-testFile2 :: T3File
-testFile2 = T3File
-  ( T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""]
-    [ T3FileRef "Morrowind.esm\0" 137
+testFile2 :: [T3Record]
+testFile2 =
+  [ T3Record (sign "TES3") t3FlagsEmpty
+    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""] 2)
+    , T3StringField (sign "MAST") "Morrowind.esm\0"
+    , T3LongField (sign "DATA") 137
     ]
-  )
-  [ T3Record (sign "CLOH") t3FlagsEmpty
+  , T3Record (sign "CLOH") t3FlagsEmpty
     [ T3BinaryField (sign "NAMF") "namename"
     , T3BinaryField (sign "IDID") "idid\0"
     ]
@@ -217,16 +217,23 @@ testFile2 = T3File
     ]
   ]
 
-getT3File :: Bool -> Get (ByteOffset -> String) T3File
+getT3File :: Bool -> Get (ByteOffset -> String) [T3Record]
 getT3File adjust = do
   getT3FileSignature
-  (h, items_count) <- getT3FileHeader
-  records <- whileM (not <$> isEmpty) $ getT3Record adjust
-  if fromIntegral items_count /= length records
-    then failG $ const $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show (length records) ++ " readed."
-    else return $ T3File h records
+  first_record <- getT3FirstRecord adjust
+  let T3Record _ flags fields = first_record
+  if flags /= t3FlagsEmpty
+    then failG $ const $ "Invlaid file flags."
+    else
+      case fields of
+        (T3HeaderField _ (T3FileHeader _ _ _ _ items_count ): _) -> do
+          records <- whileM (not <$> isEmpty) $ getT3Record adjust
+          if fromIntegral items_count /= length records
+            then failG $ const $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show (length records) ++ " readed."
+            else return (first_record : records)
+        _ -> failG $ const $ "Invalid file header."
 
-runGetT3File :: Bool -> ByteString -> (ByteOffset, Either String T3File)
+runGetT3File :: Bool -> ByteString -> (ByteOffset, Either String [T3Record])
 runGetT3File adjust inp =
   case pushEndOfInput $ runGetIncremental 0 (getT3File adjust) `pushChunks` inp of
     G.Done (SB.null -> True) offset r -> (offset, Right r)
@@ -249,7 +256,7 @@ parseLongInvalidFile = do
 
 parseFileWithValidSignature :: Assertion
 parseFileWithValidSignature = do
-  assertEqual "" (16, Left "10h: unexpected end of header") $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
+  assertEqual "" (16, Left "Invalid file header.") $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
 
 parseFileWithInvalidItemsCount :: Assertion
 parseFileWithInvalidItemsCount = do

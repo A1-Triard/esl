@@ -103,6 +103,18 @@ scriptField = do
   var_table_size <- getWord32le
   return $ T3ScriptHeader name shorts longs floats data_size var_table_size
 
+fileHeaderData :: Get (Either StringE ()) T3FileHeader
+fileHeaderData = do
+  version <- getWord32le `withError` Right ()
+  file_type_value <- getWord32le `withError` Right ()
+  file_type <- case t3FileTypeNew file_type_value of
+    Nothing -> failG $ Left $ const $ "Unknown file type: " ++ show file_type_value
+    Just x -> return x
+  author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
+  description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
+  items_count <- getWord32le `withError` Right ()
+  return $ T3FileHeader version file_type author description items_count
+
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Either StringE ()) T3Field
 fieldBody adjust record_sign s field_size =
   f (t3FieldType record_sign s)
@@ -123,6 +135,7 @@ fieldBody adjust record_sign s field_size =
     f T3Script = onError Right $ T3ScriptField s <$> scriptField
     f T3Dial = onError Left $ T3DialField s <$> dialField (field_size /= 1)
     f T3None = (const $ T3NoneField s) <$> expect 0 getWord32le
+    f T3Header = T3HeaderField s <$> fileHeaderData
 
 field :: Bool -> T3Sign -> Get StringE T3Field
 field adjust record_sign = do
@@ -150,37 +163,11 @@ getT3Record adjust = do
 getT3FileSignature :: Get StringE ()
 getT3FileSignature = onError (const $ const "File format not recognized.") $ expect (T3Mark TES3) sign
 
-fileRef :: Get (Either StringE ()) T3FileRef
-fileRef = do
-  expect (T3Mark MAST) sign
-  m <- size `withError` Right ()
-  name <- t3StringNew <$> B.fromStrict <$> getByteString (fromIntegral m) `withError` Right ()
-  expect (T3Mark DATA) sign
-  expect 8 size
-  z <- getWord64le `withError` Right ()
-  return $ T3FileRef name z
+fileHeader :: Bool -> Get (Either StringE ()) T3Record
+fileHeader adjust = do
+  (g, f) <- recordTail adjust (T3Mark TES3)
+  return $ T3Record (T3Mark TES3) g f
 
-fileHeaderData :: Get (Either StringE ()) (T3FileHeader, Word32)
-fileHeaderData = do
-  expect (T3Mark HEDR) sign
-  expect 300 size
-  version <- getWord32le `withError` Right ()
-  file_type_value <- getWord32le `withError` Right ()
-  file_type <- case t3FileTypeNew file_type_value of
-    Nothing -> failG $ Left $ const $ "Unknown file type: " ++ show file_type_value
-    Just x -> return x
-  author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
-  description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
-  items_count <- getWord32le `withError` Right ()
-  refs <- whileM (not <$> isEmpty) fileRef
-  return (T3FileHeader version file_type author description refs, items_count)
-
-fileHeader :: Get (Either StringE ()) (T3FileHeader, Word32)
-fileHeader = do
-  z <- size `withError` Right ()
-  onError ee $ expect t3FlagsEmpty flags
-  let t = onError (either id (const $ se "unexpected end of header")) fileHeaderData
-  onError Left $ isolate (fromIntegral z) t $ \c -> se $ "header size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
-
-getT3FileHeader :: Get StringE (T3FileHeader, Word32)
-getT3FileHeader = onError (either id (const $ se "unexpected end of file")) fileHeader
+getT3FirstRecord :: Bool -> Get StringE T3Record
+getT3FirstRecord adjust =
+  onError (either id (const $ se "unexpected end of file")) $ fileHeader adjust

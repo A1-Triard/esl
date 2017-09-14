@@ -119,6 +119,7 @@ data T3FieldType
   | T3Script
   | T3Dial
   | T3None
+  | T3Header
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
@@ -148,6 +149,7 @@ t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
 t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark TES3) (T3Mark DATA) = T3Long
 t3FieldType (T3Mark DIAL) (T3Mark DELE) = T3None
 t3FieldType _ (T3Mark DESC) = T3String id
 t3FieldType _ (T3Mark DNAM) = T3String id
@@ -158,6 +160,7 @@ t3FieldType (T3Mark ACTI) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhi
 t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark FNAM) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark FRMR) = T3Int
+t3FieldType (T3Mark TES3) (T3Mark HEDR) = T3Header
 t3FieldType _ (T3Mark HSND) = T3String id
 t3FieldType _ (T3Mark HVFX) = T3String id
 t3FieldType _ (T3Mark INAM) = T3String id
@@ -172,6 +175,7 @@ t3FieldType (T3Mark INGR) (T3Mark IRDT) = T3Ingredient
 t3FieldType _ (T3Mark ITEX) = T3String id
 t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark KNAM) = T3String id
+t3FieldType (T3Mark TES3) (T3Mark MAST) = T3String id
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
@@ -225,6 +229,8 @@ data T3IngredientAttributes = T3IngredientAttributes Int32 Int32 Int32 Int32 der
 data T3IngredientData = T3IngredientData Float Word32 T3IngredientEffects T3IngredientSkills T3IngredientAttributes deriving (Eq, Show)
 data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 deriving (Eq, Show)
 
+data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] Word32 deriving (Eq, Show)
+
 data T3Field
   = T3BinaryField T3Sign ByteString
   | T3StringField T3Sign Text
@@ -241,6 +247,7 @@ data T3Field
   | T3ScriptField T3Sign T3ScriptHeader
   | T3DialField T3Sign (Either Word32 T3DialType)
   | T3NoneField T3Sign
+  | T3HeaderField T3Sign T3FileHeader
   deriving (Eq, Show)
 data T3Flags = T3Flags
   { t3Persist :: Bool
@@ -248,8 +255,6 @@ data T3Flags = T3Flags
   , t3Deleted :: Bool
   } deriving (Eq, Show)
 data T3Record = T3Record T3Sign T3Flags [T3Field] deriving (Eq, Show)
-data T3FileRef = T3FileRef Text Word64 deriving (Eq, Show)
-data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] [T3FileRef] deriving (Eq, Show)
 
 fPersist, fBlocked, fDeleted :: Word64
 fPersist = 0x40000000000

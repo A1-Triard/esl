@@ -13,7 +13,6 @@ module Data.Tes3
   , t3DialTypeNew
   , T3Field (..)
   , T3Record (..)
-  , T3FileRef (..)
   , T3FileHeader (..)
   , T3FieldType (..)
   , t3FieldType
