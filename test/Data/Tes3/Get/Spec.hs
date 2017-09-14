@@ -217,20 +217,20 @@ testFile2 = T3File
     ]
   ]
 
-getT3File :: Bool -> Get String T3File
+getT3File :: Bool -> Get (ByteOffset -> String) T3File
 getT3File adjust = do
   getT3FileSignature
   (h, items_count) <- getT3FileHeader
   records <- whileM (not <$> isEmpty) $ getT3Record adjust
   if fromIntegral items_count /= length records
-    then failG $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show (length records) ++ " readed."
+    then failG $ const $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show (length records) ++ " readed."
     else return $ T3File h records
 
 runGetT3File :: Bool -> ByteString -> (ByteOffset, Either String T3File)
 runGetT3File adjust inp =
   case pushEndOfInput $ runGetIncremental 0 (getT3File adjust) `pushChunks` inp of
     G.Done (SB.null -> True) offset r -> (offset, Right r)
-    G.Fail _ offset (Right e) -> (offset, Left e)
+    G.Fail _ offset (Right e) -> (offset, Left $ e offset)
     _ -> error "runGetT3File"
 
 parseEmptyFile :: Assertion
@@ -249,7 +249,7 @@ parseLongInvalidFile = do
 
 parseFileWithValidSignature :: Assertion
 parseFileWithValidSignature = do
-  assertEqual "" (16, Left "{0}: unexpected end of header") $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
+  assertEqual "" (16, Left "10h: unexpected end of header") $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
 
 parseFileWithInvalidItemsCount :: Assertion
 parseFileWithInvalidItemsCount = do
