@@ -229,7 +229,7 @@ data T3IngredientAttributes = T3IngredientAttributes Int32 Int32 Int32 Int32 der
 data T3IngredientData = T3IngredientData Float Word32 T3IngredientEffects T3IngredientSkills T3IngredientAttributes deriving (Eq, Show)
 data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 deriving (Eq, Show)
 
-data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] Word32 deriving (Eq, Show)
+data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] deriving (Eq, Show)
 
 data T3Field
   = T3BinaryField T3Sign ByteString

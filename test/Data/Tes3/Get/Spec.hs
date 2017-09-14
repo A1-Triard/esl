@@ -13,7 +13,6 @@ tests = TestList
   , TestCase parseShortInvalidFile
   , TestCase parseLongInvalidFile
   , TestCase parseFileWithValidSignature
-  , TestCase parseFileWithInvalidItemsCount
   , TestCase parseValidFile
   , TestCase parseAdjustableFile
   , TestCase parseFileWithInvalidFlags
@@ -121,34 +120,6 @@ testFile2Bytes
   <> w32 14
   <> C.pack "script\0\r\ntext\0"
 
-testFileWithInvalidItemsCountBytes :: ByteString
-testFileWithInvalidItemsCountBytes
-  =  C.pack "TES3"
-  <> w32 346
-  <> w64 0
-  <> C.pack "HEDR"
-  <> w32 300
-  <> w32 0x07
-  <> w32 32
-  <> B.fromStrict testAuthor
-  <> B.fromStrict testDescription
-  <> w32 39
-  <> C.pack "MAST"
-  <> w32 14
-  <> C.pack "Morrowind.esm\0"
-  <> C.pack "DATA"
-  <> w32 8
-  <> w64 137
-  <> C.pack "CLOH"
-  <> w32 29
-  <> w64 0
-  <> C.pack "NAMF"
-  <> w32 8
-  <> C.pack "namename"
-  <> C.pack "IDID"
-  <> w32 5
-  <> C.pack "idid\0"
-
 testAuthor :: S.ByteString
 testAuthor = SC.pack $ replace "0" "\0"
   (  "test author00000"
@@ -191,7 +162,7 @@ fromBytes a b c d
 testFile1 :: [T3Record]
 testFile1 =
   [ T3Record (sign "TES3") t3FlagsEmpty
-    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""] 1)
+    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""])
     , T3StringField (sign "MAST") "Morrowind.esm\0"
     , T3LongField (sign "DATA") 137
     ]
@@ -204,7 +175,7 @@ testFile1 =
 testFile2 :: [T3Record]
 testFile2 =
   [ T3Record (sign "TES3") t3FlagsEmpty
-    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""] 2)
+    [ T3HeaderField (sign "HEDR") (T3FileHeader 0x07 ESS "test author" ["test description", "AAA", ""])
     , T3StringField (sign "MAST") "Morrowind.esm\0"
     , T3LongField (sign "DATA") 137
     ]
@@ -218,20 +189,7 @@ testFile2 =
   ]
 
 getT3File :: Bool -> Get (ByteOffset -> String) [T3Record]
-getT3File adjust = do
-  getT3FileSignature
-  first_record <- getT3FirstRecord adjust
-  let T3Record _ flags fields = first_record
-  if flags /= t3FlagsEmpty
-    then failG $ const $ "Invlaid file flags."
-    else
-      case fields of
-        (T3HeaderField _ (T3FileHeader _ _ _ _ items_count ): _) -> do
-          records <- whileM (not <$> isEmpty) $ getT3Record adjust
-          if fromIntegral items_count /= length records
-            then failG $ const $ "Records count mismatch: " ++ show items_count ++ " expected, but " ++ show (length records) ++ " readed."
-            else return (first_record : records)
-        _ -> failG $ const $ "Invalid file header."
+getT3File adjust = whileM (not <$> isEmpty) $ getT3Record adjust
 
 runGetT3File :: Bool -> ByteString -> (ByteOffset, Either String [T3Record])
 runGetT3File adjust inp =
@@ -242,25 +200,21 @@ runGetT3File adjust inp =
 
 parseEmptyFile :: Assertion
 parseEmptyFile = do
-  assertEqual "" (0, Left "File format not recognized.") $ runGetT3File False B.empty
+  assertEqual "" (0, Right []) $ runGetT3File False B.empty
 
 parseShortInvalidFile :: Assertion
 parseShortInvalidFile = do
-  assertEqual "" (0, Left "File format not recognized.") $ runGetT3File False $ C.pack "TE"
-  assertEqual "" (0, Left "File format not recognized.") $ runGetT3File False $ C.pack "X0"
+  assertEqual "" (0, Left "0h: unexpected end of record.") $ runGetT3File False $ C.pack "TE"
+  assertEqual "" (0, Left "0h: unexpected end of record.") $ runGetT3File False $ C.pack "X0"
 
 parseLongInvalidFile :: Assertion
 parseLongInvalidFile = do
-  assertEqual "" (4, Left "File format not recognized.") $ runGetT3File False $ C.pack "TEhfdskj fsd jhfg gjf jhs"
-  assertEqual "" (4, Left "File format not recognized.") $ runGetT3File False $ C.pack "X0 fhsdm hfsdg jhfsdg fjs gd"
+  assertEqual "" (16, Left "8h: invalid record flags (66686a2064736620h).") $ runGetT3File False $ C.pack "TEhfdskj fsd jhfg gjf jhs"
+  assertEqual "" (16, Left "8h: invalid record flags (6a20676473666820h).") $ runGetT3File False $ C.pack "X0 fhsdm hfsdg jhfsdg fjs gd"
 
 parseFileWithValidSignature :: Assertion
 parseFileWithValidSignature = do
-  assertEqual "" (16, Left "Invalid file header.") $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
-
-parseFileWithInvalidItemsCount :: Assertion
-parseFileWithInvalidItemsCount = do
-  assertEqual "" (407, Left "Records count mismatch: 39 expected, but 1 readed.") $ runGetT3File False testFileWithInvalidItemsCountBytes
+  assertEqual "" (16, Right [T3Record (sign "TES3") t3FlagsEmpty []]) $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
 
 parseValidFile :: Assertion
 parseValidFile = do

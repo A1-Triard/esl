@@ -77,13 +77,13 @@ putT3Field _
     <> w32 data_size <> w32 var_table_size
 putT3Field _ (T3DialField s v) = sign s <> either ((w32 4 <>) . w32) ((w32 1 <>) . w8 . t3DialTypeValue) v
 putT3Field _ (T3NoneField s) = sign s <> w32 4 <> w32 0
-putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr count)) =
+putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let v = runPut $ putWord32le version in
   let f = runPut $ putWord32le $ t3FileTypeValue file_type in
   let a = t3StringValue author in
   let d = t3StringValue $ T.intercalate "\r\n" descr in
-  let items_count = runPut $ putWord32le count in
-  sign s <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count
+  let items_count_placeholder = w32 0 in
+  sign s <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

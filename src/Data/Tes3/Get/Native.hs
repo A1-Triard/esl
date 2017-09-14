@@ -50,9 +50,9 @@ multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 dialField :: Bool -> Get StringE (Either Word32 T3DialType)
 dialField del =
   if del
-    then Left <$> getWord32le `withError` se "unexpected end of field"
+    then Left <$> getWord32le `withError` se "unexpected end of field."
     else do
-      b <- getWord8 `withError` se "unexpected end of field"
+      b <- getWord8 `withError` se "unexpected end of field."
       case t3DialTypeNew b of
         Just t -> return $ Right t
         Nothing -> failG $ se "invalid dial type."
@@ -108,12 +108,12 @@ fileHeaderData = do
   version <- getWord32le `withError` Right ()
   file_type_value <- getWord32le `withError` Right ()
   file_type <- case t3FileTypeNew file_type_value of
-    Nothing -> failG $ Left $ const $ "Unknown file type: " ++ show file_type_value
+    Nothing -> failG $ Left $ const $ "Unknown file type: " ++ show file_type_value ++ "."
     Just x -> return x
   author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
   description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
-  items_count <- getWord32le `withError` Right ()
-  return $ T3FileHeader version file_type author description items_count
+  void $ getWord32le `withError` Right ()
+  return $ T3FileHeader version file_type author description
 
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Either StringE ()) T3Field
 fieldBody adjust record_sign s field_size =
@@ -139,9 +139,9 @@ fieldBody adjust record_sign s field_size =
 
 field :: Bool -> T3Sign -> Get StringE T3Field
 field adjust record_sign = do
-  s <- sign `withError` se "unexpected end of field"
-  z <- size `withError` se "unexpected end of field"
-  let body = onError (either id $ const $ se "unexpected end of field") $ fieldBody adjust record_sign s z
+  s <- sign `withError` se "unexpected end of field."
+  z <- size `withError` se "unexpected end of field."
+  let body = onError (either id $ const $ se "unexpected end of field.") $ fieldBody adjust record_sign s z
   isolate (fromIntegral z) body $ \c -> se $ "field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
 
 recordBody :: Bool -> T3Sign -> Get StringE [T3Field]
@@ -156,18 +156,6 @@ recordTail adjust s = do
 
 getT3Record :: Bool -> Get StringE T3Record
 getT3Record adjust = do
-  s <- sign `withError` se "unexpected end of record"
-  (g, f) <- onError (either id (const $ se "unexpected end of record")) $ recordTail adjust s
+  s <- sign `withError` se "unexpected end of record."
+  (g, f) <- onError (either id (const $ se "unexpected end of record.")) $ recordTail adjust s
   return $ T3Record s g f
-
-getT3FileSignature :: Get StringE ()
-getT3FileSignature = onError (const $ const "File format not recognized.") $ expect (T3Mark TES3) sign
-
-fileHeader :: Bool -> Get (Either StringE ()) T3Record
-fileHeader adjust = do
-  (g, f) <- recordTail adjust (T3Mark TES3)
-  return $ T3Record (T3Mark TES3) g f
-
-getT3FirstRecord :: Bool -> Get StringE T3Record
-getT3FirstRecord adjust =
-  onError (either id (const $ se "unexpected end of file")) $ fileHeader adjust
