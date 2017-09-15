@@ -123,6 +123,7 @@ data T3FieldType
   | T3Dial
   | T3None
   | T3Header
+  | T3EssNpc
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark INFO) (T3Mark ACDT) = T3String id
@@ -213,6 +214,7 @@ t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
 t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
 t3FieldType _ (T3Mark NNAM) = T3String id
 t3FieldType _ (T3Mark NPCO) = T3Ref
+t3FieldType (T3Mark NPCC) (T3Mark NPDT) = T3EssNpc
 t3FieldType (T3Mark BSGN) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark NPC_) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
@@ -265,6 +267,8 @@ data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 der
 
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] deriving (Eq, Show)
 
+data T3EssNpcData = T3EssNpcData Word8 Word8 Word32 deriving (Eq, Show)
+
 data T3Field
   = T3BinaryField T3Sign ByteString
   | T3StringField T3Sign Text
@@ -282,6 +286,7 @@ data T3Field
   | T3DialField T3Sign (Either Word32 T3DialType)
   | T3NoneField T3Sign
   | T3HeaderField T3Sign T3FileHeader
+  | T3EssNpcDataField T3Sign T3EssNpcData
   deriving (Eq, Show)
 data T3Flags = T3Flags
   { t3Persist :: Bool

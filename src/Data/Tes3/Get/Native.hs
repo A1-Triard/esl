@@ -120,6 +120,15 @@ fileHeaderData = do
   void $ getWord32le `withError` Right ()
   return $ T3FileHeader version file_type author description
 
+essNpcData :: Get (Either StringE ()) T3EssNpcData
+essNpcData = do
+  disposition <- getWord8 `withError` Right ()
+  expect 0 $ getWord8
+  reputation <- getWord8 `withError` Right ()
+  expect 0 $ getWord8
+  index <- getWord32le `withError` Right ()
+  return $ T3EssNpcData disposition reputation index
+
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Either StringE ()) T3Field
 fieldBody adjust record_sign s field_size =
   f (t3FieldType record_sign s)
@@ -141,6 +150,7 @@ fieldBody adjust record_sign s field_size =
     f T3Dial = onError Left $ T3DialField s <$> dialField (field_size /= 1)
     f T3None = (const $ T3NoneField s) <$> expect 0 getWord32le
     f T3Header = T3HeaderField s <$> fileHeaderData
+    f T3EssNpc = T3EssNpcDataField s <$> essNpcData
 
 field :: Bool -> T3Sign -> Get StringE T3Field
 field adjust record_sign = do
