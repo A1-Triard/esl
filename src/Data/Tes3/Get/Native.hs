@@ -41,8 +41,8 @@ binaryField = getRemainingLazyByteString
 stringField :: Get e Text
 stringField = t3StringNew <$> getRemainingLazyByteString
 
-multilineField :: (Text -> Text) -> Get e [Text]
-multilineField adjust = T.splitOn "\r\n" <$> adjust <$> t3StringNew <$> getRemainingLazyByteString
+multilineField :: Bool -> (Text -> Text) -> Get e [Text]
+multilineField use_unix_newlines adjust = T.splitOn (if use_unix_newlines then "\n" else "\r\n") <$> adjust <$> t3StringNew <$> getRemainingLazyByteString
 
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
@@ -126,7 +126,7 @@ fieldBody adjust record_sign s field_size =
   where
     f (T3FixedString z) = onError Right $ T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
     f (T3String a) = onError Right $ T3StringField s <$> (if adjust then a else id) <$> stringField
-    f (T3Multiline a) = onError Right $ T3MultilineField s <$> multilineField (if adjust then a else id)
+    f (T3Multiline use_unix_newlines a) = onError Right $ T3MultilineField s <$> multilineField use_unix_newlines (if adjust then a else id)
     f T3MultiString = onError Right $ T3MultiStringField s <$> multiStringField
     f T3Ref = onError Right $ (\(z, n) -> T3RefField s z n) <$> refField
     f T3Binary = onError Right $ T3BinaryField s <$> binaryField
