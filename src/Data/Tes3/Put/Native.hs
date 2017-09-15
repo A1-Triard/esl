@@ -89,7 +89,7 @@ putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let d = t3StringValue $ T.intercalate "\r\n" descr in
   let items_count_placeholder = w32 0 in
   sign s <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder
-putT3Field _ (T3EssNpcDataField s (T3EssNpcData disposition reputation index)) =
+putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index)) =
   sign s <> w32 8 <> w8 disposition <> w8 0 <> w8 reputation <> w8 0 <> w32 index
 
 putT3Record :: T3Record -> ByteString

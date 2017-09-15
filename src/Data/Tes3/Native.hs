@@ -286,7 +286,7 @@ data T3Field
   | T3DialField T3Sign (Either Word32 T3DialType)
   | T3NoneField T3Sign
   | T3HeaderField T3Sign T3FileHeader
-  | T3EssNpcDataField T3Sign T3EssNpcData
+  | T3EssNpcField T3Sign T3EssNpcData
   deriving (Eq, Show)
 data T3Flags = T3Flags
   { t3Persist :: Bool

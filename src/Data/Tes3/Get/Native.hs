@@ -150,7 +150,7 @@ fieldBody adjust record_sign s field_size =
     f T3Dial = onError Left $ T3DialField s <$> dialField (field_size /= 1)
     f T3None = (const $ T3NoneField s) <$> expect 0 getWord32le
     f T3Header = T3HeaderField s <$> fileHeaderData
-    f T3EssNpc = T3EssNpcDataField s <$> essNpcData
+    f T3EssNpc = T3EssNpcField s <$> essNpcData
 
 field :: Bool -> T3Sign -> Get StringE T3Field
 field adjust record_sign = do
