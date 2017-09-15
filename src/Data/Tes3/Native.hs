@@ -22,7 +22,7 @@ data T3Mark
   | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
   | VHGT | VCLR | VTEX | WNAM | NAM9 | KLST | PCDT | LNAM
   | FMAP | MAPD | MAPH | FGTN | LSHN | LSTN | ND3D | SLSD
-  | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM
+  | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM | ACTN
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -125,6 +125,7 @@ data T3FieldType
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark INFO) (T3Mark ACDT) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark ACTN) = T3Int
 t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark ANAM) = T3String id
 t3FieldType _ (T3Mark ASND) = T3String id
@@ -192,6 +193,7 @@ t3FieldType (T3Mark FMAP) (T3Mark MAPD) = T3Compressed
 t3FieldType (T3Mark FMAP) (T3Mark MAPH) = T3Long
 t3FieldType (T3Mark TES3) (T3Mark MAST) = T3String id
 t3FieldType (T3Mark PCDT) (T3Mark MNAM) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark MNAM) = T3Byte
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
@@ -204,7 +206,7 @@ t3FieldType (T3Mark JOUR) (T3Mark NAME) = T3Multiline True id
 t3FieldType (T3Mark SPLM) (T3Mark NAME) = T3Int
 t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
-t3FieldType (T3Mark CELL) (T3Mark ND3D) = T3Byte
+t3FieldType _ (T3Mark ND3D) = T3Byte
 t3FieldType (T3Mark INFO) (T3Mark NNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
 t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
