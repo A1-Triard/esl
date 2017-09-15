@@ -222,7 +222,7 @@ t3FieldType _ (T3Mark SCRI) = T3String id
 t3FieldType _ (T3Mark SCTX) = T3Multiline False $ T.takeWhile (/= '\0')
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
 t3FieldType _ (T3Mark SCVR) = T3String id
-t3FieldType (T3Mark CELL) (T3Mark SLSD) = T3Short
+t3FieldType (T3Mark CELL) (T3Mark SLSD) = T3Binary
 t3FieldType (T3Mark PCDT) (T3Mark SNAM) = T3Binary
 t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
 t3FieldType _ (T3Mark SNAM) = T3String id
