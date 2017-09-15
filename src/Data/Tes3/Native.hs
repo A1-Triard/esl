@@ -22,7 +22,8 @@ data T3Mark
   | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
   | VHGT | VCLR | VTEX | WNAM | NAM9 | KLST | PCDT | LNAM
   | FMAP | MAPD | MAPH | FGTN | LSHN | LSTN | ND3D | SLSD
-  | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM | ACTN
+  | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM | ACTN | WIDX
+  | XCHG | XHLT | XSOL
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -244,8 +245,12 @@ t3FieldType _ (T3Mark VNML) = T3Compressed
 t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Binary
 t3FieldType (T3Mark CELL) (T3Mark WHGT) = T3Int
+t3FieldType _ (T3Mark WIDX) = T3Long
 t3FieldType _ (T3Mark WNAM) = T3Compressed
-t3FieldType (T3Mark DIAL) (T3Mark XIDX) = T3Int
+t3FieldType _ (T3Mark XCHG) = T3Int
+t3FieldType _ (T3Mark XHLT) = T3Int
+t3FieldType _ (T3Mark XIDX) = T3Int
+t3FieldType _ (T3Mark XSOL) = T3String id
 t3FieldType (T3Mark SPLM) (T3Mark XNAM) = T3Byte
 t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark ZNAM) = T3Byte
