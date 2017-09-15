@@ -35,8 +35,13 @@ putT3Field record_sign (T3StringField s t) =
     T3FixedString n -> sign s <> w32 n <> b <> tail b n
     T3String _ -> sign s <> size b <> b
     _ -> error "putT3Field T3StringField"
-putT3Field _ (T3MultilineField s t) =
-  let b = t3StringValue $ T.intercalate "\r\n" t in
+putT3Field record_sign (T3MultilineField s t) =
+  let
+    delimiter = case t3FieldType record_sign s of
+      T3Multiline use_unix_newlines _ -> if use_unix_newlines then "\n" else "\r\n"
+      _ -> error "putT3Field T3MultilineField"
+    in
+  let b = t3StringValue $ T.intercalate delimiter t in
   sign s <> size b <> b
 putT3Field _ (T3MultiStringField s t) =
   let b = t3StringValue $ T.intercalate "\0" t in
