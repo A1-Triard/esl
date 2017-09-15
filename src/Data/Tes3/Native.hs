@@ -22,7 +22,7 @@ data T3Mark
   | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
   | VHGT | VCLR | VTEX | WNAM | NAM9 | KLST | PCDT | LNAM
   | FMAP | MAPD | MAPH | FGTN | LSHN | LSTN | ND3D | SLSD
-  | ZNAM
+  | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
