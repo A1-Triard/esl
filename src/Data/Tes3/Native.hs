@@ -124,6 +124,7 @@ data T3FieldType
   | T3Header
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
+t3FieldType (T3Mark INFO) (T3Mark ACDT) = T3String id
 t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark ANAM) = T3String id
 t3FieldType _ (T3Mark ASND) = T3String id
@@ -154,6 +155,7 @@ t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
 t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.takeWhile (/= '\0')
 t3FieldType (T3Mark TES3) (T3Mark DATA) = T3Long
+t3FieldType (T3Mark QUES) (T3Mark DATA) = T3String id
 t3FieldType (T3Mark DIAL) (T3Mark DELE) = T3None
 t3FieldType _ (T3Mark DESC) = T3String id
 t3FieldType _ (T3Mark DNAM) = T3String id
@@ -189,14 +191,17 @@ t3FieldType (T3Mark CELL) (T3Mark LSTN) = T3String id
 t3FieldType (T3Mark FMAP) (T3Mark MAPD) = T3Compressed
 t3FieldType (T3Mark FMAP) (T3Mark MAPH) = T3Long
 t3FieldType (T3Mark TES3) (T3Mark MAST) = T3String id
+t3FieldType (T3Mark PCDT) (T3Mark MNAM) = T3String id
 t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
+t3FieldType (T3Mark SPLM) (T3Mark NAM0) = T3Byte
 t3FieldType (T3Mark CELL) (T3Mark NAM5) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAM9) = T3Int
 t3FieldType (T3Mark PCDT) (T3Mark NAM9) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark JOUR) (T3Mark NAME) = T3Multiline True id
+t3FieldType (T3Mark SPLM) (T3Mark NAME) = T3Int
 t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark ND3D) = T3Byte
@@ -238,6 +243,8 @@ t3FieldType _ (T3Mark VTEX) = T3Compressed
 t3FieldType _ (T3Mark WEAT) = T3Binary
 t3FieldType (T3Mark CELL) (T3Mark WHGT) = T3Int
 t3FieldType _ (T3Mark WNAM) = T3Compressed
+t3FieldType (T3Mark DIAL) (T3Mark XIDX) = T3Int
+t3FieldType (T3Mark SPLM) (T3Mark XNAM) = T3Byte
 t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark ZNAM) = T3Byte
 t3FieldType _ _ = T3Binary
