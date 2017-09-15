@@ -237,7 +237,7 @@ data T3Field
   | T3MultilineField T3Sign [Text]
   | T3MultiStringField T3Sign [Text]
   | T3RefField T3Sign Int32 Text
-  | T3FloatField T3Sign Float
+  | T3FloatField T3Sign (Either Word32 Float)
   | T3IntField T3Sign Int32
   | T3ShortField T3Sign Int16
   | T3LongField T3Sign Int64

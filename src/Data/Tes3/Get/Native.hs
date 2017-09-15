@@ -66,8 +66,13 @@ refField = do
 fixedStringField :: Word32 -> Get () Text
 fixedStringField z = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString (fromIntegral z)
 
-floatField :: Get () Float
-floatField = wordToFloat <$> getWord32le
+floatField :: Get () (Either Word32 Float)
+floatField = do
+  w <- getWord32le
+  let f = wordToFloat w
+  return $ if isNaN f && w /= 0xFFFFFFFF
+    then Left w
+    else Right f
 
 compressedField :: Get e ByteString
 compressedField = GZip.compress <$> getRemainingLazyByteString
