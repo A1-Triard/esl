@@ -267,7 +267,7 @@ data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 der
 
 data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] deriving (Eq, Show)
 
-data T3EssNpcData = T3EssNpcData Word8 Word8 Word32 deriving (Eq, Show)
+data T3EssNpcData = T3EssNpcData Word8 Word8 Word32 Word16 deriving (Eq, Show)
 
 data T3Field
   = T3BinaryField T3Sign ByteString
