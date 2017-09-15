@@ -21,7 +21,8 @@ data T3Mark
   | HVFX | AVFX | BSND | CSND | HSND | ASND | WEAT | SNAM
   | INAM | NNAM | PNAM | ONAM | TNAM | ENAM | TEXT | VNML
   | VHGT | VCLR | VTEX | WNAM | NAM9 | KLST | PCDT | LNAM
-  | FMAP | MAPD | MAPH
+  | FMAP | MAPD | MAPH | FGTN | LSHN | LSTN | ND3D | SLSD
+  | ZNAM
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -123,25 +124,25 @@ data T3FieldType
   | T3Header
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
-t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark NPC_) (T3Mark ANAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark ANAM) = T3String id
 t3FieldType _ (T3Mark ASND) = T3String id
 t3FieldType _ (T3Mark AVFX) = T3String id
-t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark BODY) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark CELL) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark CLOT) (T3Mark BNAM) = T3String $ T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark CONT) (T3Mark BNAM) = T3Multiline False $ T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark INFO) (T3Mark BNAM) = T3Multiline False $ T.dropWhileEnd (== '\0')
-t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark ARMO) (T3Mark BNAM) = T3String $ T.takeWhile (/= '\0')
+t3FieldType (T3Mark BODY) (T3Mark BNAM) = T3String $ T.takeWhile (/= '\0')
+t3FieldType (T3Mark CELL) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
+t3FieldType (T3Mark CLOT) (T3Mark BNAM) = T3String $ T.takeWhile (/= '\0')
+t3FieldType (T3Mark CONT) (T3Mark BNAM) = T3Multiline False $ T.takeWhile (/= '\0')
+t3FieldType (T3Mark INFO) (T3Mark BNAM) = T3Multiline False $ T.takeWhile (/= '\0')
+t3FieldType (T3Mark NPC_) (T3Mark BNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark PCDT) (T3Mark BNAM) = T3String id
 t3FieldType (T3Mark REGN) (T3Mark BNAM) = T3String id
 t3FieldType _ (T3Mark BNAM) = T3Multiline False id
 t3FieldType _ (T3Mark BSND) = T3String id
 t3FieldType _ (T3Mark BVFX) = T3String id
-t3FieldType (T3Mark ARMO) (T3Mark CNAM) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark ARMO) (T3Mark CNAM) = T3String $ T.takeWhile (/= '\0')
 t3FieldType (T3Mark KLST) (T3Mark CNAM) = T3Int
-t3FieldType (T3Mark NPC_) (T3Mark CNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark NPC_) (T3Mark CNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark REGN) (T3Mark CNAM) = T3Int
 t3FieldType _ (T3Mark CNAM) = T3String id
 t3FieldType _ (T3Mark CSND) = T3String id
@@ -151,18 +152,19 @@ t3FieldType (T3Mark LAND) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVC) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LEVI) (T3Mark DATA) = T3Int
 t3FieldType (T3Mark LTEX) (T3Mark DATA) = T3String id
-t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark SSCR) (T3Mark DATA) = T3String $ T.takeWhile (/= '\0')
 t3FieldType (T3Mark TES3) (T3Mark DATA) = T3Long
 t3FieldType (T3Mark DIAL) (T3Mark DELE) = T3None
 t3FieldType _ (T3Mark DESC) = T3String id
 t3FieldType _ (T3Mark DNAM) = T3String id
 t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String id
 t3FieldType (T3Mark PCDT) (T3Mark ENAM) = T3Long
+t3FieldType (T3Mark CELL) (T3Mark FGTN) = T3String id
 t3FieldType _ (T3Mark FLAG) = T3Int
 t3FieldType _ (T3Mark FLTV) = T3Float
-t3FieldType (T3Mark ACTI) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark ACTI) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark PCDT) (T3Mark FNAM) = T3Binary
-t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark RACE) (T3Mark FNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark FNAM) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark FRMR) = T3Int
 t3FieldType (T3Mark TES3) (T3Mark HEDR) = T3Header
@@ -178,24 +180,27 @@ t3FieldType (T3Mark LEVI) (T3Mark INTV) = T3Short
 t3FieldType _ (T3Mark INTV) = T3Int
 t3FieldType (T3Mark INGR) (T3Mark IRDT) = T3Ingredient
 t3FieldType _ (T3Mark ITEX) = T3String id
-t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark NPC_) (T3Mark KNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark PCDT) (T3Mark KNAM) = T3Binary
 t3FieldType _ (T3Mark KNAM) = T3String id
 t3FieldType (T3Mark PCDT) (T3Mark LNAM) = T3Long
+t3FieldType (T3Mark CELL) (T3Mark LSHN) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark LSTN) = T3String id
 t3FieldType (T3Mark FMAP) (T3Mark MAPD) = T3Compressed
 t3FieldType (T3Mark FMAP) (T3Mark MAPH) = T3Long
 t3FieldType (T3Mark TES3) (T3Mark MAST) = T3String id
-t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark LIGH) (T3Mark MODL) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark MODL) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark NAM0) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAM5) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark NAM9) = T3Int
 t3FieldType (T3Mark PCDT) (T3Mark NAM9) = T3Int
-t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark CELL) (T3Mark NAME) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark JOUR) (T3Mark NAME) = T3Multiline True id
-t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark SSCR) (T3Mark NAME) = T3String $ T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark NAME) = T3String id
-t3FieldType (T3Mark INFO) (T3Mark NNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark CELL) (T3Mark ND3D) = T3Byte
+t3FieldType (T3Mark INFO) (T3Mark NNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
 t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
 t3FieldType _ (T3Mark NNAM) = T3String id
@@ -205,7 +210,7 @@ t3FieldType (T3Mark NPC_) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark RACE) (T3Mark NPCS) = T3FixedString 32
 t3FieldType _ (T3Mark NPCS) = T3String id
 t3FieldType _ (T3Mark ONAM) = T3String id
-t3FieldType (T3Mark INFO) (T3Mark PNAM) = T3String $ (`T.snoc` '\0') . T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark INFO) (T3Mark PNAM) = T3String $ (`T.snoc` '\0') . T.takeWhile (/= '\0')
 t3FieldType (T3Mark PCDT) (T3Mark PNAM) = T3Binary
 t3FieldType _ (T3Mark PNAM) = T3String id
 t3FieldType _ (T3Mark PTEX) = T3String id
@@ -214,15 +219,16 @@ t3FieldType (T3Mark FACT) (T3Mark RNAM) = T3FixedString 32
 t3FieldType _ (T3Mark RNAM) = T3String id
 t3FieldType (T3Mark SCPT) (T3Mark SCHD) = T3Script
 t3FieldType _ (T3Mark SCRI) = T3String id
-t3FieldType _ (T3Mark SCTX) = T3Multiline False $ T.dropWhileEnd (== '\0')
+t3FieldType _ (T3Mark SCTX) = T3Multiline False $ T.takeWhile (/= '\0')
 t3FieldType (T3Mark SCPT) (T3Mark SCVR) = T3MultiString
 t3FieldType _ (T3Mark SCVR) = T3String id
+t3FieldType (T3Mark CELL) (T3Mark SLSD) = T3Short
 t3FieldType (T3Mark PCDT) (T3Mark SNAM) = T3Binary
 t3FieldType (T3Mark REGN) (T3Mark SNAM) = T3Binary
 t3FieldType _ (T3Mark SNAM) = T3String id
 t3FieldType _ (T3Mark STRV) = T3String id
 t3FieldType (T3Mark ALCH) (T3Mark TEXT) = T3String id
-t3FieldType (T3Mark BOOK) (T3Mark TEXT) = T3Multiline False $ T.dropWhileEnd (== '\0')
+t3FieldType (T3Mark BOOK) (T3Mark TEXT) = T3Multiline False $ T.takeWhile (/= '\0')
 t3FieldType _ (T3Mark TEXT) = T3Multiline False id
 t3FieldType _ (T3Mark TNAM) = T3String id
 t3FieldType _ (T3Mark VCLR) = T3Compressed
@@ -233,6 +239,7 @@ t3FieldType _ (T3Mark WEAT) = T3Binary
 t3FieldType (T3Mark CELL) (T3Mark WHGT) = T3Int
 t3FieldType _ (T3Mark WNAM) = T3Compressed
 t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
+t3FieldType (T3Mark CELL) (T3Mark ZNAM) = T3Byte
 t3FieldType _ _ = T3Binary
 
 data T3IngredientEffects = T3IngredientEffects Int32 Int32 Int32 Int32 deriving (Eq, Show)

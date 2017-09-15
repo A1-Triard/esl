@@ -184,7 +184,7 @@ testFile2 =
     , T3BinaryField (sign "IDID") "idid\0"
     ]
   , T3Record (sign "SCPT") t3FlagsEmpty
-    [ T3MultilineField (sign "SCTX") ["script\0", "text"]
+    [ T3MultilineField (sign "SCTX") ["script"]
     ]
   ]
 
