@@ -23,7 +23,7 @@ data T3Mark
   | VHGT | VCLR | VTEX | WNAM | NAM9 | KLST | PCDT | LNAM
   | FMAP | MAPD | MAPH | FGTN | LSHN | LSTN | ND3D | SLSD
   | ZNAM | ACDT | MNAM | SPLM | XIDX | XNAM | ACTN | WIDX
-  | XCHG | XHLT | XSOL
+  | XCHG | XHLT | XSOL | LVCR
   deriving (Eq, Ord, Enum, Bounded, Show)
 
 data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
@@ -191,6 +191,7 @@ t3FieldType _ (T3Mark KNAM) = T3String id
 t3FieldType (T3Mark PCDT) (T3Mark LNAM) = T3Long
 t3FieldType (T3Mark CELL) (T3Mark LSHN) = T3String id
 t3FieldType (T3Mark CELL) (T3Mark LSTN) = T3String id
+t3FieldType _ (T3Mark LVCR) = T3Byte
 t3FieldType (T3Mark FMAP) (T3Mark MAPD) = T3Compressed
 t3FieldType (T3Mark FMAP) (T3Mark MAPH) = T3Long
 t3FieldType (T3Mark TES3) (T3Mark MAST) = T3String id
