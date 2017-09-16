@@ -324,8 +324,7 @@ data T3NpcData = T3NpcData
   , t3NpcReputation :: !Int8
   , t3NpcRank :: !Int8
   , t3NpcGold :: !Int32
-  , t3NpcChar :: !(Maybe T3NpcDataChar)
-  , t3NpcUnknown :: !Word32
+  , t3NpcChar :: !(Either Word32 T3NpcDataChar)
   } deriving (Eq, Show)
 
 data T3Field

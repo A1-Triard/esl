@@ -103,11 +103,11 @@ putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index))
   <> i16 disposition
   <> i16 reputation
   <> w32 index
-putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch unknown)) =
+putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch)) =
   let
     (field_size, data_bytes) = case ch of
-      Nothing -> (12, i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral $ unknown `shiftR` 16) <> w16 (fromIntegral $ unknown .&. 0xFFFF))
-      Just d ->
+      Left u -> (12, i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral $ u `shiftR` 16) <> w16 (fromIntegral $ u .&. 0xFFFF))
+      Right d ->
         ( 52
           ,  w8 (t3NpcStrength d) <> w8 (t3NpcIntelligence d) <> w8 (t3NpcWillpower d) <> w8 (t3NpcAgility d)
           <> w8 (t3NpcSpeed d) <> w8 (t3NpcEndurance d) <> w8 (t3NpcPersonality d) <> w8 (t3NpcLuck d)
@@ -117,7 +117,7 @@ putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch 
           <> w8 (t3NpcRestoration d) <> w8 (t3NpcAlchemy d) <> w8 (t3NpcUnarmored d) <> w8 (t3NpcSecurity d) <> w8 (t3NpcSneak d) <> w8 (t3NpcAcrobatics d)
           <> w8 (t3NpcLightArmor d) <> w8 (t3NpcShortBlade d) <> w8 (t3NpcMarksman d) <> w8 (t3NpcMercantile d) <> w8 (t3NpcSpeechcraft d)
           <> w8 (t3NpcHandToHand d) <> w8 (t3NpcFaction d) <> i16 (t3NpcHealth d) <> i16 (t3NpcMagicka d) <> i16 (t3NpcFatigue d)
-          <> i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral unknown)
+          <> i8 disposition <> i8 reputation <> i8 rank <> w8 0
         )
     in
   sign s <> w32 field_size <> w16 level <> data_bytes <> i32 gold
