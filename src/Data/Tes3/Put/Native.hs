@@ -18,11 +18,20 @@ tail b n = runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIn
 w8 :: Word8 -> ByteString
 w8 = runPut . putWord8
 
+w16 :: Word16 -> ByteString
+w16 = runPut . putWord16le
+
 w32 :: Word32 -> ByteString
 w32 = runPut . putWord32le
 
 f32 :: Float -> ByteString
 f32 v = runPut (putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
+
+i8 :: Int8 -> ByteString
+i8 = BB.toLazyByteString . BB.int8
+
+i16 :: Int16 -> ByteString
+i16 = BB.toLazyByteString . BB.int16LE
 
 i32 :: Int32 -> ByteString
 i32 = BB.toLazyByteString . BB.int32LE
@@ -89,11 +98,29 @@ putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let d = t3StringValue $ T.intercalate "\r\n" descr in
   let items_count_placeholder = w32 0 in
   sign s <> runPut (putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder
-putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index unknown))
+putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index))
   =  sign s <> w32 8
-  <> w8 disposition <> w8 (fromIntegral $ (unknown .&. 0xFF00) `shiftR` 8)
-  <> w8 reputation <> w8 (fromIntegral $ unknown .&. 0xFF)
+  <> i16 disposition
+  <> i16 reputation
   <> w32 index
+putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch unknown)) =
+  let
+    (field_size, data_bytes) = case ch of
+      Nothing -> (12, i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral $ unknown `shiftR` 16) <> w16 (fromIntegral $ unknown .&. 0xFFFF))
+      Just d ->
+        ( 52
+          ,  w8 (t3NpcStrength d) <> w8 (t3NpcIntelligence d) <> w8 (t3NpcWillpower d) <> w8 (t3NpcAgility d)
+          <> w8 (t3NpcSpeed d) <> w8 (t3NpcEndurance d) <> w8 (t3NpcPersonality d) <> w8 (t3NpcLuck d)
+          <> w8 (t3NpcBlock d) <> w8 (t3NpcArmorer d) <> w8 (t3NpcMediumArmor d) <> w8 (t3NpcHeavyArmor d)
+          <> w8 (t3NpcBluntWeapon d) <> w8 (t3NpcLongBlade d) <> w8 (t3NpcAxe d) <> w8 (t3NpcSpear d) <> w8 (t3NpcAthletics d) <> w8 (t3NpcEnchant d)
+          <> w8 (t3NpcDestruction d) <> w8 (t3NpcAlteration d) <> w8 (t3NpcIllusion d) <> w8 (t3NpcConjuration d) <> w8 (t3NpcMysticism d)
+          <> w8 (t3NpcRestoration d) <> w8 (t3NpcAlchemy d) <> w8 (t3NpcUnarmored d) <> w8 (t3NpcSecurity d) <> w8 (t3NpcSneak d) <> w8 (t3NpcAcrobatics d)
+          <> w8 (t3NpcLightArmor d) <> w8 (t3NpcShortBlade d) <> w8 (t3NpcMarksman d) <> w8 (t3NpcMercantile d) <> w8 (t3NpcSpeechcraft d)
+          <> w8 (t3NpcHandToHand d) <> w8 (t3NpcFaction d) <> i16 (t3NpcHealth d) <> i16 (t3NpcMagicka d) <> i16 (t3NpcFatigue d)
+          <> i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral unknown)
+        )
+    in
+  sign s <> w32 field_size <> w16 level <> data_bytes <> i32 gold
 
 putT3Record :: T3Record -> ByteString
 putT3Record (T3Record s g fields) =

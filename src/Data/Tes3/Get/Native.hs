@@ -47,9 +47,9 @@ multilineField use_unix_newlines adjust = T.splitOn (if use_unix_newlines then "
 multiStringField :: Get e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
-dialField :: Bool -> Get StringE (Either Word32 T3DialType)
-dialField del =
-  if del
+dialField :: Word32 -> Get StringE (Either Word32 T3DialType)
+dialField field_size =
+  if field_size == 4
     then Left <$> getWord32le `withError` se "unexpected end of field."
     else do
       b <- getWord8 `withError` se "unexpected end of field."
@@ -122,12 +122,86 @@ fileHeaderData = do
 
 essNpcData :: Get () T3EssNpcData
 essNpcData = do
-  disposition <- getWord8
-  unknown1 <- getWord8
-  reputation <- getWord8
-  unknown2 <- getWord8
+  disposition <- getInt16le
+  reputation <- getInt16le
   index <- getWord32le
-  return $ T3EssNpcData disposition reputation index (fromIntegral unknown1 `shiftL` 8 .|. fromIntegral unknown2)
+  return $ T3EssNpcData disposition reputation index
+
+npcData :: Word32 -> Get () T3NpcData
+npcData field_size = do
+  let with_char = field_size == 52
+  level <- getWord16le
+  (ch, disposition, reputation, rank, unknown) <- if with_char
+    then do
+      strength <- getWord8
+      intelligence <- getWord8
+      willpower <- getWord8
+      agility <- getWord8
+      speed <- getWord8
+      endurance <- getWord8
+      personality <- getWord8
+      luck <- getWord8
+      block <- getWord8
+      armorer <- getWord8
+      mediumArmor <- getWord8
+      heavyArmor <- getWord8
+      bluntWeapon <- getWord8
+      longBlade <- getWord8
+      axe <- getWord8
+      spear <- getWord8
+      athletics <- getWord8
+      enchant <- getWord8
+      destruction <- getWord8
+      alteration <- getWord8
+      illusion <- getWord8
+      conjuration <- getWord8
+      mysticism <- getWord8
+      restoration <- getWord8
+      alchemy <- getWord8
+      unarmored <- getWord8
+      security <- getWord8
+      sneak <- getWord8
+      acrobatics <- getWord8
+      lightArmor <- getWord8
+      shortBlade <- getWord8
+      marksman <- getWord8
+      mercantile <- getWord8
+      speechcraft <- getWord8
+      handToHand <- getWord8
+      faction <- getWord8
+      health <- getInt16le
+      magicka <- getInt16le
+      fatigue <- getInt16le
+      disp <- getInt8
+      rep <- getInt8
+      rk <- getInt8
+      u <- getWord8
+      return
+        ( Just $ T3NpcDataChar
+            strength intelligence willpower agility speed endurance personality luck block armorer mediumArmor heavyArmor
+            bluntWeapon longBlade axe spear athletics enchant destruction alteration illusion conjuration mysticism restoration
+            alchemy unarmored security sneak acrobatics lightArmor shortBlade marksman mercantile speechcraft handToHand faction
+            health magicka fatigue
+        , disp
+        , rep
+        , rk
+        , fromIntegral u
+        )
+    else do
+      disp <- getInt8
+      rep <- getInt8
+      rk <- getInt8
+      u1 <- getWord8
+      u2 <- getWord16le
+      return
+        ( Nothing
+        , disp
+        , rep
+        , rk
+        , (fromIntegral u1 `shiftL` 16) .|. fromIntegral u2
+        )
+  gold <- getInt32le
+  return $ T3NpcData level disposition reputation rank gold ch unknown
 
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Either StringE ()) T3Field
 fieldBody adjust record_sign s field_size =
@@ -147,10 +221,11 @@ fieldBody adjust record_sign s field_size =
     f T3Compressed = onError Right $ T3CompressedField s <$> compressedField
     f T3Ingredient = onError Right $ T3IngredientField s <$> ingredientField
     f T3Script = onError Right $ T3ScriptField s <$> scriptField
-    f T3Dial = onError Left $ T3DialField s <$> dialField (field_size /= 1)
+    f T3Dial = onError Left $ T3DialField s <$> dialField field_size
     f T3None = (const $ T3NoneField s) <$> expect 0 getWord32le
     f T3Header = T3HeaderField s <$> fileHeaderData
     f T3EssNpc = onError Right $ T3EssNpcField s <$> essNpcData
+    f T3Npc = onError Right $ T3NpcField s <$> npcData field_size
 
 field :: Bool -> T3Sign -> Get StringE T3Field
 field adjust record_sign = do

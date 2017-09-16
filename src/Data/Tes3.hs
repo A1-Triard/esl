@@ -28,6 +28,8 @@ module Data.Tes3
   , T3IngredientData (..)
   , T3ScriptHeader (..)
   , T3EssNpcData (..)
+  , T3NpcDataChar (..)
+  , T3NpcData (..)
   ) where
 
 import Data.Tes3.Native

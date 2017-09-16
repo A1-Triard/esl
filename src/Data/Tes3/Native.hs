@@ -26,7 +26,7 @@ data T3Mark
   | XCHG | XHLT | XSOL | LVCR
   deriving (Eq, Ord, Enum, Bounded, Show)
 
-data T3Sign = T3Mark T3Mark | T3Sign Word32 deriving Eq
+data T3Sign = T3Mark !T3Mark | T3Sign !Word32 deriving Eq
 
 instance Show T3Sign where
   show (T3Mark m) = show m
@@ -107,8 +107,8 @@ t3DialTypeNew _ = Nothing
 
 data T3FieldType
   = T3Binary
-  | T3String (Text -> Text)
-  | T3Multiline Bool (Text -> Text)
+  | T3String !(Text -> Text)
+  | T3Multiline !Bool !(Text -> Text)
   | T3MultiString
   | T3Ref
   | T3FixedString Word32
@@ -124,6 +124,7 @@ data T3FieldType
   | T3None
   | T3Header
   | T3EssNpc
+  | T3Npc
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark INFO) (T3Mark ACDT) = T3String id
@@ -215,6 +216,7 @@ t3FieldType (T3Mark LEVC) (T3Mark NNAM) = T3Byte
 t3FieldType (T3Mark LEVI) (T3Mark NNAM) = T3Byte
 t3FieldType _ (T3Mark NNAM) = T3String id
 t3FieldType _ (T3Mark NPCO) = T3Ref
+t3FieldType (T3Mark NPC_) (T3Mark NPDT) = T3Npc
 t3FieldType (T3Mark NPCC) (T3Mark NPDT) = T3EssNpc
 t3FieldType (T3Mark BSGN) (T3Mark NPCS) = T3FixedString 32
 t3FieldType (T3Mark NPC_) (T3Mark NPCS) = T3FixedString 32
@@ -259,42 +261,99 @@ t3FieldType (T3Mark CELL) (T3Mark XSCL) = T3Int
 t3FieldType (T3Mark CELL) (T3Mark ZNAM) = T3Byte
 t3FieldType _ _ = T3Binary
 
-data T3IngredientEffects = T3IngredientEffects Int32 Int32 Int32 Int32 deriving (Eq, Show)
-data T3IngredientSkills = T3IngredientSkills Int32 Int32 Int32 Int32 deriving (Eq, Show)
-data T3IngredientAttributes = T3IngredientAttributes Int32 Int32 Int32 Int32 deriving (Eq, Show)
+data T3IngredientEffects = T3IngredientEffects !Int32 !Int32 !Int32 !Int32 deriving (Eq, Show)
+data T3IngredientSkills = T3IngredientSkills !Int32 !Int32 !Int32 !Int32 deriving (Eq, Show)
+data T3IngredientAttributes = T3IngredientAttributes !Int32 !Int32 !Int32 !Int32 deriving (Eq, Show)
 
-data T3IngredientData = T3IngredientData Float Word32 T3IngredientEffects T3IngredientSkills T3IngredientAttributes deriving (Eq, Show)
-data T3ScriptHeader = T3ScriptHeader Text Word32 Word32 Word32 Word32 Word32 deriving (Eq, Show)
+data T3IngredientData = T3IngredientData !Float !Word32 !T3IngredientEffects !T3IngredientSkills !T3IngredientAttributes deriving (Eq, Show)
+data T3ScriptHeader = T3ScriptHeader !Text !Word32 !Word32 !Word32 !Word32 !Word32 deriving (Eq, Show)
 
-data T3FileHeader = T3FileHeader Word32 T3FileType Text [Text] deriving (Eq, Show)
+data T3FileHeader = T3FileHeader !Word32 !T3FileType !Text ![Text] deriving (Eq, Show)
 
-data T3EssNpcData = T3EssNpcData Word8 Word8 Word32 Word16 deriving (Eq, Show)
+data T3EssNpcData = T3EssNpcData
+  { t3EssNpcDisposition :: !Int16
+  , t3EssNpcReputation :: !Int16
+  , t3EssNpcIndex :: !Word32
+  } deriving (Eq, Show)
+
+data T3NpcDataChar = T3NpcDataChar
+  { t3NpcStrength :: !Word8
+  , t3NpcIntelligence :: !Word8
+  , t3NpcWillpower :: !Word8
+  , t3NpcAgility :: !Word8
+  , t3NpcSpeed :: !Word8
+  , t3NpcEndurance :: !Word8
+  , t3NpcPersonality :: !Word8
+  , t3NpcLuck :: !Word8
+  , t3NpcBlock :: !Word8
+  , t3NpcArmorer :: !Word8
+  , t3NpcMediumArmor :: !Word8
+  , t3NpcHeavyArmor :: !Word8
+  , t3NpcBluntWeapon :: !Word8
+  , t3NpcLongBlade :: !Word8
+  , t3NpcAxe :: !Word8
+  , t3NpcSpear :: !Word8
+  , t3NpcAthletics :: !Word8
+  , t3NpcEnchant :: !Word8
+  , t3NpcDestruction :: !Word8
+  , t3NpcAlteration :: !Word8
+  , t3NpcIllusion :: !Word8
+  , t3NpcConjuration :: !Word8
+  , t3NpcMysticism :: !Word8
+  , t3NpcRestoration :: !Word8
+  , t3NpcAlchemy :: !Word8
+  , t3NpcUnarmored :: !Word8
+  , t3NpcSecurity :: !Word8
+  , t3NpcSneak :: !Word8
+  , t3NpcAcrobatics :: !Word8
+  , t3NpcLightArmor :: !Word8
+  , t3NpcShortBlade :: !Word8
+  , t3NpcMarksman :: !Word8
+  , t3NpcMercantile :: !Word8
+  , t3NpcSpeechcraft :: !Word8
+  , t3NpcHandToHand :: !Word8
+  , t3NpcFaction :: !Word8
+  , t3NpcHealth :: !Int16
+  , t3NpcMagicka :: !Int16
+  , t3NpcFatigue :: !Int16
+  } deriving (Eq, Show)
+
+data T3NpcData = T3NpcData
+  { t3NpcLevel :: !Word16
+  , t3NpcDisposition :: !Int8
+  , t3NpcReputation :: !Int8
+  , t3NpcRank :: !Int8
+  , t3NpcGold :: !Int32
+  , t3NpcChar :: !(Maybe T3NpcDataChar)
+  , t3NpcUnknown :: !Word32
+  } deriving (Eq, Show)
 
 data T3Field
-  = T3BinaryField T3Sign ByteString
-  | T3StringField T3Sign Text
-  | T3MultilineField T3Sign [Text]
-  | T3MultiStringField T3Sign [Text]
-  | T3RefField T3Sign Int32 Text
-  | T3FloatField T3Sign (Either Word32 Float)
-  | T3IntField T3Sign Int32
-  | T3ShortField T3Sign Int16
-  | T3LongField T3Sign Int64
-  | T3ByteField T3Sign Word8
-  | T3CompressedField T3Sign ByteString
-  | T3IngredientField T3Sign T3IngredientData
-  | T3ScriptField T3Sign T3ScriptHeader
-  | T3DialField T3Sign (Either Word32 T3DialType)
-  | T3NoneField T3Sign
-  | T3HeaderField T3Sign T3FileHeader
-  | T3EssNpcField T3Sign T3EssNpcData
+  = T3BinaryField !T3Sign !ByteString
+  | T3StringField !T3Sign !Text
+  | T3MultilineField !T3Sign ![Text]
+  | T3MultiStringField !T3Sign ![Text]
+  | T3RefField !T3Sign !Int32 !Text
+  | T3FloatField !T3Sign !(Either Word32 Float)
+  | T3IntField !T3Sign !Int32
+  | T3ShortField !T3Sign !Int16
+  | T3LongField !T3Sign !Int64
+  | T3ByteField !T3Sign !Word8
+  | T3CompressedField !T3Sign !ByteString
+  | T3IngredientField !T3Sign !T3IngredientData
+  | T3ScriptField !T3Sign !T3ScriptHeader
+  | T3DialField !T3Sign !(Either Word32 T3DialType)
+  | T3NoneField !T3Sign
+  | T3HeaderField !T3Sign !T3FileHeader
+  | T3EssNpcField !T3Sign !T3EssNpcData
+  | T3NpcField !T3Sign !T3NpcData
   deriving (Eq, Show)
 data T3Flags = T3Flags
-  { t3Persist :: Bool
-  , t3Blocked :: Bool
-  , t3Deleted :: Bool
+  { t3Persist :: !Bool
+  , t3Blocked :: !Bool
+  , t3Deleted :: !Bool
   } deriving (Eq, Show)
-data T3Record = T3Record T3Sign T3Flags [T3Field] deriving (Eq, Show)
+data T3Record = T3Record !T3Sign !T3Flags ![T3Field] deriving (Eq, Show)
 
 fPersist, fBlocked, fDeleted :: Word64
 fPersist = 0x40000000000
