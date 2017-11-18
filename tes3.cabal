@@ -1,5 +1,5 @@
 name:                tes3
-version:             0.11.1
+version:             0.11.2
 synopsis:            A library for reading, writing and processing ESM/ESP/ESS files.
 description:         A library for reading, writing and processing ESM/ESP/ESS files.
 homepage:            https://github.com/A1-Triard/tes3
@@ -7,7 +7,7 @@ license:             Apache
 license-file:        LICENSE
 author:              Warlock <internalmike@gmail.com>
 maintainer:          Warlock <internalmike@gmail.com>
-copyright:           2016 Warlock
+copyright:           2016, 2017 Warlock <internalmike@gmail.com>
 category:            Data
 build-type:          Simple
 -- extra-source-files:
@@ -16,11 +16,8 @@ cabal-version:       >=1.10
 library
   hs-source-dirs: src
   exposed-modules: Data.Tes3
-                 , Data.Tes3.Native
                  , Data.Tes3.Get
-                 , Data.Tes3.Get.Native
                  , Data.Tes3.Put
-                 , Data.Tes3.Put.Native
   default-extensions: CPP
                     , TemplateHaskell
                     , ViewPatterns
@@ -57,7 +54,7 @@ library
                     , ExplicitForAll
                     , BangPatterns
   include-dirs: include
-  ghc-options: -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports 
+  ghc-options: -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports
   build-depends: base >= 4.7 && < 5
                , MissingH
                , base64-bytestring
