@@ -4,6 +4,7 @@ test_data/
 *.ess
 *.test
 *.lkshs
+*.geany
 dist-*
 cabal-dev
 *.o
