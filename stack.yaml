@@ -39,13 +39,13 @@ packages:
 - '.'
 - location:
    git: https://github.com/A1-Triard/binary-ext.git
-   commit: 8c19818259a6d284d9308c5539874b3c00104cdf
+   commit: 2db6cdbf8d983cb52e6f711fb61b532eeb336fb4
   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps:
-- binary-ext-1.0.8.5.1
+#extra-deps:
+#- binary-ext-2.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
