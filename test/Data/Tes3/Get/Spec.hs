@@ -20,7 +20,6 @@ module Data.Tes3.Get.Spec
 
 #define TESTS
 #include <haskell>
-import Data.Binary.Conduit.Get
 import Data.Tes3
 import Data.Tes3.Get
 

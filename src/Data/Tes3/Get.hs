@@ -19,7 +19,6 @@ module Data.Tes3.Get
   ) where
 
 #include <haskell>
-import Data.Binary.Conduit.Get
 import Data.Tes3
 
 se :: String -> Word64 -> String
