@@ -205,7 +205,7 @@ testFile2 =
     ]
   ]
 
-getT3File :: Bool -> Get T3Record (Word64 -> String) ()
+getT3File :: Monad m => Bool -> GetM T3Record (Word64 -> String) m ()
 getT3File adjust = whileM_ (not <$> endOfInput) $ yield =<< getT3Record adjust
 
 runGetT3File :: Bool -> ByteString -> (Word64, Either String [T3Record])
