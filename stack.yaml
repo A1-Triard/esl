@@ -39,7 +39,7 @@ packages:
 - '.'
 - location:
    git: https://github.com/A1-Triard/binary-ext.git
-   commit: 2db6cdbf8d983cb52e6f711fb61b532eeb336fb4
+   commit: 57c93f4c85d865f81b2d08b69b221f3b777b4852
   extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
