@@ -19,67 +19,68 @@ module Data.Tes3.Get
   ) where
 
 #include <haskell>
+import Data.Binary.Conduit.Get
 import Data.Tes3
 
-se :: String -> ByteOffset -> String
+se :: String -> Word64 -> String
 se s off = showHex off $ "h: " ++ s
 
-type StringE = ByteOffset -> String
+type StringE = Word64 -> String
 
-expect :: (Show a, Eq a) => a -> Get e a -> Get (Either StringE e) ()
+expect :: Monad m => (Show a, Eq a) => a -> GetM o e m a -> GetM o (Either StringE e) m ()
 expect expected getter = do
-  offset <- totalBytesRead
-  actual <- onError Right getter
+  offset <- bytesRead
+  actual <- mapError Right getter
   if actual /= expected
-    then failG $ Left $ const $ concat [showHex offset $ "h: ", shows expected " expected, but ", shows actual " provided."]
+    then throwError $ Left $ const $ concat [showHex offset $ "h: ", shows expected " expected, but ", shows actual " provided."]
     else return ()
 
-sign :: Get () T3Sign
+sign :: Get o () T3Sign
 sign = t3SignNew <$> getWord32le
 
-size :: Get () Word32
+size :: Get o () Word32
 size = getWord32le
 
-flags :: Get (Either StringE ()) T3Flags
+flags :: Get o (Either StringE ()) T3Flags
 flags = do
-  offset <- totalBytesRead
-  w <- onError Right getWord64le
+  offset <- bytesRead
+  w <- mapError Right getWord64le
   case t3FlagsNew w of
-    Nothing -> failG $ Left $ const $ showHex offset $ "h: invalid record flags (" ++ showHex w "h)."
+    Nothing -> throwError $ Left $ const $ showHex offset $ "h: invalid record flags (" ++ showHex w "h)."
     Just f -> return f
 
-binaryField :: Get e ByteString
+binaryField :: Get o e ByteString
 binaryField = getRemainingLazyByteString
 
-stringField :: Get e Text
+stringField :: Get o e Text
 stringField = t3StringNew <$> getRemainingLazyByteString
 
-multilineField :: Bool -> (Text -> Text) -> Get e [Text]
+multilineField :: Bool -> (Text -> Text) -> Get o e [Text]
 multilineField use_unix_newlines adjust = T.splitOn (if use_unix_newlines then "\n" else "\r\n") <$> adjust <$> t3StringNew <$> getRemainingLazyByteString
 
-multiStringField :: Get e [Text]
+multiStringField :: Get o e [Text]
 multiStringField = T.splitOn "\0" <$> t3StringNew <$> getRemainingLazyByteString
 
-dialField :: Word32 -> Get StringE (Either Word32 T3DialType)
+dialField :: Word32 -> Get o StringE (Either Word32 T3DialType)
 dialField field_size =
   if field_size == 4
-    then Left <$> getWord32le `withError` se "unexpected end of field."
+    then Left <$> getWord32le `ifError` se "unexpected end of field."
     else do
-      b <- getWord8 `withError` se "unexpected end of field."
+      b <- getWord8 `ifError` se "unexpected end of field."
       case t3DialTypeNew b of
         Just t -> return $ Right t
-        Nothing -> failG $ se "invalid dial type."
+        Nothing -> throwError $ se "invalid dial type."
 
-refField :: Get () (Int32, Text)
+refField :: Get o () (Int32, Text)
 refField = do
   z <- getInt32le
   n <- getLazyByteString 32
   return (z, T.dropWhileEnd (== '\0') $ t3StringNew n)
 
-fixedStringField :: Word32 -> Get () Text
+fixedStringField :: Word32 -> Get o () Text
 fixedStringField z = T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString (fromIntegral z)
 
-floatField :: Get () (Either Word32 Float)
+floatField :: Get o () (Either Word32 Float)
 floatField = do
   w <- getWord32le
   let f = wordToFloat w
@@ -87,10 +88,10 @@ floatField = do
     then Left w
     else Right f
 
-compressedField :: Get e ByteString
+compressedField :: Get o e ByteString
 compressedField = GZip.compress <$> getRemainingLazyByteString
 
-ingredientField :: Get () T3IngredientData
+ingredientField :: Get o () T3IngredientData
 ingredientField = do
   weight <- wordToFloat <$> getWord32le
   value <- getWord32le
@@ -111,7 +112,7 @@ ingredientField = do
     (T3IngredientSkills s1 s2 s3 s4)
     (T3IngredientAttributes a1 a2 a3 a4)
 
-scriptField :: Get () T3ScriptHeader
+scriptField :: Get o () T3ScriptHeader
 scriptField = do
   name <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> getLazyByteString 32
   shorts <- getWord32le
@@ -121,26 +122,26 @@ scriptField = do
   var_table_size <- getWord32le
   return $ T3ScriptHeader name shorts longs floats data_size var_table_size
 
-fileHeaderData :: Get (Either StringE ()) T3FileHeader
+fileHeaderData :: Get o (Either StringE ()) T3FileHeader
 fileHeaderData = do
-  version <- getWord32le `withError` Right ()
-  file_type_value <- getWord32le `withError` Right ()
+  version <- getWord32le `ifError` Right ()
+  file_type_value <- getWord32le `ifError` Right ()
   file_type <- case t3FileTypeNew file_type_value of
-    Nothing -> failG $ Left $ const $ "Unknown file type: " ++ show file_type_value ++ "."
+    Nothing -> throwError $ Left $ const $ "Unknown file type: " ++ show file_type_value ++ "."
     Just x -> return x
-  author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `withError` Right ()
-  description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `withError` Right ()
-  void $ getWord32le `withError` Right ()
+  author <- T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 32 `ifError` Right ()
+  description <- T.splitOn "\r\n" <$> T.dropWhileEnd (== '\0') <$> t3StringNew <$> B.fromStrict <$> getByteString 256 `ifError` Right ()
+  void $ getWord32le `ifError` Right ()
   return $ T3FileHeader version file_type author description
 
-essNpcData :: Get () T3EssNpcData
+essNpcData :: Get o () T3EssNpcData
 essNpcData = do
   disposition <- getInt16le
   reputation <- getInt16le
   index <- getWord32le
   return $ T3EssNpcData disposition reputation index
 
-npcDataChar :: Get () T3NpcDataChar
+npcDataChar :: Get o () T3NpcDataChar
 npcDataChar = do
   strength <- getWord8
   intelligence <- getWord8
@@ -187,71 +188,79 @@ npcDataChar = do
     alchemy unarmored security sneak acrobatics lightArmor shortBlade marksman mercantile speechcraft handToHand faction
     health magicka fatigue
 
-npcData :: Word32 -> Get (Either StringE ()) T3NpcData
+npcData :: Word32 -> Get o (Either StringE ()) T3NpcData
 npcData field_size = do
   let with_char = field_size == 52
-  level <- getWord16le `withError` Right ()
+  level <- getWord16le `ifError` Right ()
   (ch, disposition, reputation, rank) <- if with_char
     then do
-      c <- npcDataChar `withError` Right ()
-      disp <- getInt8 `withError` Right ()
-      rep <- getInt8 `withError` Right ()
-      rk <- getInt8 `withError` Right ()
+      c <- npcDataChar `ifError` Right ()
+      disp <- getInt8 `ifError` Right ()
+      rep <- getInt8 `ifError` Right ()
+      rk <- getInt8 `ifError` Right ()
       expect 0 getWord8
       return (Right c, disp, rep, rk)
     else do
-      disp <- getInt8 `withError` Right ()
-      rep <- getInt8 `withError` Right ()
-      rk <- getInt8 `withError` Right ()
-      u1 <- getWord8 `withError` Right ()
-      u2 <- getWord16le `withError` Right ()
+      disp <- getInt8 `ifError` Right ()
+      rep <- getInt8 `ifError` Right ()
+      rk <- getInt8 `ifError` Right ()
+      u1 <- getWord8 `ifError` Right ()
+      u2 <- getWord16le `ifError` Right ()
       return ( Left $ (fromIntegral u1 `shiftL` 16) .|. fromIntegral u2, disp, rep, rk)
-  gold <- getInt32le `withError` Right ()
+  gold <- getInt32le `ifError` Right ()
   return $ T3NpcData level disposition reputation rank gold ch
 
-fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get (Either StringE ()) T3Field
+fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get o (Either StringE ()) T3Field
 fieldBody adjust record_sign s field_size =
   f (t3FieldType record_sign s)
   where
-    f (T3FixedString z) = onError Right $ T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
-    f (T3String a) = onError Right $ T3StringField s <$> (if adjust then a else id) <$> stringField
-    f (T3Multiline use_unix_newlines a) = onError Right $ T3MultilineField s <$> multilineField use_unix_newlines (if adjust then a else id)
-    f T3MultiString = onError Right $ T3MultiStringField s <$> multiStringField
-    f T3Ref = onError Right $ (\(z, n) -> T3RefField s z n) <$> refField
-    f T3Binary = onError Right $ T3BinaryField s <$> binaryField
-    f T3Float = onError Right $ T3FloatField s <$> floatField
-    f T3Int = onError Right $ T3IntField s <$> getInt32le
-    f T3Short = onError Right $ T3ShortField s <$> getInt16le
-    f T3Long = onError Right $ T3LongField s <$> getInt64le
-    f T3Byte = onError Right $ T3ByteField s <$> getWord8
-    f T3Compressed = onError Right $ T3CompressedField s <$> compressedField
-    f T3Ingredient = onError Right $ T3IngredientField s <$> ingredientField
-    f T3Script = onError Right $ T3ScriptField s <$> scriptField
-    f T3Dial = onError Left $ T3DialField s <$> dialField field_size
+    f (T3FixedString z) = mapError Right $ T3StringField s . (`T.snoc` '\0') <$> fixedStringField z
+    f (T3String a) = mapError Right $ T3StringField s <$> (if adjust then a else id) <$> stringField
+    f (T3Multiline use_unix_newlines a) = mapError Right $ T3MultilineField s <$> multilineField use_unix_newlines (if adjust then a else id)
+    f T3MultiString = mapError Right $ T3MultiStringField s <$> multiStringField
+    f T3Ref = mapError Right $ (\(z, n) -> T3RefField s z n) <$> refField
+    f T3Binary = mapError Right $ T3BinaryField s <$> binaryField
+    f T3Float = mapError Right $ T3FloatField s <$> floatField
+    f T3Int = mapError Right $ T3IntField s <$> getInt32le
+    f T3Short = mapError Right $ T3ShortField s <$> getInt16le
+    f T3Long = mapError Right $ T3LongField s <$> getInt64le
+    f T3Byte = mapError Right $ T3ByteField s <$> getWord8
+    f T3Compressed = mapError Right $ T3CompressedField s <$> compressedField
+    f T3Ingredient = mapError Right $ T3IngredientField s <$> ingredientField
+    f T3Script = mapError Right $ T3ScriptField s <$> scriptField
+    f T3Dial = mapError Left $ T3DialField s <$> dialField field_size
     f T3None = (const $ T3NoneField s) <$> expect 0 getWord32le
     f T3Header = T3HeaderField s <$> fileHeaderData
-    f T3EssNpc = onError Right $ T3EssNpcField s <$> essNpcData
+    f T3EssNpc = mapError Right $ T3EssNpcField s <$> essNpcData
     f T3Npc = T3NpcField s <$> npcData field_size
 
-field :: Bool -> T3Sign -> Get StringE T3Field
+field :: Bool -> T3Sign -> Get o StringE T3Field
 field adjust record_sign = do
-  s <- sign `withError` se "unexpected end of field."
-  z <- size `withError` se "unexpected end of field."
-  let body = onError (either id $ const $ se "unexpected end of field.") $ fieldBody adjust record_sign s z
-  isolate (fromIntegral z) body $ \c -> se $ "field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  s <- sign `ifError` se "unexpected end of field."
+  z <- size `ifError` se "unexpected end of field."
+  isolate
+    (fromIntegral z)
+    (se "unexpected end of file.")
+    (\c -> se $ "field size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed.")
+    $ mapError (either id $ const $ se "unexpected end of field.") $ fieldBody adjust record_sign s z
 
-recordBody :: Bool -> T3Sign -> Get StringE [T3Field]
-recordBody adjust s = whileM (not <$> isEmpty) $ field adjust s
+recordBody :: Bool -> T3Sign -> Get o StringE [T3Field]
+recordBody adjust s = whileM (not <$> endOfInput) $ field adjust s
 
-recordTail :: Bool -> T3Sign -> Get (Either StringE ()) (T3Flags, [T3Field])
+recordTail :: Bool -> T3Sign -> Get o (Either StringE ()) (T3Flags, [T3Field])
 recordTail adjust s = do
-  z <- size `withError` Right ()
+  z <- size `ifError` Right ()
   g <- flags
-  f <- onError Left $ isolate (fromIntegral z) (recordBody adjust s) $ \c -> se $ "record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed."
+  f <- mapError Left
+    $ isolate
+      (fromIntegral z)
+      (se "unexpected end of file.")
+      (\c -> se $ "record size mismatch: " ++ show z ++ " expected, but " ++ show c ++ " consumed.")
+    $ recordBody adjust s
   return (g, f)
 
-getT3Record :: Bool -> Get StringE T3Record
+getT3Record :: Bool -> Get o StringE T3Record
 getT3Record adjust = do
-  s <- sign `withError` se "unexpected end of record."
-  (g, f) <- onError (either id (const $ se "unexpected end of record.")) $ recordTail adjust s
+  s <- sign `ifError` se "unexpected end of record."
+  (g, f) <- mapError (either id (const $ se "unexpected end of record.")) $ recordTail adjust s
   return $ T3Record s g f

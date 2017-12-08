@@ -18,54 +18,60 @@ library
   exposed-modules: Data.Tes3
                  , Data.Tes3.Get
                  , Data.Tes3.Put
-  default-extensions: CPP
-                    , TemplateHaskell
-                    , ViewPatterns
-                    , MultiParamTypeClasses
+  default-extensions: BangPatterns
+                    , CPP
+                    , DataKinds
+                    , DefaultSignatures
                     , DeriveDataTypeable
                     , DeriveGeneric
                     , DeriveFoldable
                     , DeriveTraversable
-                    , StandaloneDeriving
-                    , UnicodeSyntax
-                    , MagicHash
-                    , DefaultSignatures
-                    , NegativeLiterals
-                    , PatternSynonyms
-                    , ParallelListComp
-                    , TransformListComp
-                    , MonadComprehensions
-                    , UnboxedTuples
-                    , LambdaCase
                     , EmptyCase
                     , EmptyDataDecls
-                    , MultiWayIf
-                    , TypeOperators
-                    , TypeFamilies
-                    , KindSignatures
-                    , LiberalTypeSynonyms
                     , ExistentialQuantification
-                    , GADTs
-                    , DeriveAnyClass
+                    , ExplicitForAll
                     , FlexibleContexts
                     , FlexibleInstances
+                    , GADTs
+                    , GeneralizedNewtypeDeriving
+                    , KindSignatures
+                    , LambdaCase
+                    , LiberalTypeSynonyms
+                    , MagicHash
+                    , MonadComprehensions
+                    , MultiParamTypeClasses
+                    , MultiWayIf
+                    , NegativeLiterals
                     , OverloadedStrings
-                    , DataKinds
-                    , ExplicitForAll
-                    , BangPatterns
+                    , ParallelListComp
+                    , PatternSynonyms
+                    , RankNTypes
+                    , ScopedTypeVariables
+                    , StandaloneDeriving
+                    , TemplateHaskell
+                    , TransformListComp
+                    , TypeFamilies
+                    , TypeOperators
+                    , UnboxedTuples
+                    , UndecidableInstances
+                    , UnicodeSyntax
+                    , ViewPatterns
   include-dirs: include
-  ghc-options: -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports
+  ghc-options: -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports -fsimpl-tick-factor=110
   build-depends: base >= 4.7 && < 5
                , MissingH
                , base64-bytestring
                , binary
-               , binary-ext
+               , binary-ext >= 2.0
                , bytestring
+               , conduit
+               , conduit-combinators
                , containers
                , data-binary-ieee754
                , errors
                , monad-loops
                , mono-traversable
+               , mtl
                , semigroups
                , split
                , text
@@ -81,54 +87,60 @@ test-suite tes3-test
   main-is: Spec.hs
   other-modules: Data.Tes3.Get.Spec
                , Data.Tes3.Spec
-  default-extensions: CPP
-                    , TemplateHaskell
-                    , ViewPatterns
-                    , MultiParamTypeClasses
+  default-extensions: BangPatterns
+                    , CPP
+                    , DataKinds
+                    , DefaultSignatures
                     , DeriveDataTypeable
                     , DeriveGeneric
                     , DeriveFoldable
                     , DeriveTraversable
-                    , StandaloneDeriving
-                    , UnicodeSyntax
-                    , MagicHash
-                    , DefaultSignatures
-                    , NegativeLiterals
-                    , PatternSynonyms
-                    , ParallelListComp
-                    , TransformListComp
-                    , MonadComprehensions
-                    , UnboxedTuples
-                    , LambdaCase
                     , EmptyCase
                     , EmptyDataDecls
-                    , MultiWayIf
-                    , TypeOperators
-                    , TypeFamilies
-                    , KindSignatures
-                    , LiberalTypeSynonyms
                     , ExistentialQuantification
-                    , GADTs
-                    , DeriveAnyClass
+                    , ExplicitForAll
                     , FlexibleContexts
                     , FlexibleInstances
+                    , GADTs
+                    , GeneralizedNewtypeDeriving
+                    , KindSignatures
+                    , LambdaCase
+                    , LiberalTypeSynonyms
+                    , MagicHash
+                    , MonadComprehensions
+                    , MultiParamTypeClasses
+                    , MultiWayIf
+                    , NegativeLiterals
                     , OverloadedStrings
-                    , DataKinds
-                    , ExplicitForAll
-                    , BangPatterns
+                    , ParallelListComp
+                    , PatternSynonyms
+                    , RankNTypes
+                    , ScopedTypeVariables
+                    , StandaloneDeriving
+                    , TemplateHaskell
+                    , TransformListComp
+                    , TypeFamilies
+                    , TypeOperators
+                    , UnboxedTuples
+                    , UndecidableInstances
+                    , UnicodeSyntax
+                    , ViewPatterns
   include-dirs: include
   build-depends: base
                , HUnit
                , MissingH
                , base64-bytestring
                , binary
-               , binary-ext
+               , binary-ext >= 2.0
                , bytestring
+               , conduit
+               , conduit-combinators
                , containers
                , data-binary-ieee754
                , errors
                , monad-loops
                , mono-traversable
+               , mtl
                , semigroups
                , split
                , tes3
@@ -137,7 +149,7 @@ test-suite tes3-test
                , utility-ht
                , utf8-string
                , zlib
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -fmax-pmcheck-iterations=100000000 -O2 -Wall -Werror -fno-warn-unused-imports -fsimpl-tick-factor=110
   default-language: Haskell2010
 
 source-repository head

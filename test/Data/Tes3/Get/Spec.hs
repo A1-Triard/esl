@@ -20,6 +20,7 @@ module Data.Tes3.Get.Spec
 
 #define TESTS
 #include <haskell>
+import Data.Binary.Conduit.Get
 import Data.Tes3
 import Data.Tes3.Get
 
@@ -204,15 +205,15 @@ testFile2 =
     ]
   ]
 
-getT3File :: Bool -> Get (ByteOffset -> String) [T3Record]
-getT3File adjust = whileM (not <$> isEmpty) $ getT3Record adjust
+getT3File :: Bool -> Get T3Record (Word64 -> String) ()
+getT3File adjust = whileM_ (not <$> endOfInput) $ yield =<< getT3Record adjust
 
-runGetT3File :: Bool -> ByteString -> (ByteOffset, Either String [T3Record])
+runGetT3File :: Bool -> ByteString -> (Word64, Either String [T3Record])
 runGetT3File adjust inp =
-  case pushEndOfInput $ runGetIncremental 0 (getT3File adjust) `pushChunks` inp of
-    G.Done (SB.null -> True) offset r -> (offset, Right r)
-    G.Fail _ offset (Right e) -> (offset, Left $ e offset)
-    _ -> error "runGetT3File"
+    let ((!me, !offset), !r) = runIdentity $ N.yieldMany (B.toChunks inp) $$ runGet (getT3File adjust) `fuseBoth` N.sinkList in
+    case me of
+      Right () -> (offset, Right r)
+      Left !e -> (offset, Left $ e offset)
 
 parseEmptyFile :: Assertion
 parseEmptyFile = do
