@@ -21,46 +21,52 @@ module Data.Tes3.Put
 #include <haskell>
 import Data.Tes3
 
-sign :: T3Sign -> ByteString
-sign = S.runPut . S.putWord32le . t3SignValue
+sign :: T3Sign -> Put
+sign = putWord32le . t3SignValue
 
-size :: ByteString -> ByteString
-size = S.runPut . S.putWord32le . fromIntegral . B.length
+size :: ByteString -> Put
+size = putWord32le . fromIntegral . B.length
 
-flags :: T3Flags -> ByteString
-flags = S.runPut . S.putWord64le . t3FlagsValue
+flags :: T3Flags -> Put
+flags = putWord64le . t3FlagsValue
 
-tail :: ByteString -> Word32 -> ByteString
-tail b n = S.runPut (foldl (>>) (return ()) $ replicate (fromIntegral $ n - fromIntegral (B.length b)) (S.putWord8 0))
+tail :: ByteString -> Word32 -> Put
+tail b n = replicateM_ (fromIntegral $ n - fromIntegral (B.length b)) (putWord8 0)
 
-w8 :: Word8 -> ByteString
-w8 = S.runPut . S.putWord8
+w8 :: Word8 -> Put
+w8 = putWord8
 
-w16 :: Word16 -> ByteString
-w16 = S.runPut . S.putWord16le
+w16 :: Word16 -> Put
+w16 = putWord16le
 
-w32 :: Word32 -> ByteString
-w32 = S.runPut . S.putWord32le
+w32 :: Word32 -> Put
+w32 = putWord32le
 
-f32 :: Float -> ByteString
-f32 v = S.runPut (S.putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v)
+f32 :: Float -> Put
+f32 v = putWord32le $ if isNaN v then 0xFFFFFFFF else floatToWord v
 
-i8 :: Int8 -> ByteString
-i8 = BB.toLazyByteString . BB.int8
+i8 :: Int8 -> Put
+i8 = putInt8
 
-i16 :: Int16 -> ByteString
-i16 = BB.toLazyByteString . BB.int16LE
+i16 :: Int16 -> Put
+i16 = putInt16le
 
-i32 :: Int32 -> ByteString
-i32 = BB.toLazyByteString . BB.int32LE
+i32 :: Int32 -> Put
+i32 = putInt32le
 
-putT3Field :: T3Sign -> T3Field -> ByteString
-putT3Field _ (T3BinaryField s b) = sign s <> size b <> b
+i64 :: Int64 -> Put
+i64 = putInt64le
+
+bin :: ByteString -> Put
+bin = putLazyByteString
+
+putT3Field :: T3Sign -> T3Field -> Put
+putT3Field _ (T3BinaryField s b) = sign s <> size b <> bin b
 putT3Field record_sign (T3StringField s t) =
   let b = t3StringValue t in
   case t3FieldType record_sign s of
-    T3FixedString n -> sign s <> w32 n <> b <> tail b n
-    T3String _ -> sign s <> size b <> b
+    T3FixedString n -> sign s <> w32 n <> bin b <> tail b n
+    T3String _ -> sign s <> size b <> bin b
     _ -> error "putT3Field T3StringField"
 putT3Field record_sign (T3MultilineField s t) =
   let
@@ -69,21 +75,21 @@ putT3Field record_sign (T3MultilineField s t) =
       _ -> error "putT3Field T3MultilineField"
     in
   let b = t3StringValue $ T.intercalate delimiter t in
-  sign s <> size b <> b
+  sign s <> size b <> bin b
 putT3Field _ (T3MultiStringField s t) =
   let b = t3StringValue $ T.intercalate "\0" t in
-  sign s <> size b <> b
+  sign s <> size b <> bin b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s <> w32 36 <> i32 n <> b <> tail b 32
+  sign s <> w32 36 <> i32 n <> bin b <> tail b 32
 putT3Field _ (T3FloatField s v) = sign s <> w32 4 <> either w32 f32 v
 putT3Field _ (T3IntField s v) = sign s <> w32 4 <> i32 v
-putT3Field _ (T3ShortField s v) = sign s <> w32 2 <> BB.toLazyByteString (BB.int16LE v)
-putT3Field _ (T3LongField s v) = sign s <> w32 8 <> BB.toLazyByteString (BB.int64LE v)
-putT3Field _ (T3ByteField s v) = sign s <> w32 1 <> S.runPut (S.putWord8 v)
+putT3Field _ (T3ShortField s v) = sign s <> w32 2 <> i16 v
+putT3Field _ (T3LongField s v) = sign s <> w32 8 <> i64 v
+putT3Field _ (T3ByteField s v) = sign s <> w32 1 <> w8 v
 putT3Field _ (T3CompressedField s b) =
   let u = GZip.decompress b in
-  sign s <> size u <> u
+  sign s <> size u <> bin u
 putT3Field _
   ( T3IngredientField s
     ( T3IngredientData weight value
@@ -91,11 +97,11 @@ putT3Field _
       (T3IngredientSkills s1 s2 s3 s4)
       (T3IngredientAttributes a1 a2 a3 a4)
     )
-  ) =
-  sign s <> w32 56 <> f32 weight <> w32 value
-    <> i32 e1 <> i32 e2 <> i32 e3 <> i32 e4
-    <> i32 s1 <> i32 s2 <> i32 s3 <> i32 s4
-    <> i32 a1 <> i32 a2 <> i32 a3 <> i32 a4
+  )
+  =  sign s <> w32 56 <> f32 weight <> w32 value
+  <> i32 e1 <> i32 e2 <> i32 e3 <> i32 e4
+  <> i32 s1 <> i32 s2 <> i32 s3 <> i32 s4
+  <> i32 a1 <> i32 a2 <> i32 a3 <> i32 a4
 putT3Field _
   ( T3ScriptField s
     ( T3ScriptHeader name
@@ -103,8 +109,8 @@ putT3Field _
       data_size var_table_size
     )
   ) =
-  let b = t3StringValue name in
-  sign s <> w32 52 <> b <> tail b 32
+  let b = t3StringValue name
+    in sign s <> w32 52 <> bin b <> tail b 32
     <> w32 shorts <> w32 longs <> w32 floats
     <> w32 data_size <> w32 var_table_size
 putT3Field _ (T3DialField s v) = sign s <> either ((w32 4 <>) . w32) ((w32 1 <>) . w8 . t3DialTypeValue) v
@@ -114,8 +120,9 @@ putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let f = w32 $ t3FileTypeValue file_type in
   let a = t3StringValue author in
   let d = t3StringValue $ T.intercalate "\r\n" descr in
-  let items_count_placeholder = w32 0 in
-  sign s <> S.runPut (S.putWord32le 300) <> v <> f <> a <> tail a 32 <> d <> tail d 256 <> items_count_placeholder
+  let items_count_placeholder = w32 0
+    in sign s <> w32 300 <> v <> f <> bin a
+    <> tail a 32 <> bin d <> tail d 256 <> items_count_placeholder
 putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index))
   =  sign s <> w32 8
   <> i16 disposition
@@ -140,7 +147,7 @@ putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch)
     in
   sign s <> w32 field_size <> w16 level <> data_bytes <> i32 gold
 
-putT3Record :: T3Record -> ByteString
-putT3Record (T3Record s g fields) =
-  let b = foldl (<>) B.empty [putT3Field s f | f <- fields] in
-  sign s <> size b <> flags g <> b
+putT3Record :: T3Record -> Put
+putT3Record (T3Record s g fields) = do
+  let b = mconcat [putT3Field s f | f <- fields]
+  sign s <> w32 (fromIntegral $ bytesGoingWrite b) <> flags g <> b
