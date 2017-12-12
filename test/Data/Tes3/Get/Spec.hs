@@ -205,7 +205,7 @@ testFile2 =
   ]
 
 getT3File :: Monad m => Bool -> GetM T3Record (Word64 -> String) m ()
-getT3File adjust = whileM_ (not <$> endOfInput) $ yield =<< getT3Record adjust
+getT3File adjust = whileM_ (not <$> N.nullE) $ yield =<< getT3Record adjust
 
 runGetT3File :: Bool -> ByteString -> (Word64, Either String [T3Record])
 runGetT3File adjust inp =
@@ -220,8 +220,8 @@ parseEmptyFile = do
 
 parseShortInvalidFile :: Assertion
 parseShortInvalidFile = do
-  assertEqual "" (0, Left "0h: unexpected end of record.") $ runGetT3File False $ C.pack "TE"
-  assertEqual "" (0, Left "0h: unexpected end of record.") $ runGetT3File False $ C.pack "X0"
+  assertEqual "" (2, Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "TE"
+  assertEqual "" (2, Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "X0"
 
 parseLongInvalidFile :: Assertion
 parseLongInvalidFile = do

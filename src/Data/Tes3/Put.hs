@@ -61,12 +61,12 @@ bin :: ByteString -> Put
 bin = putLazyByteString
 
 putT3Field :: T3Sign -> T3Field -> Put
-putT3Field _ (T3BinaryField s b) = sign s <> size b <> bin b
+putT3Field _ (T3BinaryField s b) = sign s >> size b >> bin b
 putT3Field record_sign (T3StringField s t) =
   let b = t3StringValue t in
   case t3FieldType record_sign s of
-    T3FixedString n -> sign s <> w32 n <> bin b <> tail b n
-    T3String _ -> sign s <> size b <> bin b
+    T3FixedString n -> sign s >> w32 n >> bin b >> tail b n
+    T3String _ -> sign s >> size b >> bin b
     _ -> error "putT3Field T3StringField"
 putT3Field record_sign (T3MultilineField s t) =
   let
@@ -75,21 +75,21 @@ putT3Field record_sign (T3MultilineField s t) =
       _ -> error "putT3Field T3MultilineField"
     in
   let b = t3StringValue $ T.intercalate delimiter t in
-  sign s <> size b <> bin b
+  sign s >> size b >> bin b
 putT3Field _ (T3MultiStringField s t) =
   let b = t3StringValue $ T.intercalate "\0" t in
-  sign s <> size b <> bin b
+  sign s >> size b >> bin b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s <> w32 36 <> i32 n <> bin b <> tail b 32
-putT3Field _ (T3FloatField s v) = sign s <> w32 4 <> either w32 f32 v
-putT3Field _ (T3IntField s v) = sign s <> w32 4 <> i32 v
-putT3Field _ (T3ShortField s v) = sign s <> w32 2 <> i16 v
-putT3Field _ (T3LongField s v) = sign s <> w32 8 <> i64 v
-putT3Field _ (T3ByteField s v) = sign s <> w32 1 <> w8 v
+  sign s >> w32 36 >> i32 n >> bin b >> tail b 32
+putT3Field _ (T3FloatField s v) = sign s >> w32 4 >> either w32 f32 v
+putT3Field _ (T3IntField s v) = sign s >> w32 4 >> i32 v
+putT3Field _ (T3ShortField s v) = sign s >> w32 2 >> i16 v
+putT3Field _ (T3LongField s v) = sign s >> w32 8 >> i64 v
+putT3Field _ (T3ByteField s v) = sign s >> w32 1 >> w8 v
 putT3Field _ (T3CompressedField s b) =
   let u = GZip.decompress b in
-  sign s <> size u <> bin u
+  sign s >> size u >> bin u
 putT3Field _
   ( T3IngredientField s
     ( T3IngredientData weight value
@@ -98,10 +98,10 @@ putT3Field _
       (T3IngredientAttributes a1 a2 a3 a4)
     )
   )
-  =  sign s <> w32 56 <> f32 weight <> w32 value
-  <> i32 e1 <> i32 e2 <> i32 e3 <> i32 e4
-  <> i32 s1 <> i32 s2 <> i32 s3 <> i32 s4
-  <> i32 a1 <> i32 a2 <> i32 a3 <> i32 a4
+  =  sign s >> w32 56 >> f32 weight >> w32 value
+  >> i32 e1 >> i32 e2 >> i32 e3 >> i32 e4
+  >> i32 s1 >> i32 s2 >> i32 s3 >> i32 s4
+  >> i32 a1 >> i32 a2 >> i32 a3 >> i32 a4
 putT3Field _
   ( T3ScriptField s
     ( T3ScriptHeader name
@@ -110,44 +110,50 @@ putT3Field _
     )
   ) =
   let b = t3StringValue name
-    in sign s <> w32 52 <> bin b <> tail b 32
-    <> w32 shorts <> w32 longs <> w32 floats
-    <> w32 data_size <> w32 var_table_size
-putT3Field _ (T3DialField s v) = sign s <> either ((w32 4 <>) . w32) ((w32 1 <>) . w8 . t3DialTypeValue) v
-putT3Field _ (T3NoneField s) = sign s <> w32 4 <> w32 0
+    in sign s >> w32 52 >> bin b >> tail b 32
+    >> w32 shorts >> w32 longs >> w32 floats
+    >> w32 data_size >> w32 var_table_size
+putT3Field _ (T3DialField s v) = sign s >> either ((w32 4 >>) . w32) ((w32 1 >>) . w8 . t3DialTypeValue) v
+putT3Field _ (T3NoneField s) = sign s >> w32 4 >> w32 0
 putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let v = w32 version in
   let f = w32 $ t3FileTypeValue file_type in
   let a = t3StringValue author in
   let d = t3StringValue $ T.intercalate "\r\n" descr in
   let items_count_placeholder = w32 0
-    in sign s <> w32 300 <> v <> f <> bin a
-    <> tail a 32 <> bin d <> tail d 256 <> items_count_placeholder
+    in sign s >> w32 300 >> v >> f >> bin a
+    >> tail a 32 >> bin d >> tail d 256 >> items_count_placeholder
 putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index))
-  =  sign s <> w32 8
-  <> i16 disposition
-  <> i16 reputation
-  <> w32 index
+  =  sign s >> w32 8
+  >> i16 disposition
+  >> i16 reputation
+  >> w32 index
 putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch)) =
   let
     (field_size, data_bytes) = case ch of
-      Left u -> (12, i8 disposition <> i8 reputation <> i8 rank <> w8 (fromIntegral $ u `shiftR` 16) <> w16 (fromIntegral $ u .&. 0xFFFF))
+      Left u -> (12, i8 disposition >> i8 reputation >> i8 rank >> w8 (fromIntegral $ u `shiftR` 16) >> w16 (fromIntegral $ u .&. 0xFFFF))
       Right d ->
         ( 52
-          ,  w8 (t3NpcStrength d) <> w8 (t3NpcIntelligence d) <> w8 (t3NpcWillpower d) <> w8 (t3NpcAgility d)
-          <> w8 (t3NpcSpeed d) <> w8 (t3NpcEndurance d) <> w8 (t3NpcPersonality d) <> w8 (t3NpcLuck d)
-          <> w8 (t3NpcBlock d) <> w8 (t3NpcArmorer d) <> w8 (t3NpcMediumArmor d) <> w8 (t3NpcHeavyArmor d)
-          <> w8 (t3NpcBluntWeapon d) <> w8 (t3NpcLongBlade d) <> w8 (t3NpcAxe d) <> w8 (t3NpcSpear d) <> w8 (t3NpcAthletics d) <> w8 (t3NpcEnchant d)
-          <> w8 (t3NpcDestruction d) <> w8 (t3NpcAlteration d) <> w8 (t3NpcIllusion d) <> w8 (t3NpcConjuration d) <> w8 (t3NpcMysticism d)
-          <> w8 (t3NpcRestoration d) <> w8 (t3NpcAlchemy d) <> w8 (t3NpcUnarmored d) <> w8 (t3NpcSecurity d) <> w8 (t3NpcSneak d) <> w8 (t3NpcAcrobatics d)
-          <> w8 (t3NpcLightArmor d) <> w8 (t3NpcShortBlade d) <> w8 (t3NpcMarksman d) <> w8 (t3NpcMercantile d) <> w8 (t3NpcSpeechcraft d)
-          <> w8 (t3NpcHandToHand d) <> w8 (t3NpcFaction d) <> i16 (t3NpcHealth d) <> i16 (t3NpcMagicka d) <> i16 (t3NpcFatigue d)
-          <> i8 disposition <> i8 reputation <> i8 rank <> w8 0
+          ,  w8 (t3NpcStrength d) >> w8 (t3NpcIntelligence d) >> w8 (t3NpcWillpower d) >> w8 (t3NpcAgility d)
+          >> w8 (t3NpcSpeed d) >> w8 (t3NpcEndurance d) >> w8 (t3NpcPersonality d) >> w8 (t3NpcLuck d)
+          >> w8 (t3NpcBlock d) >> w8 (t3NpcArmorer d) >> w8 (t3NpcMediumArmor d) >> w8 (t3NpcHeavyArmor d)
+          >> w8 (t3NpcBluntWeapon d) >> w8 (t3NpcLongBlade d) >> w8 (t3NpcAxe d) >> w8 (t3NpcSpear d) >> w8 (t3NpcAthletics d) >> w8 (t3NpcEnchant d)
+          >> w8 (t3NpcDestruction d) >> w8 (t3NpcAlteration d) >> w8 (t3NpcIllusion d) >> w8 (t3NpcConjuration d) >> w8 (t3NpcMysticism d)
+          >> w8 (t3NpcRestoration d) >> w8 (t3NpcAlchemy d) >> w8 (t3NpcUnarmored d) >> w8 (t3NpcSecurity d) >> w8 (t3NpcSneak d) >> w8 (t3NpcAcrobatics d)
+          >> w8 (t3NpcLightArmor d) >> w8 (t3NpcShortBlade d) >> w8 (t3NpcMarksman d) >> w8 (t3NpcMercantile d) >> w8 (t3NpcSpeechcraft d)
+          >> w8 (t3NpcHandToHand d) >> w8 (t3NpcFaction d) >> i16 (t3NpcHealth d) >> i16 (t3NpcMagicka d) >> i16 (t3NpcFatigue d)
+          >> i8 disposition >> i8 reputation >> i8 rank >> w8 0
         )
     in
-  sign s <> w32 field_size <> w16 level <> data_bytes <> i32 gold
+  sign s >> w32 field_size >> w16 level >> data_bytes >> i32 gold
 
 putT3Record :: T3Record -> Put
 putT3Record (T3Record s g fields) = do
-  let b = mconcat [putT3Field s f | f <- fields]
-  sign s <> w32 (fromIntegral $ bytesGoingWrite b) <> flags g <> b
+  sign s
+  void $ mfix $ \z -> do
+    w32 $ fromIntegral z
+    flags g
+    n0 <- bytesWrote
+    forM_ fields $ putT3Field s
+    n1 <- bytesWrote
+    return $ n1 - n0

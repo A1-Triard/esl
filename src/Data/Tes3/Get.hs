@@ -244,7 +244,7 @@ field adjust record_sign = do
     $ mapError (either id $ const $ se "unexpected end of field.") $ fieldBody adjust record_sign s z
 
 recordBody :: Bool -> T3Sign -> Get StringE [T3Field]
-recordBody adjust s = whileM (not <$> endOfInput) $ field adjust s
+recordBody adjust s = whileM (not <$> N.nullE) $ field adjust s
 
 recordTail :: Bool -> T3Sign -> Get (Either StringE ()) (T3Flags, [T3Field])
 recordTail adjust s = do
