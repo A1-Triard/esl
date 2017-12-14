@@ -204,42 +204,42 @@ testFile2 =
     ]
   ]
 
-getT3File :: Monad m => Bool -> GetM T3Record (Word64 -> String) m ()
+getT3File :: (DefaultDecodingState s, Monad m) => Bool -> GetM s S.ByteString T3Record T3Error m ()
 getT3File adjust = whileM_ (not <$> N.nullE) $ yield =<< getT3Record adjust
 
-runGetT3File :: Bool -> ByteString -> (Word64, Either String [T3Record])
+runGetT3File :: Bool -> ByteString -> Either String [T3Record]
 runGetT3File adjust inp =
-    let ((!me, !offset), !r) = runIdentity $ N.yieldMany (B.toChunks inp) $$ runGet (getT3File adjust) `fuseBoth` N.sinkList in
-    case me of
-      Right () -> (offset, Right r)
-      Left !e -> (offset, Left $ e offset)
+  let (!me, !r) = runIdentity $ N.yieldMany (B.toChunks inp) $$ runGet (getT3File adjust) `fuseBoth` N.sinkList in
+  case me of
+    Right () -> Right r
+    Left !e -> Left $ show e
 
 parseEmptyFile :: Assertion
 parseEmptyFile = do
-  assertEqual "" (0, Right []) $ runGetT3File False B.empty
+  assertEqual "" (Right []) $ runGetT3File False B.empty
 
 parseShortInvalidFile :: Assertion
 parseShortInvalidFile = do
-  assertEqual "" (2, Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "TE"
-  assertEqual "" (2, Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "X0"
+  assertEqual "" (Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "TE"
+  assertEqual "" (Left "2h: unexpected end of record.") $ runGetT3File False $ C.pack "X0"
 
 parseLongInvalidFile :: Assertion
 parseLongInvalidFile = do
-  assertEqual "" (16, Left "8h: invalid record flags (66686a2064736620h).") $ runGetT3File False $ C.pack "TEhfdskj fsd jhfg gjf jhs"
-  assertEqual "" (16, Left "8h: invalid record flags (6a20676473666820h).") $ runGetT3File False $ C.pack "X0 fhsdm hfsdg jhfsdg fjs gd"
+  assertEqual "" (Left "8h: invalid record flags (66686a2064736620h).") $ runGetT3File False $ C.pack "TEhfdskj fsd jhfg gjf jhs"
+  assertEqual "" (Left "8h: invalid record flags (6a20676473666820h).") $ runGetT3File False $ C.pack "X0 fhsdm hfsdg jhfsdg fjs gd"
 
 parseFileWithValidSignature :: Assertion
 parseFileWithValidSignature = do
-  assertEqual "" (16, Right [T3Record (sign "TES3") t3FlagsEmpty []]) $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
+  assertEqual "" (Right [T3Record (sign "TES3") t3FlagsEmpty []]) $ runGetT3File False $ C.pack "TES3" <> w32 0 <> w64 0
 
 parseValidFile :: Assertion
 parseValidFile = do
-  assertEqual "" (407, Right testFile1) $ runGetT3File False testFile1Bytes
+  assertEqual "" (Right testFile1) $ runGetT3File False testFile1Bytes
 
 parseAdjustableFile :: Assertion
 parseAdjustableFile = do
-  assertEqual "" (445, Right testFile2) $ runGetT3File True testFile2Bytes
+  assertEqual "" (Right testFile2) $ runGetT3File True testFile2Bytes
 
 parseFileWithInvalidFlags :: Assertion
 parseFileWithInvalidFlags = do
-  assertEqual "" (378, Left "172h: invalid record flags (89h).") $ runGetT3File False testFileWithInvalidFlagsBytes
+  assertEqual "" (Left "172h: invalid record flags (89h).") $ runGetT3File False testFileWithInvalidFlagsBytes
