@@ -30,9 +30,6 @@ size = putWord32le . fromIntegral . B.length
 flags :: T3Flags -> Put
 flags = putWord64le . t3FlagsValue
 
-tail :: ByteString -> Word32 -> Put
-tail b n = replicateM_ (fromIntegral $ n - fromIntegral (B.length b)) (putWord8 0)
-
 w8 :: Word8 -> Put
 w8 = putWord8
 
@@ -60,12 +57,18 @@ i64 = putInt64le
 bin :: ByteString -> Put
 bin = putLazyByteString
 
+cut :: ByteString -> Word32 -> Put
+cut b n = do
+  let c = if fromIntegral (B.length b) <= n then b else B.take (fromIntegral n) b
+  bin c
+  replicateM_ (fromIntegral $ n - fromIntegral (B.length c)) (putWord8 0)
+
 putT3Field :: T3Sign -> T3Field -> Put
 putT3Field _ (T3BinaryField s b) = sign s >> size b >> bin b
 putT3Field record_sign (T3StringField s t) =
   let b = t3StringValue t in
   case t3FieldType record_sign s of
-    T3FixedString n -> sign s >> w32 n >> bin b >> tail b n
+    T3FixedString n -> sign s >> w32 n >> cut b n
     T3String _ -> sign s >> size b >> bin b
     _ -> error "putT3Field T3StringField"
 putT3Field record_sign (T3MultilineField s t) =
@@ -81,7 +84,7 @@ putT3Field _ (T3MultiStringField s t) =
   sign s >> size b >> bin b
 putT3Field _ (T3RefField s n t) =
   let b = t3StringValue t in
-  sign s >> w32 36 >> i32 n >> bin b >> tail b 32
+  sign s >> w32 36 >> i32 n >> cut b 32
 putT3Field _ (T3FloatField s v) = sign s >> w32 4 >> either w32 f32 v
 putT3Field _ (T3IntField s v) = sign s >> w32 4 >> i32 v
 putT3Field _ (T3ShortField s v) = sign s >> w32 2 >> i16 v
@@ -110,7 +113,7 @@ putT3Field _
     )
   ) =
   let b = t3StringValue name
-    in sign s >> w32 52 >> bin b >> tail b 32
+    in sign s >> w32 52 >> cut b 32
     >> w32 shorts >> w32 longs >> w32 floats
     >> w32 data_size >> w32 var_table_size
 putT3Field _ (T3DialField s v) = sign s >> either ((w32 4 >>) . w32) ((w32 1 >>) . w8 . t3DialTypeValue) v
@@ -121,8 +124,8 @@ putT3Field _ (T3HeaderField s (T3FileHeader version file_type author descr)) =
   let a = t3StringValue author in
   let d = t3StringValue $ T.intercalate "\r\n" descr in
   let items_count_placeholder = w32 0
-    in sign s >> w32 300 >> v >> f >> bin a
-    >> tail a 32 >> bin d >> tail d 256 >> items_count_placeholder
+    in sign s >> w32 300 >> v >> f
+    >> cut a 32 >> cut d 256 >> items_count_placeholder
 putT3Field _ (T3EssNpcField s (T3EssNpcData disposition reputation index))
   =  sign s >> w32 8
   >> i16 disposition
