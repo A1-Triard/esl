@@ -37,15 +37,11 @@ resolver: lts-9.14
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- location:
-   git: https://github.com/A1-Triard/binary-ext.git
-   commit: b20367e9fa7f0e4d11d896ecb5eddbcc9221451f
-  extra-dep: true
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-#extra-deps:
-#- binary-ext-2.0
+extra-deps:
+- binary-ext-2.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
