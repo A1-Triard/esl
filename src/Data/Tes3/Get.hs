@@ -44,7 +44,7 @@ instance Show T3Error where
   show (T3FieldSizeMismatch offset expected actual) = concat [showHex offset "h: field size mismatch: ", shows expected " expected, but ", shows actual " consumed."]
   show (T3RecordSizeMismatch offset expected actual) = concat [showHex offset "h: record size mismatch: ", shows expected " expected, but ", shows actual " consumed."]
 
-expect :: (DefaultDecodingState s, Monad m, Show a, Eq a) => a -> GetM s i o T3Error m a -> GetM s i o T3Error m ()
+expect :: (DefaultDecodingState s, Monad m, Show a, Eq a) => a -> GetT s i o T3Error m a -> GetT s i o T3Error m ()
 expect expected getter = do
   offset <- bytesRead
   actual <- getter

@@ -204,12 +204,12 @@ testFile2 =
     ]
   ]
 
-getT3File :: (DefaultDecodingState s, Monad m) => Bool -> GetM s S.ByteString T3Record T3Error m ()
+getT3File :: (DefaultDecodingState s, Monad m) => Bool -> GetT s S.ByteString T3Record T3Error m ()
 getT3File adjust = whileM_ (not <$> N.nullE) $ yield =<< getT3Record adjust
 
 runGetT3File :: Bool -> ByteString -> Either String [T3Record]
 runGetT3File adjust inp =
-  let (!me, !r) = runIdentity $ N.yieldMany (B.toChunks inp) $$ runGet (getT3File adjust) `fuseBoth` N.sinkList in
+  let (!me, !r) = runConduitPure $ N.yieldMany (B.toChunks inp) .| runGet (getT3File adjust) `fuseBoth` N.sinkList in
   case me of
     Right () -> Right r
     Left !e -> Left $ show e

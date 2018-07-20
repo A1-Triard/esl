@@ -1,4 +1,5 @@
 test_data/
+*.cabal
 *.esp
 *.esm
 *.ess

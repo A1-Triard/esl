@@ -1,0 +1,103 @@
+name: tes3
+version: 0.12
+synopsis: "A library for reading, writing and processing ESM/ESP/ESS files."
+description: "A library for reading, writing and processing ESM/ESP/ESS files."
+github: "A1-Triard/tes3"
+license: Apache
+author: "Warlock <internalmike@gmail.com>"
+maintainer: "Warlock <internalmike@gmail.com>"
+copyright: "2016, 2017, 2018 Warlock <internalmike@gmail.com>"
+category: Data
+#extra-source-files:
+
+dependencies:
+- base >= 4.11 && < 5
+- MissingH
+- base64-bytestring
+- binary
+- binary-ext
+- bytestring
+- conduit
+- conduit-combinators
+- containers
+- data-binary-ieee754
+- errors
+- monad-loops
+- mono-traversable
+- mtl
+- semigroups
+- split
+- text
+- transformers
+- utility-ht
+- utf8-string
+- zlib
+
+default-extensions:
+- BangPatterns
+- CPP
+- DataKinds
+- DefaultSignatures
+- DeriveDataTypeable
+- DeriveGeneric
+- DeriveFoldable
+- DeriveFunctor
+- DeriveTraversable
+- EmptyCase
+- EmptyDataDecls
+- ExistentialQuantification
+- ExplicitForAll
+- FlexibleContexts
+- FlexibleInstances
+- GADTs
+- GeneralizedNewtypeDeriving
+- KindSignatures
+- LambdaCase
+- LiberalTypeSynonyms
+- MagicHash
+- MonadComprehensions
+- MultiParamTypeClasses
+- MultiWayIf
+- NegativeLiterals
+- OverloadedStrings
+- ParallelListComp
+- PatternSynonyms
+- RankNTypes
+- ScopedTypeVariables
+- StandaloneDeriving
+- TemplateHaskell
+- TransformListComp
+- TupleSections
+- TypeFamilies
+- TypeOperators
+- UnboxedTuples
+- UndecidableInstances
+- UnicodeSyntax
+- ViewPatterns
+
+ghc-options:
+- -fmax-pmcheck-iterations=100000000
+- -O2
+- -Wall
+- -Werror
+- -fno-warn-unused-imports
+- -fprint-potential-instances
+- -fsimpl-tick-factor=110
+
+include-dirs:
+- include
+
+library:
+  source-dirs: src
+
+tests:
+  tes3-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - HUnit
+    - tes3
