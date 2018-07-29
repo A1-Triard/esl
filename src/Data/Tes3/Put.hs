@@ -149,6 +149,16 @@ putT3Field _ (T3NpcField s (T3NpcData level disposition reputation rank gold ch)
         )
     in
   sign s >> w32 field_size >> w16 level >> data_bytes >> i32 gold
+putT3Field _ (T3EffectField s (T3EffectData eff_id skill attribute eff_range area duration magn_min magn_max))
+  =  sign s >> w32 24
+  >> i16 eff_id
+  >> i8 skill
+  >> i8 attribute
+  >> i32 (t3EffectRangeValue eff_range)
+  >> i32 area
+  >> i32 duration
+  >> i32 magn_min
+  >> i32 magn_max
 
 putT3Record :: T3Record -> Put
 putT3Record (T3Record s g fields) = do

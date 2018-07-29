@@ -27,6 +27,9 @@ module Data.Tes3
   , T3DialType (..)
   , t3DialTypeValue
   , t3DialTypeNew
+  , T3EffectRange (..)
+  , t3EffectRangeValue
+  , t3EffectRangeNew
   , T3Field (..)
   , T3Record (..)
   , T3FileHeader (..)
@@ -44,6 +47,7 @@ module Data.Tes3
   , T3IngredientData (..)
   , T3ScriptHeader (..)
   , T3EssNpcData (..)
+  , T3EffectData (..)
   , T3NpcDataChar (..)
   , T3NpcData (..)
   ) where
@@ -153,6 +157,19 @@ t3DialTypeNew 3 = Just T3Persuasion
 t3DialTypeNew 4 = Just T3Journal
 t3DialTypeNew _ = Nothing
 
+data T3EffectRange = T3Self | T3Touch | T3Target deriving (Eq, Ord, Enum, Bounded, Show)
+
+t3EffectRangeValue :: T3EffectRange -> Int32
+t3EffectRangeValue T3Self = 0
+t3EffectRangeValue T3Touch = 1
+t3EffectRangeValue T3Target = 2
+
+t3EffectRangeNew :: Int32 -> Maybe T3EffectRange
+t3EffectRangeNew 0 = Just T3Self
+t3EffectRangeNew 1 = Just T3Touch
+t3EffectRangeNew 2 = Just T3Target
+t3EffectRangeNew _ = Nothing
+
 data T3FieldType
   = T3Binary
   | T3String !(Text -> Text)
@@ -173,6 +190,7 @@ data T3FieldType
   | T3Header
   | T3EssNpc
   | T3Npc
+  | T3Effect
 
 t3FieldType :: T3Sign -> T3Sign -> T3FieldType
 t3FieldType (T3Mark INFO) (T3Mark ACDT) = T3String id
@@ -211,8 +229,11 @@ t3FieldType (T3Mark QUES) (T3Mark DATA) = T3String id
 t3FieldType (T3Mark DIAL) (T3Mark DELE) = T3None
 t3FieldType _ (T3Mark DESC) = T3String id
 t3FieldType _ (T3Mark DNAM) = T3String id
+t3FieldType (T3Mark ALCH) (T3Mark ENAM) = T3Effect
 t3FieldType (T3Mark ARMO) (T3Mark ENAM) = T3String id
+t3FieldType (T3Mark ENCH) (T3Mark ENAM) = T3Effect
 t3FieldType (T3Mark PCDT) (T3Mark ENAM) = T3Long
+t3FieldType (T3Mark SPEL) (T3Mark ENAM) = T3Effect
 t3FieldType (T3Mark CELL) (T3Mark FGTN) = T3String id
 t3FieldType _ (T3Mark FLAG) = T3Int
 t3FieldType _ (T3Mark FLTV) = T3Float
@@ -318,6 +339,17 @@ data T3ScriptHeader = T3ScriptHeader !Text !Word32 !Word32 !Word32 !Word32 !Word
 
 data T3FileHeader = T3FileHeader !Word32 !T3FileType !Text ![Text] deriving (Eq, Show)
 
+data T3EffectData = T3EffectData
+  { t3EffectID :: !Int16
+  , t3EffectSkill :: !Int8
+  , t3EffectAttribute :: !Int8
+  , t3EffectRange :: !T3EffectRange
+  , t3EffectArea :: !Int32
+  , t3EffectDuration :: !Int32
+  , t3EffectMagnitudeMin :: !Int32
+  , t3EffectMagnitudeMax :: !Int32
+  } deriving (Eq, Show)
+
 data T3EssNpcData = T3EssNpcData
   { t3EssNpcDisposition :: !Int16
   , t3EssNpcReputation :: !Int16
@@ -394,6 +426,7 @@ data T3Field
   | T3HeaderField !T3Sign !T3FileHeader
   | T3EssNpcField !T3Sign !T3EssNpcData
   | T3NpcField !T3Sign !T3NpcData
+  | T3EffectField !T3Sign !T3EffectData
   deriving (Eq, Show)
 data T3Flags = T3Flags
   { t3Persist :: !Bool

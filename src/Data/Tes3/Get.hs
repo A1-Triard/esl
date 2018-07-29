@@ -28,6 +28,7 @@ data T3Error
   | T3UnexpectedEndOfField !Word64
   | T3UnexpectedEndOfRecord !Word64
   | T3InvalidDialType !Word64
+  | T3InvalidEffectRange !Word64
   | T3UnknownFileType !Word32
   | T3UnexpectedEndOfFile !Word64
   | T3FieldSizeMismatch !Word64 !Word32 !Word32
@@ -39,6 +40,7 @@ instance Show T3Error where
   show (T3UnexpectedEndOfField offset) = showHex offset "h: unexpected end of field."
   show (T3UnexpectedEndOfRecord offset) = showHex offset "h: unexpected end of record."
   show (T3InvalidDialType offset) = showHex offset "h: invalid dial type."
+  show (T3InvalidEffectRange offset) = showHex offset "h: invalid effect range."
   show (T3UnknownFileType file_type) = "Unknown file type: " ++ show file_type ++ "."
   show (T3UnexpectedEndOfFile offset) = showHex offset "h: unexpected end of file."
   show (T3FieldSizeMismatch offset expected actual) = concat [showHex offset "h: field size mismatch: ", shows expected " expected, but ", shows actual " consumed."]
@@ -206,6 +208,22 @@ npcDataChar = do
     alchemy unarmored security sneak acrobatics lightArmor shortBlade marksman mercantile speechcraft handToHand faction
     health magicka fatigue
 
+effectField :: Get T3Error T3EffectData
+effectField = do
+  eff_id <- getInt16le ?>> T3UnexpectedEndOfField <$> bytesRead
+  skill <- getInt8 ?>> T3UnexpectedEndOfField <$> bytesRead
+  attribute <- getInt8 ?>> T3UnexpectedEndOfField <$> bytesRead
+  offset <- bytesRead
+  should_be_range <- getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
+  case t3EffectRangeNew should_be_range of
+    Nothing -> throwError $ T3InvalidEffectRange offset
+    Just eff_range -> do
+      area <- getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
+      duration <- getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
+      magn_min <- getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
+      magn_max <- getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
+      return $ T3EffectData eff_id skill attribute eff_range area duration magn_min magn_max
+
 npcData :: Word32 -> Get T3Error T3NpcData
 npcData field_size = do
   let with_char = field_size == 52
@@ -251,6 +269,7 @@ fieldBody adjust record_sign s field_size =
     f T3Header = T3HeaderField s <$> fileHeaderData
     f T3EssNpc = T3EssNpcField s <$> essNpcData ?>> T3UnexpectedEndOfField <$> bytesRead
     f T3Npc = T3NpcField s <$> npcData field_size
+    f T3Effect = T3EffectField s <$> effectField
 
 field :: Bool -> T3Sign -> Get T3Error T3Field
 field adjust record_sign = do
