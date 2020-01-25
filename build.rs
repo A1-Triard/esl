@@ -20,8 +20,6 @@ fn main() {
     let src = BufReader::new(File::open(&src_path).unwrap());
     let tags = src.lines().map(|s| Tag::from_str(&s.unwrap()).unwrap());
     for tag in tags  {
-        dest.write_all(b"#[allow(non_camel_case_types)]
-").unwrap();
         writeln!(dest, "pub const {}: Tag = Tag::from({});", tag, tag.dword).unwrap();
     }
 }
