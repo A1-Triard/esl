@@ -11,7 +11,14 @@ extern crate bitflags;
 
 use either::{Either};
 use std::fmt::{self, Display, Debug};
-//use std::str::{FromStr};
+use std::str::{FromStr};
+use nom::IResult;
+use nom::branch::alt;
+use nom::combinator::{value as nom_value, map, opt};
+use nom::bytes::complete::tag as nom_tag;
+use nom::multi::{fold_many0};
+use nom::sequence::{preceded, terminated, pair};
+use nom::bytes::complete::take_while;
 
 mod tag;
 
@@ -373,13 +380,32 @@ impl Display for RecordFlags {
     }
 }
 
-/*impl FromStr for RecordFlags {
+fn pipe(input: &str) -> IResult<&str, (), ()> {
+    nom_value((),
+        terminated(preceded(take_while(char::is_whitespace), nom_tag("|")), take_while(char::is_whitespace))
+    )(input)
+}
+
+fn record_flag(input: &str) -> IResult<&str, RecordFlags, ()> {
+    alt((
+        nom_value(RecordFlags::PERSISTENT, nom_tag("PERSISTENT")),
+        nom_value(RecordFlags::BLOCKED, nom_tag("BLOCKED")),
+        nom_value(RecordFlags::DELETED, nom_tag("DELETED"))
+    ))(input)
+}
+
+impl FromStr for RecordFlags {
     type Err = ();
     
     fn from_str(s: &str) -> Result<RecordFlags, Self::Err> {
-        
+        let (unconsumed, flags) = map(opt(map(pair(
+            record_flag,
+            fold_many0(preceded(pipe, record_flag), RecordFlags::empty(), |a, v| a | v)
+        ), |(a, b)| a | b)), |m| m.unwrap_or(RecordFlags::empty()))(s).map_err(|_: nom::Err<()>| ())?;
+        if !unconsumed.is_empty() { return Err(()); }
+        Ok(flags)
     }
-}*/
+}
 
 #[cfg(test)]
 mod tests {
@@ -411,10 +437,10 @@ mod tests {
         assert_eq!("PERSISTENT | DELETED", format!("{}", RecordFlags::PERSISTENT | RecordFlags::DELETED));
         assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits);
         assert_eq!(Some(RecordFlags::BLOCKED | RecordFlags::DELETED), RecordFlags::from_bits(0x202000000000));
-        //assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("DELETED | PERSISTENT"));
-        //assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT | DELETED"));
-        //assert_eq!(Some(Tes3::ESP), Tes3::from_u32(0));
-        //assert_eq!(None, Tes3::from_u32(2));
-        //assert_eq!(32, Tes3::ESS as u32);
+        assert_eq!(Ok(RecordFlags::DELETED), RecordFlags::from_str("DELETED"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("DELETED|PERSISTENT"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT | DELETED"));
+        assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
+        assert_eq!(Err(()), RecordFlags::from_str(" "));
     }
 }
