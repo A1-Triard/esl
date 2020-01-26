@@ -6,11 +6,16 @@ extern crate enum_derive;
 extern crate enum_primitive_derive;
 #[macro_use]
 extern crate macro_attr;
+#[macro_use]
+extern crate bitflags;
+
+use either::{Either};
+use std::fmt::{self, Display, Debug};
+//use std::str::{FromStr};
 
 mod tag;
 
 pub use tag::*;
-use std::fs::FileType;
 
 include!(concat!(env!("OUT_DIR"), "/tags.rs"));
 
@@ -19,7 +24,7 @@ macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
     #[repr(u32)]
-    pub enum Tes3 {
+    pub enum FileType {
         ESP = 0,
         ESM = 1,
         ESS = 32
@@ -271,23 +276,145 @@ pub struct Effect {
     pub magnitude_max: i32
 }
 
+#[derive(Debug)]
+pub struct SavedNpc {
+    pub disposition: i16,
+    pub reputation: i16,
+    pub index: u32,
+}
+
+#[derive(Debug)]
+pub struct NpcCharacteristics {
+    pub strength: u8,
+    pub intelligence: u8,
+    pub willpower: u8,
+    pub agility: u8,
+    pub speed: u8,
+    pub endurance: u8,
+    pub personality: u8,
+    pub luck: u8,
+    pub block: u8,
+    pub armorer: u8,
+    pub medium_armor: u8,
+    pub heavy_armor: u8,
+    pub blunt_weapon: u8,
+    pub long_blade: u8,
+    pub axe: u8,
+    pub spear: u8,
+    pub athletics: u8,
+    pub enchant: u8,
+    pub destruction: u8,
+    pub alteration: u8,
+    pub illusion: u8,
+    pub conjuration: u8,
+    pub mysticism: u8,
+    pub restoration: u8,
+    pub alchemy: u8,
+    pub unarmored: u8,
+    pub security: u8,
+    pub sneak: u8,
+    pub acrobatics: u8,
+    pub light_armor: u8,
+    pub short_blade: u8,
+    pub marksman: u8,
+    pub mercantile: u8,
+    pub speechcraft: u8,
+    pub hand_to_hand: u8,
+    pub faction: u8,
+    pub health: i16,
+    pub magicka: i16,
+    pub fatigue: i16
+}
+
+#[derive(Debug)]
+pub struct Npc {
+    pub level: u16,
+    pub disposition: i8,
+    pub reputation: i8,
+    pub rank: i8,
+    pub gold: i32,
+    pub characteristics: Either<u32, NpcCharacteristics>
+}
+
+#[derive(Debug)]
+pub enum Field {
+    Binary(Vec<u8>),
+    String(String),
+    Multiline(Vec<String>),
+    MultiString(Vec<String>),
+    Reference(i32, String),
+    Float(Either<u32, f32>),
+    Int(i32),
+    Short(i16),
+    Long(i64),
+    Byte(u8),
+    Compressed(Vec<u8>),
+    Ingredient(Ingredient),
+    ScriptMetadata(ScriptMetadata),
+    DialogMetadata(Either<u32, DialogType>),
+    None,
+    FileMetadata(FileMetadata),
+    SavedNpc(SavedNpc),
+    Npc(Npc),
+    Effect(Effect),
+}
+
+bitflags! {
+    pub struct RecordFlags: u64 {
+        const PERSISTENT = 0x40000000000;
+        const BLOCKED = 0x200000000000;
+        const DELETED = 0x2000000000;
+    }
+}
+
+impl Display for RecordFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+/*impl FromStr for RecordFlags {
+    type Err = ();
+    
+    fn from_str(s: &str) -> Result<RecordFlags, Self::Err> {
+        
+    }
+}*/
+
 #[cfg(test)]
 mod tests {
     use crate::*;
     use num_traits::cast::FromPrimitive;
+    use std::str::FromStr;
 
     #[test]
     fn debug_and_display_tag() {
         assert_eq!("TES3", format!("{}", TES3));
         assert_eq!("TES3", format!("{:?}", TES3));
+        assert_eq!(Ok(SCPT), Tag::from_str("SCPT"));
     }
 
     #[test]
     fn test_file_type() {
-        assert_eq!("ESM", format!("{}", Tes3::ESM));
-        assert_eq!("ESS", format!("{:?}", Tes3::ESS));
-        assert_eq!(Some(Tes3::ESP), Tes3::from_u32(0));
-        assert_eq!(None, Tes3::from_u32(2));
-        assert_eq!(32, Tes3::ESS as u32);
+        assert_eq!("ESM", format!("{}", FileType::ESM));
+        assert_eq!("ESS", format!("{:?}", FileType::ESS));
+        assert_eq!(Some(FileType::ESP), FileType::from_u32(0));
+        assert_eq!(None, FileType::from_u32(2));
+        assert_eq!(32, FileType::ESS as u32);
+        assert_eq!(Ok(FileType::ESP), FileType::from_str("ESP"));
+    }
+
+    #[test]
+    fn test_record_flags() {
+        assert_eq!("PERSISTENT", format!("{}", RecordFlags::PERSISTENT));
+        assert_eq!("PERSISTENT", format!("{:?}", RecordFlags::PERSISTENT));
+        assert_eq!("PERSISTENT | DELETED", format!("{}", RecordFlags::PERSISTENT | RecordFlags::DELETED));
+        assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits);
+        assert_eq!(Some(RecordFlags::BLOCKED | RecordFlags::DELETED), RecordFlags::from_bits(0x202000000000));
+        //assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("DELETED | PERSISTENT"));
+        //assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT | DELETED"));
+        //assert_eq!(Some(Tes3::ESP), Tes3::from_u32(0));
+        //assert_eq!(None, Tes3::from_u32(2));
+        //assert_eq!(32, Tes3::ESS as u32);
     }
 }
