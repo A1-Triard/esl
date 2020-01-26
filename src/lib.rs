@@ -231,6 +231,15 @@ impl FieldType {
     }
 }
 
+#[derive(Debug)]
+pub struct Ingredient {
+    pub weight: f32,
+    pub value: u32,
+    pub effects: [i32; 4],
+    pub skills: [i32; 4],
+    pub attributes: [i32; 4]
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
