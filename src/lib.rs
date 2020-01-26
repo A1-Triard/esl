@@ -10,6 +10,7 @@ extern crate macro_attr;
 mod tag;
 
 pub use tag::*;
+use std::fs::FileType;
 
 include!(concat!(env!("OUT_DIR"), "/tags.rs"));
 
@@ -44,7 +45,7 @@ macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
     #[repr(i32)]
-    pub enum EffectType {
+    pub enum EffectRange {
         Oneself = 0,
         Touch = 1,
         Target = 2,
@@ -238,6 +239,36 @@ pub struct Ingredient {
     pub effects: [i32; 4],
     pub skills: [i32; 4],
     pub attributes: [i32; 4]
+}
+
+#[derive(Debug)]
+pub struct ScriptMetadata {
+    pub name: String,
+    pub shorts: u32,
+    pub longs: u32,
+    pub floats: u32,
+    pub data_size: u32,
+    pub var_table_size: u32
+}
+
+#[derive(Debug)]
+pub struct FileMetadata {
+    pub version: u32,
+    pub file_type: FileType,
+    pub author: String,
+    pub description: Vec<String>
+}
+
+#[derive(Debug)]
+pub struct Effect {
+    pub id: i16,
+    pub skill: i8,
+    pub attribute: i8,
+    pub range: EffectRange,
+    pub area: i32,
+    pub duration: i32,
+    pub magnitude_min: i32,
+    pub magnitude_max: i32
 }
 
 #[cfg(test)]
