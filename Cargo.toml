@@ -6,3 +6,7 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
+enum_derive = "0.1.7"
+enum-primitive-derive = "0.1.2"
+num-traits = "0.2.11"
+macro-attr = "0.2.0"
