@@ -29,13 +29,25 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
-    pub enum Dialog {
+    #[repr(u8)]
+    pub enum DialogType {
         Topic = 0,
         Voice = 1,
         Greeting = 2,
         Persuasion = 3,
         Journal = 4
+    }
+}
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(i32)]
+    pub enum EffectType {
+        Oneself = 0,
+        Touch = 1,
+        Target = 2,
     }
 }
 
