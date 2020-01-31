@@ -140,7 +140,7 @@ fn multiline_field<'a, E>(linebreaks: LinebreakStyle, coerce: StringCoerce)
 
 fn multi_string_field<E>(input: &[u8]) -> IResult<&[u8], Vec<String>, E> {
     map_err(
-        map(string_field::<Void>(StringCoerce::None), move |s| s.split("\0").map(String::from).collect()),
+        map(string_field::<Void>(StringCoerce::None), |s| s.split("\0").map(String::from).collect()),
         |x| x.unreachable()
     )(input)
 }
@@ -237,7 +237,23 @@ f T3Effect = T3EffectField s <$> effectField
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use ::nom;
     use crate::nom::*;
+    use encoding::all::WINDOWS_1251;
+    use encoding::types::Encoding;
+    use encoding::EncoderTrap;
+
+    fn string(s: &str) -> Vec<u8> {
+        WINDOWS_1251.encode(s, EncoderTrap::Strict).unwrap()
+    }
+    
+    fn len(n: usize, s: &str) -> String {
+        let mut r = String::from(s);
+        while r.len() < n {
+            r.push('\0');
+        }
+        r
+    }
 
     /*
     #[test]
@@ -289,6 +305,59 @@ mod tests {
             assert_eq!(result[1], "АБt");
             assert_eq!(result[2], "ЪЯX");
             assert_eq!(result[3], "");
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn read_from_vec() {
+        let input: Vec<u8> = Vec::new();
+        field_body(true, TES3, HEDR, input.len() as u32)(&input).err().unwrap();
+    }
+
+    #[test]
+    fn read_from_vec_if_let() {
+        let input: Vec<u8> = Vec::new();
+        let res = field_body(true, TES3, HEDR, input.len() as u32)(&input);
+        if let Ok((_, _)) = res {
+            panic!()
+        } else { }
+    }
+    
+    #[test]
+    fn read_file_metadata() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut vec![0x00, 0x00, 0x00, 0x22]);
+        input.append(&mut vec![0x20, 0x00, 0x00, 0x00]);
+        input.append(&mut string(&len(32, "author")));
+        input.append(&mut string(&len(256, "description\r\nlines\r\n")));
+        input.append(&mut vec![0x01, 0x02, 0x03, 0x04]);
+        let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
+        if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
+            assert_eq!(remaining_input.len(), 0);
+            assert_eq!(result.file_type, FileType::ESS);
+            assert_eq!(result.author, "author");
+            assert_eq!(result.description, &["description", "lines", ""]);
+            assert_eq!(result.version, 0x22000000);
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn read_invalid_file_type() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut vec![0x00, 0x00, 0x00, 0x22]);
+        input.append(&mut vec![0x00, 0x00, 0x10, 0x00]);
+        input.append(&mut string(&len(32, "author")));
+        input.append(&mut string(&len(256, "description")));
+        input.append(&mut vec![0x01, 0x02, 0x03, 0x04]);
+        let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldBodyError::UnknownFileType(pos, val)) = error {
+            assert_eq!(unsafe { pos.as_ptr().offset_from(input.as_ptr()) }, 4);
+            assert_eq!(val, 0x100000);
         } else {
             panic!()
         }

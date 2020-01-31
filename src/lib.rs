@@ -1,3 +1,4 @@
+#![feature(ptr_offset_from)]
 #![deny(warnings)]
 
 #[macro_use]
