@@ -258,7 +258,7 @@ impl FieldType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ingredient {
     pub weight: f32,
     pub value: u32,
@@ -267,7 +267,7 @@ pub struct Ingredient {
     pub attributes: [i32; 4]
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScriptMetadata {
     pub name: String,
     pub shorts: u32,
@@ -277,7 +277,7 @@ pub struct ScriptMetadata {
     pub var_table_size: u32
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileMetadata {
     pub version: u32,
     pub file_type: FileType,
@@ -285,7 +285,7 @@ pub struct FileMetadata {
     pub description: Vec<String>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Effect {
     pub id: i16,
     pub skill: i8,
@@ -297,14 +297,14 @@ pub struct Effect {
     pub magnitude_max: i32
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SavedNpc {
     pub disposition: i16,
     pub reputation: i16,
     pub index: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NpcCharacteristics {
     pub strength: u8,
     pub intelligence: u8,
@@ -347,7 +347,7 @@ pub struct NpcCharacteristics {
     pub fatigue: i16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Npc {
     pub level: u16,
     pub disposition: i8,
@@ -357,7 +357,7 @@ pub struct Npc {
     pub characteristics: Either<u32, NpcCharacteristics>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Field {
     Binary(Vec<u8>),
     String(String),
@@ -421,15 +421,32 @@ impl FromStr for RecordFlags {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub tag: Tag,
+    pub flags: RecordFlags,
+    pub fields: Vec<Field>,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
     use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
+    use std::hash::Hash;
     use encoding::types::Encoding;
     use encoding::{DecoderTrap, EncoderTrap};
     use encoding::all::WINDOWS_1251;
+    use std::collections::hash_map::DefaultHasher;
 
+    #[test]
+    fn record_flags_traits() {
+        assert_eq!(RecordFlags::PERSISTENT, *&RecordFlags::PERSISTENT);
+        assert!(RecordFlags::PERSISTENT < RecordFlags::BLOCKED);
+        let mut hasher = DefaultHasher::new();
+        RecordFlags::DELETED.hash(&mut hasher);
+    }
+    
     #[test]
     fn debug_and_display_tag() {
         assert_eq!("TES3", format!("{}", TES3));

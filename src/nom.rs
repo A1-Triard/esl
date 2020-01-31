@@ -1,15 +1,16 @@
 use crate::core::*;
 
 use nom::IResult;
-use nom::combinator::{map, flat_map};
-use nom::sequence::{pair, tuple};
-use nom::number::complete::{le_u32, /*le_u64,*/ le_i32};
+use nom::combinator::{map, flat_map, cut};
+use nom::sequence::{pair, tuple, preceded};
+use nom::number::complete::{le_u32, le_u64, le_i32};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::types::Encoding;
 use encoding::{DecoderTrap};
 use encoding::all::WINDOWS_1251;
 use num_traits::cast::FromPrimitive;
+use nom::multi::many0;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -67,8 +68,7 @@ fn set_err<I: Clone, O, X, F>(f: F, m: impl Fn(I) -> X)
 
 fn map_res<I: Clone, O, E, R, F>(f: F, m: impl Fn(O, I) -> Result<R, nom::Err<E>>)
     -> impl Fn(I) -> IResult<I, R, E> where
-    F: Fn(I) -> IResult<I, O, E>,
-    E: ParseError<I> {
+    F: Fn(I) -> IResult<I, O, E> {
 
     move |input: I| {
         match f(input.clone()) {
@@ -201,7 +201,7 @@ fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
 }
 
 #[derive(Debug, Clone)]
-pub enum FieldError {
+enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
     UnknownFileType(u32),
@@ -233,7 +233,7 @@ fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
     )(input)
 }
 
-pub fn field<'a>(allow_coerce: bool, record_tag: Tag)
+fn field<'a>(allow_coerce: bool, record_tag: Tag)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldError> {
     
     map_res(
@@ -255,15 +255,174 @@ pub fn field<'a>(allow_coerce: bool, record_tag: Tag)
     )
 }
 
-    /*
-/*
-pub fn record_flags(input: &[u8]) -> IResult<&[u8], RecordFlags, Error> {
-    map_res(
-        map_err(le_u64, |e: Error, _| e.descript(ErrorDescription::UnexpectedEndOfRecord(8))),
-        |d, input| RecordFlags::from_bits(d).ok_or(nom::Err::Error(Error::new(input).descript(ErrorDescription::InvalidRecordFlags(d))))
-    )(input) 
+#[derive(Debug, Clone)]
+pub struct UnexpectedEndOfStream {
+    pub expected_size: u32
 }
-*/
+
+#[derive(Debug, Clone)]
+pub struct InvalidRecordFlags {
+    pub record_tag: Tag,
+    pub value: u64
+    
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordSizeMismatch {
+    pub record_tag: Tag,
+    pub expected_size: u32,
+    pub actual_size: u32
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldSizeMismatch {
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub field_tag: Tag,
+    pub expected_size: u32,
+    pub actual_size: u32
+}
+
+#[derive(Debug, Clone)]
+pub struct UnknownFileType {
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub value: u32
+}
+
+#[derive(Debug, Clone)]
+pub struct NonZeroDeletionMark {
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub value: u32
+}
+
+#[derive(Debug, Clone)]
+enum RecordFlagsError {
+    UnexpectedEndOfStream(u32),
+    InvalidRecordFlags(u64)
+}
+
+fn record_flags(input: &[u8]) -> IResult<&[u8], RecordFlags, RecordFlagsError> {
+    map_res(
+        set_err(le_u64, |_| RecordFlagsError::UnexpectedEndOfStream(16)),
+        |d, _| RecordFlags::from_bits(d).ok_or(nom::Err::Error(RecordFlagsError::InvalidRecordFlags(d)))
+    )(input)
+}
+
+#[derive(Debug, Clone)]
+pub enum ReadRecordError {
+    UnexpectedEndOfStream(UnexpectedEndOfStream),
+    InvalidRecordFlags(InvalidRecordFlags),
+    RecordSizeMismatch(RecordSizeMismatch),
+    FieldSizeMismatch(FieldSizeMismatch),
+    UnknownFileType(UnknownFileType),
+    NonZeroDeletionMark(NonZeroDeletionMark),
+}
+
+impl<'a> ParseError<&'a [u8]> for ReadRecordError {
+    fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
+
+    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
+
+    fn or(self, _other: Self) -> Self { panic!() }
+
+    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
+}
+
+fn record_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, RecordFlags, &[u8]), ReadRecordError> {
+    flat_map(
+        flat_map(
+            set_err(
+                pair(tag, le_u32),
+                |_| ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size: 16 })
+            ),
+            |(record_tag, record_size)| {
+                map(
+                    map_err(
+                        record_flags,
+                        move |e, _| match e {
+                            RecordFlagsError::UnexpectedEndOfStream(expected_size) =>
+                                ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size }),
+                            RecordFlagsError::InvalidRecordFlags(value) =>
+                                ReadRecordError::InvalidRecordFlags(InvalidRecordFlags { record_tag, value }),
+                        }
+                    ),
+                    move |record_flags| (record_tag, record_size, record_flags)
+                )
+            }
+        ),
+        |(record_tag, record_size, record_flags)| {
+            map(
+                set_err(
+                    take(record_size),
+                    move |_| ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size: record_size + 16 })
+                ),
+                move |record_bytes| (record_tag, record_size, record_flags, record_bytes)
+            )
+        }
+    )(input)
+}
+
+#[derive(Debug, Clone)]
+struct RecordBodyError<'a>(FieldError, &'a [u8]);
+
+impl<'a> ParseError<&'a [u8]> for RecordBodyError<'a> {
+    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+
+    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
+
+    fn or(self, _other: Self) -> Self { panic!() }
+
+    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
+}
+
+fn record_body<'a>(allow_coerce: bool, record_tag: Tag)
+                  -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<Field>, RecordBodyError<'a>> {
+    many0(
+        preceded(
+            |input| {
+                if input.is_empty() {
+                    Err(nom::Err::Error(RecordBodyError(FieldError::UnexpectedEndOfRecord(0), input))) // error type doesn't matter
+                } else {
+                    Ok((input, ()))
+                }
+            },
+            cut(map_err(field(allow_coerce, record_tag), |e, input| RecordBodyError(e, input)))
+        )
+    )
+}
+
+pub fn record<'a>(allow_coerce: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Record, ReadRecordError> {
+    map_res(
+        record_bytes,
+        move |(record_tag, record_size, record_flags, record_bytes), _| {
+            let (remaining_record_bytes, record_body) = map_err(
+                record_body(allow_coerce, record_tag),
+                move |e, input| match e {
+                    RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
+                        ReadRecordError::RecordSizeMismatch(RecordSizeMismatch { record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
+                    RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
+                        ReadRecordError::FieldSizeMismatch(FieldSizeMismatch { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
+                    RecordBodyError(FieldError::UnknownFileType(value), field) =>
+                        ReadRecordError::UnknownFileType(UnknownFileType { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                    RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
+                        ReadRecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                }
+            )(record_bytes)?;
+            if !remaining_record_bytes.is_empty() {
+                return Err(nom::Err::Error(ReadRecordError::RecordSizeMismatch(RecordSizeMismatch {
+                    record_tag,
+                    expected_size: record_size - remaining_record_bytes.len() as u32,
+                    actual_size: record_size
+                })));
+            }
+            Ok(Record { tag: record_tag, flags: record_flags, fields: record_body })
+        }
+    )
+}
+
+/*
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
 fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
@@ -394,6 +553,21 @@ mod tests {
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 2);
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn read_deletion_mark_non_zero() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&4u32.to_le_bytes()[..]));
+        input.append(&mut vec![0x01, 0x00, 0x00, 0x00]);
+        let result = field(true, DIAL)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldError::NonZeroDeletionMark(d)) = error {
+            assert_eq!(d, 1);
         } else {
             panic!()
         }
