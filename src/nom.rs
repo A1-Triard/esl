@@ -1,7 +1,7 @@
 use crate::core::*;
 
 use nom::IResult;
-use nom::combinator::{map};
+use nom::combinator::{map, flat_map};
 use nom::sequence::{pair, tuple};
 use nom::number::complete::{le_u32, /*le_u64,*/ le_i32};
 use nom::error::{ParseError, ErrorKind};
@@ -28,18 +28,27 @@ impl<I> ParseError<I> for Void {
     fn add_context(_input: I, _ctx: &'static str, _other: Self) -> Self { unreachable!() }
 }
 
-fn map_err<I: Clone, O, E, X, F>(f: F, m: impl Fn(E) -> X)
+fn map_err<I: Clone, O, E, X, F>(f: F, m: impl Fn(E, I) -> X)
     -> impl Fn(I) -> IResult<I, O, X> where
     F: Fn(I) -> IResult<I, O, E> {
     
     move |input: I| {
-        match f(input) {
-            Err(nom::Err::Error(e)) => Err(nom::Err::Error(m(e))),
-            Err(nom::Err::Failure(e)) => Err(nom::Err::Failure(m(e))),
+        match f(input.clone()) {
+            Err(nom::Err::Error(e)) => Err(nom::Err::Error(m(e, input))),
+            Err(nom::Err::Failure(e)) => Err(nom::Err::Failure(m(e, input))),
             Err(nom::Err::Incomplete(n)) => Err(nom::Err::Incomplete(n)),
             Ok(r) => Ok(r)
         }
     }
+}
+
+fn no_err<I: Clone, O, X, F>(f: F) -> impl Fn(I) -> IResult<I, O, X> where
+    F: Fn(I) -> IResult<I, O, Void> {
+
+    map_err(
+        f,
+        |x, _| x.unreachable()
+    )
 }
 
 fn set_err<I: Clone, O, X, F>(f: F, m: impl Fn(I) -> X)
@@ -72,13 +81,14 @@ fn map_res<I: Clone, O, E, R, F>(f: F, m: impl Fn(O, I) -> Result<R, nom::Err<E>
 }
 
 #[derive(Debug, Clone)]
-pub enum FieldBodyError<'a> {
+enum FieldBodyError {
     UnexpectedEndOfField(u32),
-    UnknownFileType(&'a [u8], u32),
+    UnknownFileType(u32),
+    NonZeroDeletionMark(u32),
 }
 
-impl<'a> ParseError<&'a [u8]> for FieldBodyError<'a> {
-    fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
+impl<'a> ParseError<&'a [u8]> for FieldBodyError {
+    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
 
     fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
 
@@ -111,7 +121,7 @@ fn file_metadata_field(input: &[u8]) -> IResult<&[u8], FileMetadata, FieldBodyEr
     map(
         tuple((
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-            map_res(le_u32, |w, input| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownFileType(input, w)))),
+            map_res(le_u32, |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownFileType(w)))),
             set_err(
                 tuple((
                     fixed_string(32),
@@ -132,16 +142,14 @@ fn fixed_string_field<'a>(length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8],
 fn multiline_field<'a, E>(linebreaks: LinebreakStyle, coerce: StringCoerce)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
 
-    map_err(
-        map(string_field::<Void>(coerce), move |s| linebreaks.split(&s).map(String::from).collect()),
-        |x| x.unreachable()
+    no_err(
+        map(string_field::<Void>(coerce), move |s| linebreaks.split(&s).map(String::from).collect())
     )
 }
 
 fn multi_string_field<E>(input: &[u8]) -> IResult<&[u8], Vec<String>, E> {
-    map_err(
-        map(string_field::<Void>(StringCoerce::None), |s| s.split("\0").map(String::from).collect()),
-        |x| x.unreachable()
+    no_err(
+        map(string_field::<Void>(StringCoerce::None), |s| s.split("\0").map(String::from).collect())
     )(input)
 }
 
@@ -155,7 +163,14 @@ fn reference_field(input: &[u8]) -> IResult<&[u8], (i32, String), FieldBodyError
     )(input)
 }
 
-pub fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
+fn deletion_mark_field(input: &[u8]) -> IResult<&[u8], (), FieldBodyError> {
+    map_res(
+        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
+        |d, _| if d == 0 { Ok(()) } else { Err(nom::Err::Error(FieldBodyError::NonZeroDeletionMark(d))) }
+    )(input)
+}
+
+fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
@@ -173,32 +188,73 @@ pub fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _fiel
                 map(multi_string_field, Field::MultiString)(input),
             FieldType::FileMetadata =>
                 map(file_metadata_field, Field::FileMetadata)(input),
+            FieldType::DeletionMark =>
+                map(deletion_mark_field, |()| Field::DeletionMark)(input),
             _ =>
                 map(binary_field, Field::Binary)(input)
         }
     }
 }
 
-/*
 fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
     map(le_u32, Tag::from)(input)
 }
 
-pub fn field_head<'a>(record_start: &'a [u8], prev_fields_size: u32)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (Tag, u32), Error> {
+#[derive(Debug, Clone)]
+pub enum FieldError {
+    UnexpectedEndOfRecord(u32),
+    FieldSizeMismatch(Tag, u32, u32),
+    UnknownFileType(u32),
+    NonZeroDeletionMark(u32),
+}
 
-    map_err(
-        pair(tag, le_u32),
-        move |(), _| Error::new(record_start).descript(ErrorDescription::UnexpectedEndOfRecord(prev_fields_size + 8))
+impl<'a> ParseError<&'a [u8]> for FieldError {
+    fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
+
+    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
+
+    fn or(self, _other: Self) -> Self { panic!() }
+
+    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
+}
+
+fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
+    flat_map(
+        set_err(
+            pair(tag, le_u32),
+            |_| FieldError::UnexpectedEndOfRecord(8)
+        ),
+        |(field_tag, field_size)| {
+            map(
+                set_err(take(field_size), move |_| FieldError::UnexpectedEndOfRecord(field_size + 8)),
+                move |field_bytes| (field_tag, field_size, field_bytes)
+            )
+        }
+    )(input)
+}
+
+pub fn field<'a>(allow_coerce: bool, record_tag: Tag)
+    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldError> {
+    
+    map_res(
+        field_bytes,
+        move |(field_tag, field_size, field_bytes), _| {
+            let (remaining_field_bytes, field_body) = map_err(
+                field_body(allow_coerce, record_tag, field_tag, field_size),
+                move |e, _| match e {
+                    FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
+                    FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
+                    FieldBodyError::NonZeroDeletionMark(d) => FieldError::NonZeroDeletionMark(d),
+                }
+            )(field_bytes)?;
+            if !remaining_field_bytes.is_empty() {
+                return Err(nom::Err::Error(FieldError::FieldSizeMismatch(field_tag, field_size - remaining_field_bytes.len() as u32, field_size)));
+            }
+            Ok(field_body)
+        }
     )
 }
 
-pub fn field<'a>(allow_coerce: bool, record_tag: Tag, record_start: &'a [u8], prev_fields_size: u32)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, Error> {
-    
-    
-}
-*/
     /*
 /*
 pub fn record_flags(input: &[u8]) -> IResult<&[u8], RecordFlags, Error> {
@@ -294,7 +350,55 @@ mod tests {
         }
     }
 */
-    
+
+    #[test]
+    fn read_deletion_mark_mismatching_size_greater() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&6u32.to_le_bytes()[..]));
+        input.append(&mut vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        let result = field(true, DIAL)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+            assert_eq!(expected, 4);
+            assert_eq!(actual, 6);
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn read_deletion_mark_mismatching_size_field_lesser() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&2u32.to_le_bytes()[..]));
+        input.append(&mut vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        let result = field(true, DIAL)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+            assert_eq!(expected, 4);
+            assert_eq!(actual, 2);
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn read_deletion_mark_mismatching_size_lesser() {
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&2u32.to_le_bytes()[..]));
+        input.append(&mut vec![0x00, 0x00]);
+        let result = field(true, DIAL)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+            assert_eq!(expected, 4);
+            assert_eq!(actual, 2);
+        } else {
+            panic!()
+        }
+    }
+
     #[test]
     fn read_multiline_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
@@ -355,8 +459,7 @@ mod tests {
         input.append(&mut vec![0x01, 0x02, 0x03, 0x04]);
         let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::UnknownFileType(pos, val)) = error {
-            assert_eq!(unsafe { pos.as_ptr().offset_from(input.as_ptr()) }, 4);
+        if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
             assert_eq!(val, 0x100000);
         } else {
             panic!()
