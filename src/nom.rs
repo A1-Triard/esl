@@ -11,9 +11,10 @@ use encoding::{DecoderTrap};
 use encoding::all::WINDOWS_1251;
 use num_traits::cast::FromPrimitive;
 use nom::multi::many0;
-use std::io::{self/*, Read*/};
+use std::io::{self, Read};
 use std::error::Error;
 use std::fmt::{self};
+use std::mem::replace;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -81,6 +82,21 @@ fn map_res<I: Clone, O, E, R, F>(f: F, m: impl Fn(O, I) -> Result<R, nom::Err<E>
             Ok((i, r)) => m(r, input).map(|x| (i, x)),
         }
     }
+}
+
+trait ErrExt<E>: Sized {
+    fn into_err(self) -> nom::Err<E>;
+    fn unwrap(self) -> E {
+        match self.into_err() {
+            nom::Err::Error(e) => e,
+            nom::Err::Failure(e) => e,
+            nom::Err::Incomplete(_) => panic!()
+        }
+    }
+}
+
+impl<E> ErrExt<E> for nom::Err<E> {
+    fn into_err(self) -> nom::Err<E> { self }
 }
 
 #[derive(Debug, Clone)]
@@ -450,50 +466,44 @@ impl<'a> ParseError<&'a [u8]> for RecordError {
     fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
 }
 
-#[derive(Debug, Clone)]
-enum RecordBytesError {
-    UnexpectedEof(u32),
-    InvalidRecordFlags(Tag, u64)
-}
+fn record_head<'a>(record_offset: u64) -> impl Fn(&'a [u8])
+    -> IResult<&'a [u8], (Tag, u32, RecordFlags), RecordError> {
 
-impl<'a> ParseError<&'a [u8]> for RecordBytesError {
-    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
-
-    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
-
-    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
-}
-
-fn record_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, RecordFlags, &[u8]), RecordBytesError> {
     flat_map(
-        flat_map(
-            set_err(
-                pair(tag, le_u32),
-                |_| RecordBytesError::UnexpectedEof(16)
-            ),
-            |(record_tag, record_size)| {
-                map_res(
-                    set_err(le_u64, |_| RecordBytesError::UnexpectedEof(16)),
-                    move |d, _| {
-                        let record_flags = RecordFlags::from_bits(d)
-                            .ok_or(nom::Err::Error(RecordBytesError::InvalidRecordFlags(record_tag, d)))?;
-                        Ok((record_tag, record_size, record_flags))
-                    }
-                )
+        set_err(
+            pair(tag, le_u32),
+            move |input| {
+                debug_panic!();
+                RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size: 16, actual_size: input.len() as u32 })
             }
         ),
-        |(record_tag, record_size, record_flags)| {
-            map(
+        move |(record_tag, record_size)| {
+            map_res(
                 set_err(
-                    take(record_size),
-                    move |_| RecordBytesError::UnexpectedEof(record_size + 16)
+                    le_u64,
+                    move |input| {
+                        debug_panic!();
+                        RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size: 16, actual_size: input.len() as u32 + 8 })
+                    }
                 ),
-                move |record_bytes| (record_tag, record_size, record_flags, record_bytes)
+                move |value, _| {
+                    let record_flags = RecordFlags::from_bits(value)
+                        .ok_or(nom::Err::Error(RecordError::InvalidRecordFlags(InvalidRecordFlags { record_offset, record_tag, value })))?;
+                    Ok((record_tag, record_size, record_flags))
+                }
             )
         }
-    )(input)
+    )
+}
+
+fn read_record_head(record_offset: u64, input: &[u8]) -> Result<(Tag, u32, RecordFlags), RecordError> {
+    match record_head(record_offset)(input) {
+        Ok((rem, res)) => {
+            debug_assert!(rem.is_empty());
+            Ok(res)
+        },
+        Err(err) => Err(err.unwrap())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -525,44 +535,33 @@ fn record_body<'a>(allow_coerce: bool, record_tag: Tag)
     )
 }
 
-pub fn record<'a>(record_offset: u64, allow_coerce: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Record, RecordError> {
-    map_res(
-        map_err(
-            record_bytes,
-            move |e, input| match e {
-                RecordBytesError::UnexpectedEof(expected_size) => {
-                    debug_panic!();
-                    RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size, actual_size: input.len() as u32 })
-                },
-                RecordBytesError::InvalidRecordFlags(record_tag, value) =>
-                    RecordError::InvalidRecordFlags(InvalidRecordFlags { record_offset, record_tag, value }),
-            }
-        ),
-        move |(record_tag, record_size, record_flags, record_bytes), _| {
-            let (remaining_record_bytes, record_body) = map_err(
-                record_body(allow_coerce, record_tag),
-                move |e, input| match e {
-                    RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
-                        RecordError::RecordSizeMismatch(RecordSizeMismatch { record_offset, record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
-                    RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
-                        RecordError::FieldSizeMismatch(FieldSizeMismatch { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
-                    RecordBodyError(FieldError::UnknownFileType(value), field) =>
-                        RecordError::UnknownFileType(UnknownFileType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
-                    RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
-                        RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
-                }
-            )(record_bytes)?;
-            if !remaining_record_bytes.is_empty() {
-                return Err(nom::Err::Error(RecordError::RecordSizeMismatch(RecordSizeMismatch {
-                    record_offset,
-                    record_tag,
-                    expected_size: record_size - remaining_record_bytes.len() as u32,
-                    actual_size: record_size
-                })));
-            }
-            Ok(Record { tag: record_tag, flags: record_flags, fields: record_body })
+fn read_record_body(record_offset: u64, allow_coerce: bool,
+                    record_tag: Tag, record_size: u32, record_flags: RecordFlags,
+                    input: &[u8])
+    -> Result<Record, RecordError> {
+    
+    let (remaining_record_bytes, record_body) = map_err(
+        record_body(allow_coerce, record_tag),
+        move |e, input| match e {
+            RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
+                RecordError::RecordSizeMismatch(RecordSizeMismatch { record_offset, record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
+            RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
+                RecordError::FieldSizeMismatch(FieldSizeMismatch { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
+            RecordBodyError(FieldError::UnknownFileType(value), field) =>
+                RecordError::UnknownFileType(UnknownFileType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+            RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
+                RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
         }
-    )
+    )(input).map_err(|x| x.unwrap())?;
+    if !remaining_record_bytes.is_empty() {
+        return Err(RecordError::RecordSizeMismatch(RecordSizeMismatch {
+            record_offset,
+            record_tag,
+            expected_size: record_size - remaining_record_bytes.len() as u32,
+            actual_size: record_size
+        }));
+    }
+    Ok(Record { tag: record_tag, flags: record_flags, fields: record_body })
 }
 
 #[derive(Debug)]
@@ -572,16 +571,37 @@ pub struct ReadRecordError {
     bytes: Vec<u8>
 }
 
+fn is_eof(e: &RecordError) -> bool {
+    match e {
+        RecordError::UnexpectedEof(_) => true,
+        _ => false
+    }
+}
+
 lazy_static! {
     static ref INVALID_DATA_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::InvalidData);
+    static ref UNEXPECTED_EOF_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::UnexpectedEof);
 }
 
 impl ReadRecordError {
     pub fn as_record_error(&self) -> &RecordError { &self.record_error }
     
-    pub fn as_io_error(&self) -> &io::Error { self.io_error.as_ref().unwrap_or(&*INVALID_DATA_IO_ERROR) }
+    pub fn as_io_error(&self) -> &io::Error {
+        self.io_error.as_ref().unwrap_or_else(|| if is_eof(&self.record_error) {
+            &*UNEXPECTED_EOF_IO_ERROR
+        } else {
+            &*INVALID_DATA_IO_ERROR
+        })
+    }
     
-    pub fn into_io_error(self) -> io::Error { self.io_error.unwrap_or(io::Error::from(io::ErrorKind::InvalidData)) }
+    pub fn into_io_error(self) -> io::Error {
+        let record_error = &self.record_error;
+        self.io_error.unwrap_or_else(move || if is_eof(record_error) {
+            io::Error::from(io::ErrorKind::UnexpectedEof)
+        } else {
+            io::Error::from(io::ErrorKind::InvalidData)
+        })
+    }
     
     pub fn into_record_error(self) -> RecordError { self.record_error }
     
@@ -590,7 +610,13 @@ impl ReadRecordError {
     pub fn into_bytes(self) -> Vec<u8> { self.bytes }
     
     pub fn into_tuple(self) -> (RecordError, io::Error, Vec<u8>) {
-        (self.record_error, self.io_error.unwrap_or(io::Error::from(io::ErrorKind::InvalidData)), self.bytes)
+        let record_error = &self.record_error;
+        let io_error = self.io_error.unwrap_or_else(move || if is_eof(record_error) {
+            io::Error::from(io::ErrorKind::UnexpectedEof)
+        } else {
+            io::Error::from(io::ErrorKind::InvalidData)
+        });
+        (self.record_error, io_error, self.bytes)
     }
 }
 
@@ -614,10 +640,9 @@ impl Error for ReadRecordError {
     }
 }
 
-/*
-fn read_and_ignore_interrupts(reader: &mut (impl Read + ?Sized), buf: &mut [u8]) -> io::Result<usize> {
+fn read_and_ignore_interrupts(input: &mut (impl Read + ?Sized), buf: &mut [u8]) -> io::Result<usize> {
     loop {
-        match reader.read(buf) {
+        match input.read(buf) {
             Ok(read) => return Ok(read),
             Err(e) => {
                 if e.kind() != io::ErrorKind::Interrupted {
@@ -629,32 +654,115 @@ fn read_and_ignore_interrupts(reader: &mut (impl Read + ?Sized), buf: &mut [u8])
 }
 
 pub struct RecordsReader {
-    
+    buf: Vec<u8>,
 }
 
-pub trait ReadRecordsExt: Read {
-    fn read_record(&mut self) -> Result<Option<Record>, ReadRecordError> {
-        let mut record_header_bytes = [0u8; 16];
-        let read = read_and_ignore_interrupts(self, &mut record_header_bytes[..]);
-        if read == 0 { return Ok(None); }
-        let mut unfilled_record_header_bytes = &mut record_header_bytes[read..];
-        while !unfilled_record_header_bytes.is_empty() {
-            let read = read_and_ignore_interrupts(self, &mut unfilled_record_header_bytes[..])
-                .map_err(|io_error| Err(ReadRecordError {
-                    io_error,
-                    record_error: RecordError::UnexpectedEof(UnexpectedEof { expected_size: 16 }),
-                    bytes: record_header_bytes.into()
-                }))?;
+impl RecordsReader {
+    pub fn new() -> Self {
+        RecordsReader {
+            buf: Vec::with_capacity(16)
+        }
+    }
+
+    fn read_chunk(&mut self, record_offset: u64, input: &mut (impl Read + ?Sized))
+                  -> Result<usize, ReadRecordError> {
+
+        read_and_ignore_interrupts(input, &mut self.buf[..])
+            .map_err(|io_error| ReadRecordError {
+                io_error: Some(io_error),
+                record_error: RecordError::UnexpectedEof(UnexpectedEof {
+                    record_offset,
+                    expected_size: self.buf.len() as u32,
+                    actual_size: 0
+                }),
+                bytes: Vec::new()
+            })
+    }
+
+    fn fill_buf(&mut self, mut from: usize, record_offset: u64, input: &mut (impl Read + ?Sized))
+                -> Result<(), ReadRecordError> {
+
+        while from < self.buf.len() {
+            let read = read_and_ignore_interrupts(input, &mut self.buf[from..])
+                .map_err(|io_error| ReadRecordError {
+                    io_error: Some(io_error),
+                    record_error: RecordError::UnexpectedEof(UnexpectedEof {
+                        record_offset,
+                        expected_size: self.buf.len() as u32,
+                        actual_size: from as u32
+                    }),
+                    bytes: {
+                        let mut bytes = replace(&mut self.buf, Vec::with_capacity(16));
+                        bytes.truncate(from);
+                        bytes
+                    }
+                })?;
             if read == 0 {
                 return Err(ReadRecordError {
-                    io_error: io::Error::from(io::ErrorKind::UnexpectedEof),
-                    record_error: RecordError::UnexpectedEof(UnexpectedEof { expected_size: 16 }),
-                    bytes: record_header_bytes.into()
+                    io_error: None,
+                    record_error: RecordError::UnexpectedEof(UnexpectedEof {
+                        record_offset,
+                        expected_size: self.buf.len() as u32,
+                        actual_size: from as u32
+                    }),
+                    bytes: {
+                        let mut bytes = replace(&mut self.buf, Vec::with_capacity(16));
+                        bytes.truncate(from);
+                        bytes
+                    }
                 });
             }
-            unfilled_record_header_bytes = &mut unfilled_record_header_bytes[read..];
+            from += read;
         }
-        Ok(None)
+        Ok(())
+    }
+
+    pub fn read<Input: Read + ?Sized>(&mut self, allow_coerce: bool, offset: u64, input: &mut Input)
+        -> Result<Option<(Record, u32)>, ReadRecordError> {
+
+        self.buf.resize(16, 0);
+        let read = self.read_chunk(offset, input)?;
+        if read == 0 { return Ok(None); }
+        self.fill_buf(read, offset, input)?;
+        let (record_tag, record_size, record_flags) =
+            read_record_head(offset, &self.buf[..]).map_err(|record_error| ReadRecordError {
+                io_error: None,
+                record_error,
+                bytes: replace(&mut self.buf, Vec::with_capacity(16))
+            })?;
+        self.buf.resize(16 + record_size as usize, 0);
+        self.fill_buf(16, offset, input)?;
+        let record = read_record_body(offset, allow_coerce, record_tag, record_size, record_flags,
+                         &self.buf[16..]).map_err(|record_error| ReadRecordError {
+            io_error: None,
+            record_error,
+            bytes: replace(&mut self.buf, Vec::with_capacity(16))
+        })?;
+        Ok(Some((record, 16 + record_size)))
+    }
+}
+
+/*
+pub struct Records<'a, Input: Read + ?Sized> {
+    input: &'a mut Input,
+    offset: u64,
+    header_bytes: [u8; 16],
+}
+
+impl<'a, Input: Read + ?Sized> Records<'a, Input> {
+    pub fn new(input: &'a mut Input, offset: u64) -> Self {
+        Records {
+            input,
+            offset,
+            header_bytes: [0; 16]
+        }
+    }
+}
+
+impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
+    type Item = Result<Record, ReadRecordError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
     }
 }
 */
@@ -701,11 +809,11 @@ mod tests {
     #[test]
     fn read_record_flags_empty() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&TES3.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&0u32.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&0u64.to_le_bytes()[..]));
-        let (remaining_input, result) = record(0x11, false)(&input).unwrap();
-        assert_eq!(remaining_input.len(), 0);
+        input.extend(TES3.dword.to_le_bytes().iter());
+        input.extend(0u32.to_le_bytes().iter());
+        input.extend(0u64.to_le_bytes().iter());
+        let (result, read) = RecordsReader::new().read(false, 0x11, &mut (&input[..])).unwrap().unwrap();
+        assert_eq!(read, 16);
         assert_eq!(result.flags, RecordFlags::empty());
         assert_eq!(result.tag, TES3);
         assert!(result.fields.is_empty());
@@ -714,12 +822,12 @@ mod tests {
     #[test]
     fn read_record_flags_invalid() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&TES3.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&0u32.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&0x70000u64.to_le_bytes()[..]));
-        let result = record(0x11, false)(&input);
+        input.extend(TES3.dword.to_le_bytes().iter());
+        input.extend(0u32.to_le_bytes().iter());
+        input.extend(0x70000u64.to_le_bytes().iter());
+        let result = RecordsReader::new().read(false, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
-        if let ::nom::Err::Error(RecordError::InvalidRecordFlags(error)) = error { 
+        if let RecordError::InvalidRecordFlags(error) = error.into_record_error() { 
             assert_eq!(error.value, 0x70000);
             assert_eq!(error.record_offset, 0x11);
             assert_eq!(error.record_tag, TES3);
@@ -731,9 +839,9 @@ mod tests {
     #[test]
     fn read_deletion_mark_mismatching_size_greater() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&6u32.to_le_bytes()[..]));
-        input.append(&mut vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        input.extend(DELE.dword.to_le_bytes().iter());
+        input.extend(6u32.to_le_bytes().iter());
+        input.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -747,9 +855,9 @@ mod tests {
     #[test]
     fn read_deletion_mark_mismatching_size_field_lesser() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&2u32.to_le_bytes()[..]));
-        input.append(&mut vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        input.extend(DELE.dword.to_le_bytes().iter());
+        input.extend(2u32.to_le_bytes().iter());
+        input.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -763,9 +871,9 @@ mod tests {
     #[test]
     fn read_deletion_mark_mismatching_size_lesser() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&2u32.to_le_bytes()[..]));
-        input.append(&mut vec![0x00, 0x00]);
+        input.extend(DELE.dword.to_le_bytes().iter());
+        input.extend(2u32.to_le_bytes().iter());
+        input.extend(vec![0x00, 0x00]);
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -779,9 +887,9 @@ mod tests {
     #[test]
     fn read_deletion_mark_non_zero() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut Vec::from(&DELE.dword.to_le_bytes()[..]));
-        input.append(&mut Vec::from(&4u32.to_le_bytes()[..]));
-        input.append(&mut vec![0x01, 0x00, 0x00, 0x00]);
+        input.extend(DELE.dword.to_le_bytes().iter());
+        input.extend(4u32.to_le_bytes().iter());
+        input.extend(vec![0x01, 0x00, 0x00, 0x00]);
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::NonZeroDeletionMark(d)) = error {
@@ -824,11 +932,11 @@ mod tests {
     #[test]
     fn read_file_metadata() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut vec![0x00, 0x00, 0x00, 0x22]);
-        input.append(&mut vec![0x20, 0x00, 0x00, 0x00]);
-        input.append(&mut string(&len(32, "author")));
-        input.append(&mut string(&len(256, "description\r\nlines\r\n")));
-        input.append(&mut vec![0x01, 0x02, 0x03, 0x04]);
+        input.extend(vec![0x00, 0x00, 0x00, 0x22]);
+        input.extend(vec![0x20, 0x00, 0x00, 0x00]);
+        input.extend(string(&len(32, "author")));
+        input.extend(string(&len(256, "description\r\nlines\r\n")));
+        input.extend(vec![0x01, 0x02, 0x03, 0x04]);
         let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
         if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
@@ -844,11 +952,11 @@ mod tests {
     #[test]
     fn read_invalid_file_type() {
         let mut input: Vec<u8> = Vec::new();
-        input.append(&mut vec![0x00, 0x00, 0x00, 0x22]);
-        input.append(&mut vec![0x00, 0x00, 0x10, 0x00]);
-        input.append(&mut string(&len(32, "author")));
-        input.append(&mut string(&len(256, "description")));
-        input.append(&mut vec![0x01, 0x02, 0x03, 0x04]);
+        input.extend(vec![0x00, 0x00, 0x00, 0x22]);
+        input.extend(vec![0x00, 0x00, 0x10, 0x00]);
+        input.extend(string(&len(32, "author")));
+        input.extend(string(&len(256, "description")));
+        input.extend(vec![0x01, 0x02, 0x03, 0x04]);
         let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
