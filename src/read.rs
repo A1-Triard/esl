@@ -108,6 +108,7 @@ enum FieldBodyError {
     UnknownFileType(u32),
     NonZeroDeletionMark(u32),
     NonZeroNpcPaddingByte(u8),
+    UnexpectedNpcFieldSize(u32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldBodyError {
@@ -223,20 +224,10 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
     map(
         set_err(
             tuple((
-                le_f32,
-                le_u32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
-                le_i32,
+                le_f32, le_u32,
+                le_i32, le_i32, le_i32, le_i32,
+                le_i32, le_i32, le_i32, le_i32,
+                le_i32, le_i32, le_i32, le_i32,
             )),
             |_| FieldBodyError::UnexpectedEndOfField(56)
         ),
@@ -255,11 +246,8 @@ fn script_metadata_field(input: &[u8]) -> IResult<&[u8], ScriptMetadata, FieldBo
         set_err(
             tuple((
                 fixed_string(32),
-                le_u32,
-                le_u32,
-                le_u32,
-                le_u32,
-                le_u32,
+                le_u32, le_u32, le_u32,
+                le_u32, le_u32,
             )),
             |_| FieldBodyError::UnexpectedEndOfField(32 + 20)
         ),
@@ -396,7 +384,7 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_siz
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
-                _ => panic!(),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedNpcFieldSize(x))),
             },
             _ =>
                 map(binary_field, Field::Binary)(input)
@@ -415,6 +403,7 @@ enum FieldError {
     UnknownFileType(u32),
     NonZeroDeletionMark(u32),
     NonZeroNpcPaddingByte(u8),
+    UnexpectedNpcFieldSize(u32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldError {
@@ -455,6 +444,7 @@ fn field<'a>(allow_coerce: bool, record_tag: Tag)
                     FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
                     FieldBodyError::NonZeroDeletionMark(d) => FieldError::NonZeroDeletionMark(d),
                     FieldBodyError::NonZeroNpcPaddingByte(d) => FieldError::NonZeroNpcPaddingByte(d),
+                    FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -634,6 +624,28 @@ impl Error for NonZeroDeletionMark {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
+#[derive(Debug, Clone)]
+pub struct UnexpectedNpcFieldSize {
+    pub record_offset: u64,
+    pub field_offset: u32,
+    pub field_size: u32
+}
+
+impl fmt::Display for UnexpectedNpcFieldSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "found NPDT field at {:X}h with unexpected size {} at {:X}h in NPC_ record started at {:X}h",
+            self.record_offset + 16 + self.field_offset as u64,
+            self.field_size,
+            self.record_offset + 16 + self.field_offset as u64 + 4,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for UnexpectedNpcFieldSize {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
 
 #[derive(Debug, Clone)]
 pub enum RecordError {
@@ -644,6 +656,7 @@ pub enum RecordError {
     UnknownFileType(UnknownFileType),
     NonZeroDeletionMark(NonZeroDeletionMark),
     NonZeroNpcPaddingByte(NonZeroNpcPaddingByte),
+    UnexpectedNpcFieldSize(UnexpectedNpcFieldSize),
 }
 
 impl fmt::Display for RecordError {
@@ -656,6 +669,7 @@ impl fmt::Display for RecordError {
             RecordError::UnknownFileType(x) => x.fmt(f),
             RecordError::NonZeroDeletionMark(x) => x.fmt(f),
             RecordError::NonZeroNpcPaddingByte(x) => x.fmt(f),
+            RecordError::UnexpectedNpcFieldSize(x) => x.fmt(f),
         }
     }
 }
@@ -670,6 +684,7 @@ impl Error for RecordError {
             RecordError::UnknownFileType(x) => x,
             RecordError::NonZeroDeletionMark(x) => x,
             RecordError::NonZeroNpcPaddingByte(x) => x,
+            RecordError::UnexpectedNpcFieldSize(x) => x,
         })
     }
 }
@@ -771,6 +786,8 @@ fn read_record_body(record_offset: u64, allow_coerce: bool,
                 RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
             RecordBodyError(FieldError::NonZeroNpcPaddingByte(value), field) =>
                 RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+            RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
+                RecordError::UnexpectedNpcFieldSize(UnexpectedNpcFieldSize { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
         }
     )(input).map_err(|x| x.unwrap())?;
     if !remaining_record_bytes.is_empty() {
