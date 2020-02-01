@@ -109,6 +109,7 @@ enum FieldBodyError {
     NonZeroDeletionMark(u32),
     NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
+    InvalidEffectRange(i32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldBodyError {
@@ -151,7 +152,10 @@ fn file_metadata_field(input: &[u8]) -> IResult<&[u8], FileMetadata, FieldBodyEr
     map(
         tuple((
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-            map_res(le_u32, |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownFileType(w)))),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
+                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownFileType(w)))
+            ),
             set_err(
                 tuple((
                     fixed_string(32),
@@ -295,7 +299,7 @@ fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
             (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
             (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand, faction),
             (health, magicka, fatigue)
-         )| NpcCharacteristics {
+        )| NpcCharacteristics {
             strength, intelligence, willpower, agility, speed,
             endurance, personality, luck, block,
             armorer, medium_armor, heavy_armor, blunt_weapon,
@@ -341,53 +345,65 @@ fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
     )(input)
 }
 
+fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
+    map(
+        tuple((
+            set_err(
+                tuple((le_i16, le_i8, le_i8)),
+                |_| FieldBodyError::UnexpectedEndOfField(24)
+            ),
+            map_res(
+                set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBodyError::InvalidEffectRange(d)))
+            ),
+            set_err(
+                tuple((le_i32, le_i32, le_i32, le_i32)),
+                |_| FieldBodyError::UnexpectedEndOfField(24)
+            ),
+        )),
+        |(
+            (id, skill, attribute),
+            range,
+            (area, duration, magnitude_min, magnitude_max),
+        )| Effect {
+            id, skill, attribute, range,
+            area, duration, magnitude_min, magnitude_max
+        }
+    )(input)
+}
+
 fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
         let field_type = FieldType::from_tags(record_tag, field_tag).coerce(allow_coerce);
         match field_type {
-            FieldType::Binary =>
-                map(binary_field, Field::Binary)(input),
-            FieldType::Compressed =>
-                map(compressed_field, Field::Compressed)(input),
+            FieldType::Binary => map(binary_field, Field::Binary)(input),
+            FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
             FieldType::Multiline(linebreaks, coerce) =>
                 map(multiline_field(linebreaks, coerce), Field::Multiline)(input),
             FieldType::Reference =>
                 map(reference_field, |(count, name)| Field::Reference(count, name))(input),
-            FieldType::FixedString(len) =>
-                map(fixed_string_field(len), Field::String)(input),
-            FieldType::String(coerce) =>
-                map(string_field(coerce), Field::String)(input),
-            FieldType::MultiString =>
-                map(multi_string_field, Field::MultiString)(input),
-            FieldType::FileMetadata =>
-                map(file_metadata_field, Field::FileMetadata)(input),
-            FieldType::DeletionMark =>
-                map(deletion_mark_field, |()| Field::DeletionMark)(input),
-            FieldType::Int =>
-                map(int_field, Field::Int)(input),
-            FieldType::Short =>
-                map(short_field, Field::Short)(input),
-            FieldType::Long =>
-                map(long_field, Field::Long)(input),
-            FieldType::Byte =>
-                map(byte_field, Field::Byte)(input),
-            FieldType::Float =>
-                map(float_field, Field::Float)(input),
-            FieldType::Ingredient =>
-                map(ingredient_field, Field::Ingredient)(input),
-            FieldType::ScriptMetadata =>
-                map(script_metadata_field, Field::ScriptMetadata)(input),
-            FieldType::SavedNpc =>
-                map(saved_npc_field, Field::SavedNpc)(input),
+            FieldType::FixedString(len) => map(fixed_string_field(len), Field::String)(input),
+            FieldType::String(coerce) => map(string_field(coerce), Field::String)(input),
+            FieldType::MultiString => map(multi_string_field, Field::MultiString)(input),
+            FieldType::FileMetadata => map(file_metadata_field, Field::FileMetadata)(input),
+            FieldType::DeletionMark => map(deletion_mark_field, |()| Field::DeletionMark)(input),
+            FieldType::Int => map(int_field, Field::Int)(input),
+            FieldType::Short => map(short_field, Field::Short)(input),
+            FieldType::Long => map(long_field, Field::Long)(input),
+            FieldType::Byte => map(byte_field, Field::Byte)(input),
+            FieldType::Float => map(float_field, Field::Float)(input),
+            FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
+            FieldType::ScriptMetadata => map(script_metadata_field, Field::ScriptMetadata)(input),
+            FieldType::SavedNpc => map(saved_npc_field, Field::SavedNpc)(input),
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedNpcFieldSize(x))),
             },
-            _ =>
-                map(binary_field, Field::Binary)(input)
+            FieldType::Effect => map(effect_field, Field::Effect)(input),
+            _ => map(binary_field, Field::Binary)(input)
         }
     }
 }
@@ -404,6 +420,7 @@ enum FieldError {
     NonZeroDeletionMark(u32),
     NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
+    InvalidEffectRange(i32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldError {
@@ -445,6 +462,7 @@ fn field<'a>(allow_coerce: bool, record_tag: Tag)
                     FieldBodyError::NonZeroDeletionMark(d) => FieldError::NonZeroDeletionMark(d),
                     FieldBodyError::NonZeroNpcPaddingByte(d) => FieldError::NonZeroNpcPaddingByte(d),
                     FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
+                    FieldBodyError::InvalidEffectRange(d) => FieldError::InvalidEffectRange(d),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -648,6 +666,31 @@ impl Error for UnexpectedNpcFieldSize {
 }
 
 #[derive(Debug, Clone)]
+pub struct InvalidEffectRange {
+    pub record_offset: u64,
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub value: i32
+}
+
+impl fmt::Display for InvalidEffectRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid effect range {} at {:X}h in ENAM field started at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidEffectRange {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
 pub enum RecordError {
     UnexpectedEof(UnexpectedEof),
     InvalidRecordFlags(InvalidRecordFlags),
@@ -657,6 +700,7 @@ pub enum RecordError {
     NonZeroDeletionMark(NonZeroDeletionMark),
     NonZeroNpcPaddingByte(NonZeroNpcPaddingByte),
     UnexpectedNpcFieldSize(UnexpectedNpcFieldSize),
+    InvalidEffectRange(InvalidEffectRange),
 }
 
 impl fmt::Display for RecordError {
@@ -670,6 +714,7 @@ impl fmt::Display for RecordError {
             RecordError::NonZeroDeletionMark(x) => x.fmt(f),
             RecordError::NonZeroNpcPaddingByte(x) => x.fmt(f),
             RecordError::UnexpectedNpcFieldSize(x) => x.fmt(f),
+            RecordError::InvalidEffectRange(x) => x.fmt(f),
         }
     }
 }
@@ -685,6 +730,7 @@ impl Error for RecordError {
             RecordError::NonZeroDeletionMark(x) => x,
             RecordError::NonZeroNpcPaddingByte(x) => x,
             RecordError::UnexpectedNpcFieldSize(x) => x,
+            RecordError::InvalidEffectRange(x) => x,
         })
     }
 }
@@ -788,6 +834,8 @@ fn read_record_body(record_offset: u64, allow_coerce: bool,
                 RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
             RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
                 RecordError::UnexpectedNpcFieldSize(UnexpectedNpcFieldSize { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
+            RecordBodyError(FieldError::InvalidEffectRange(value), field) =>
+                RecordError::InvalidEffectRange(InvalidEffectRange { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
         }
     )(input).map_err(|x| x.unwrap())?;
     if !remaining_record_bytes.is_empty() {
@@ -1021,7 +1069,6 @@ fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
 where
 f T3Dial = T3DialField s <$> dialField field_size
-f T3Effect = T3EffectField s <$> effectField
 */
 
 #[cfg(test)]
@@ -1200,6 +1247,20 @@ mod tests {
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
             assert_eq!(val, 0x100000);
+        } else {
+            panic!()
+        }
+    }
+    
+    #[test]
+    fn read_file_metadata_eof_in_file_type() {
+        let mut input: Vec<u8> = Vec::new();
+        input.extend([0x00, 0x00, 0x00, 0x22].iter());
+        input.extend([0x20, 0x00, 0x00].iter());
+        let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
+        let error = result.err().unwrap();
+        if let nom::Err::Error(FieldBodyError::UnexpectedEndOfField(size)) = error {
+            assert_eq!(size, 300);
         } else {
             panic!()
         }
