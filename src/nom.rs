@@ -11,6 +11,9 @@ use encoding::{DecoderTrap};
 use encoding::all::WINDOWS_1251;
 use num_traits::cast::FromPrimitive;
 use nom::multi::many0;
+use std::io::{self/*, Read*/};
+use std::error::Error;
+use std::fmt::{self};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -256,26 +259,79 @@ fn field<'a>(allow_coerce: bool, record_tag: Tag)
 }
 
 #[derive(Debug, Clone)]
-pub struct UnexpectedEndOfStream {
-    pub expected_size: u32
+pub struct UnexpectedEof {
+    pub record_offset: u64,
+    pub expected_size: u32,
+    pub actual_size: u32
+}
+
+impl fmt::Display for UnexpectedEof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "unexpected EOF at {:X}h in record started at {:X}h, {} bytes missing",
+            self.record_offset + self.actual_size as u64,
+            self.record_offset,
+            self.expected_size - self.actual_size
+        )
+    }
+}
+
+impl Error for UnexpectedEof {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[derive(Debug, Clone)]
 pub struct InvalidRecordFlags {
+    pub record_offset: u64,
     pub record_tag: Tag,
     pub value: u64
     
 }
 
+impl fmt::Display for InvalidRecordFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid record flags value {:016X}h at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 8,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidRecordFlags {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
 #[derive(Debug, Clone)]
 pub struct RecordSizeMismatch {
+    pub record_offset: u64,
     pub record_tag: Tag,
     pub expected_size: u32,
     pub actual_size: u32
 }
 
+impl fmt::Display for RecordSizeMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "record size mismatch, expected {:8X}h, found {:8X}h at {:X}h in {} record started at {:X}h",
+            self.expected_size,
+            self.actual_size,
+            self.record_offset + 4,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for RecordSizeMismatch {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
 #[derive(Debug, Clone)]
 pub struct FieldSizeMismatch {
+    pub record_offset: u64,
     pub record_tag: Tag,
     pub field_offset: u32,
     pub field_tag: Tag,
@@ -283,36 +339,74 @@ pub struct FieldSizeMismatch {
     pub actual_size: u32
 }
 
+impl fmt::Display for FieldSizeMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "field size mismatch, expected {:8X}h, found {:8X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            self.expected_size,
+            self.actual_size,
+            self.record_offset + 16 + self.field_offset as u64 + 4,
+            self.field_tag,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for FieldSizeMismatch {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
 #[derive(Debug, Clone)]
 pub struct UnknownFileType {
-    pub record_tag: Tag,
+    pub record_offset: u64,
     pub field_offset: u32,
     pub value: u32
+}
+
+impl fmt::Display for UnknownFileType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "unknown file type {:8X}h at {:X}h in HEDR field started at {:X}h in TES3 record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 12,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for UnknownFileType {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[derive(Debug, Clone)]
 pub struct NonZeroDeletionMark {
-    pub record_tag: Tag,
+    pub record_offset: u64,
     pub field_offset: u32,
     pub value: u32
 }
 
-#[derive(Debug, Clone)]
-enum RecordFlagsError {
-    UnexpectedEndOfStream(u32),
-    InvalidRecordFlags(u64)
+impl fmt::Display for NonZeroDeletionMark {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "found non-zero deletion mark value {:8X}h at {:X}h in DELE field started at {:X}h in DIAL record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_offset
+        )
+    }
 }
 
-fn record_flags(input: &[u8]) -> IResult<&[u8], RecordFlags, RecordFlagsError> {
-    map_res(
-        set_err(le_u64, |_| RecordFlagsError::UnexpectedEndOfStream(16)),
-        |d, _| RecordFlags::from_bits(d).ok_or(nom::Err::Error(RecordFlagsError::InvalidRecordFlags(d)))
-    )(input)
+impl Error for NonZeroDeletionMark {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[derive(Debug, Clone)]
-pub enum ReadRecordError {
-    UnexpectedEndOfStream(UnexpectedEndOfStream),
+pub enum RecordError {
+    UnexpectedEof(UnexpectedEof),
     InvalidRecordFlags(InvalidRecordFlags),
     RecordSizeMismatch(RecordSizeMismatch),
     FieldSizeMismatch(FieldSizeMismatch),
@@ -320,7 +414,33 @@ pub enum ReadRecordError {
     NonZeroDeletionMark(NonZeroDeletionMark),
 }
 
-impl<'a> ParseError<&'a [u8]> for ReadRecordError {
+impl fmt::Display for RecordError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RecordError::UnexpectedEof(x) => x.fmt(f),
+            RecordError::InvalidRecordFlags(x) => x.fmt(f),
+            RecordError::RecordSizeMismatch(x) => x.fmt(f),
+            RecordError::FieldSizeMismatch(x) => x.fmt(f),
+            RecordError::UnknownFileType(x) => x.fmt(f),
+            RecordError::NonZeroDeletionMark(x) => x.fmt(f),
+        }
+    }
+}
+
+impl Error for RecordError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(match self {
+            RecordError::UnexpectedEof(x) => x,
+            RecordError::InvalidRecordFlags(x) => x,
+            RecordError::RecordSizeMismatch(x) => x,
+            RecordError::FieldSizeMismatch(x) => x,
+            RecordError::UnknownFileType(x) => x,
+            RecordError::NonZeroDeletionMark(x) => x,
+        })
+    }
+}
+
+impl<'a> ParseError<&'a [u8]> for RecordError {
     fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
 
     fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
@@ -330,25 +450,37 @@ impl<'a> ParseError<&'a [u8]> for ReadRecordError {
     fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
 }
 
-fn record_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, RecordFlags, &[u8]), ReadRecordError> {
+#[derive(Debug, Clone)]
+enum RecordBytesError {
+    UnexpectedEof(u32),
+    InvalidRecordFlags(Tag, u64)
+}
+
+impl<'a> ParseError<&'a [u8]> for RecordBytesError {
+    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+
+    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
+
+    fn or(self, _other: Self) -> Self { panic!() }
+
+    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
+}
+
+fn record_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, RecordFlags, &[u8]), RecordBytesError> {
     flat_map(
         flat_map(
             set_err(
                 pair(tag, le_u32),
-                |_| ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size: 16 })
+                |_| RecordBytesError::UnexpectedEof(16)
             ),
             |(record_tag, record_size)| {
-                map(
-                    map_err(
-                        record_flags,
-                        move |e, _| match e {
-                            RecordFlagsError::UnexpectedEndOfStream(expected_size) =>
-                                ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size }),
-                            RecordFlagsError::InvalidRecordFlags(value) =>
-                                ReadRecordError::InvalidRecordFlags(InvalidRecordFlags { record_tag, value }),
-                        }
-                    ),
-                    move |record_flags| (record_tag, record_size, record_flags)
+                map_res(
+                    set_err(le_u64, |_| RecordBytesError::UnexpectedEof(16)),
+                    move |d, _| {
+                        let record_flags = RecordFlags::from_bits(d)
+                            .ok_or(nom::Err::Error(RecordBytesError::InvalidRecordFlags(record_tag, d)))?;
+                        Ok((record_tag, record_size, record_flags))
+                    }
                 )
             }
         ),
@@ -356,7 +488,7 @@ fn record_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, RecordFlags, &[u8]), 
             map(
                 set_err(
                     take(record_size),
-                    move |_| ReadRecordError::UnexpectedEndOfStream(UnexpectedEndOfStream { expected_size: record_size + 16 })
+                    move |_| RecordBytesError::UnexpectedEof(record_size + 16)
                 ),
                 move |record_bytes| (record_tag, record_size, record_flags, record_bytes)
             )
@@ -393,25 +525,36 @@ fn record_body<'a>(allow_coerce: bool, record_tag: Tag)
     )
 }
 
-pub fn record<'a>(allow_coerce: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Record, ReadRecordError> {
+pub fn record<'a>(record_offset: u64, allow_coerce: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Record, RecordError> {
     map_res(
-        record_bytes,
+        map_err(
+            record_bytes,
+            move |e, input| match e {
+                RecordBytesError::UnexpectedEof(expected_size) => {
+                    debug_panic!();
+                    RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size, actual_size: input.len() as u32 })
+                },
+                RecordBytesError::InvalidRecordFlags(record_tag, value) =>
+                    RecordError::InvalidRecordFlags(InvalidRecordFlags { record_offset, record_tag, value }),
+            }
+        ),
         move |(record_tag, record_size, record_flags, record_bytes), _| {
             let (remaining_record_bytes, record_body) = map_err(
                 record_body(allow_coerce, record_tag),
                 move |e, input| match e {
                     RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
-                        ReadRecordError::RecordSizeMismatch(RecordSizeMismatch { record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
+                        RecordError::RecordSizeMismatch(RecordSizeMismatch { record_offset, record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
                     RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
-                        ReadRecordError::FieldSizeMismatch(FieldSizeMismatch { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
+                        RecordError::FieldSizeMismatch(FieldSizeMismatch { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
                     RecordBodyError(FieldError::UnknownFileType(value), field) =>
-                        ReadRecordError::UnknownFileType(UnknownFileType { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                        RecordError::UnknownFileType(UnknownFileType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
                     RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
-                        ReadRecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                        RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
                 }
             )(record_bytes)?;
             if !remaining_record_bytes.is_empty() {
-                return Err(nom::Err::Error(ReadRecordError::RecordSizeMismatch(RecordSizeMismatch {
+                return Err(nom::Err::Error(RecordError::RecordSizeMismatch(RecordSizeMismatch {
+                    record_offset,
                     record_tag,
                     expected_size: record_size - remaining_record_bytes.len() as u32,
                     actual_size: record_size
@@ -422,17 +565,104 @@ pub fn record<'a>(allow_coerce: bool) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], 
     )
 }
 
+#[derive(Debug)]
+pub struct ReadRecordError {
+    record_error: RecordError,
+    io_error: Option<io::Error>,
+    bytes: Vec<u8>
+}
+
+lazy_static! {
+    static ref INVALID_DATA_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::InvalidData);
+}
+
+impl ReadRecordError {
+    pub fn as_record_error(&self) -> &RecordError { &self.record_error }
+    
+    pub fn as_io_error(&self) -> &io::Error { self.io_error.as_ref().unwrap_or(&*INVALID_DATA_IO_ERROR) }
+    
+    pub fn into_io_error(self) -> io::Error { self.io_error.unwrap_or(io::Error::from(io::ErrorKind::InvalidData)) }
+    
+    pub fn into_record_error(self) -> RecordError { self.record_error }
+    
+    pub fn as_bytes(&self) -> &[u8] { &self.bytes }
+
+    pub fn into_bytes(self) -> Vec<u8> { self.bytes }
+    
+    pub fn into_tuple(self) -> (RecordError, io::Error, Vec<u8>) {
+        (self.record_error, self.io_error.unwrap_or(io::Error::from(io::ErrorKind::InvalidData)), self.bytes)
+    }
+}
+
+impl fmt::Display for ReadRecordError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(io_error) = &self.io_error {
+            if io_error.kind() != io::ErrorKind::UnexpectedEof {
+                return io_error.fmt(f);
+            }
+        }
+        self.record_error.fmt(f)
+    }
+}
+
+impl Error for ReadRecordError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.io_error.as_ref().map(|x| {
+            let x: &(dyn Error + 'static) = x;
+            x
+        }).unwrap_or(&self.record_error))
+    }
+}
+
+/*
+fn read_and_ignore_interrupts(reader: &mut (impl Read + ?Sized), buf: &mut [u8]) -> io::Result<usize> {
+    loop {
+        match reader.read(buf) {
+            Ok(read) => return Ok(read),
+            Err(e) => {
+                if e.kind() != io::ErrorKind::Interrupted {
+                    return Err(e)
+                }
+            }
+        }
+    }
+}
+
+pub struct RecordsReader {
+    
+}
+
+pub trait ReadRecordsExt: Read {
+    fn read_record(&mut self) -> Result<Option<Record>, ReadRecordError> {
+        let mut record_header_bytes = [0u8; 16];
+        let read = read_and_ignore_interrupts(self, &mut record_header_bytes[..]);
+        if read == 0 { return Ok(None); }
+        let mut unfilled_record_header_bytes = &mut record_header_bytes[read..];
+        while !unfilled_record_header_bytes.is_empty() {
+            let read = read_and_ignore_interrupts(self, &mut unfilled_record_header_bytes[..])
+                .map_err(|io_error| Err(ReadRecordError {
+                    io_error,
+                    record_error: RecordError::UnexpectedEof(UnexpectedEof { expected_size: 16 }),
+                    bytes: record_header_bytes.into()
+                }))?;
+            if read == 0 {
+                return Err(ReadRecordError {
+                    io_error: io::Error::from(io::ErrorKind::UnexpectedEof),
+                    record_error: RecordError::UnexpectedEof(UnexpectedEof { expected_size: 16 }),
+                    bytes: record_header_bytes.into()
+                });
+            }
+            unfilled_record_header_bytes = &mut unfilled_record_header_bytes[read..];
+        }
+        Ok(None)
+    }
+}
+*/
 /*
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
 fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
 where
-f (T3FixedString z) = T3StringField s . (`T.snoc` '\0') <$> fixedStringField z ?>> T3UnexpectedEndOfField <$> bytesRead
-f (T3String a) = T3StringField s <$> (if adjust then a else id) <$> stringField ?>> T3UnexpectedEndOfField <$> bytesRead
-f (T3Multiline use_unix_newlines a) = T3MultilineField s <$> multilineField use_unix_newlines (if adjust then a else id) ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3MultiString = T3MultiStringField s <$> multiStringField ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Ref = (\(z, n) -> T3RefField s z n) <$> refField ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Binary = T3BinaryField s <$> binaryField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Float = T3FloatField s <$> floatField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Int = T3IntField s <$> getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Short = T3ShortField s <$> getInt16le ?>> T3UnexpectedEndOfField <$> bytesRead
@@ -442,8 +672,6 @@ f T3Compressed = T3CompressedField s <$> compressedField ?>> T3UnexpectedEndOfFi
 f T3Ingredient = T3IngredientField s <$> ingredientField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Script = T3ScriptField s <$> scriptField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Dial = T3DialField s <$> dialField field_size
-f T3None = (const $ T3NoneField s) <$> expect 0 (getWord32le ?>> T3UnexpectedEndOfField <$> bytesRead)
-f T3Header = T3HeaderField s <$> fileHeaderData
 f T3EssNpc = T3EssNpcField s <$> essNpcData ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Npc = T3NpcField s <$> npcData field_size
 f T3Effect = T3EffectField s <$> effectField

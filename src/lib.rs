@@ -9,6 +9,10 @@ extern crate enum_primitive_derive;
 extern crate macro_attr;
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate debug_panic;
+#[macro_use]
+extern crate lazy_static;
 
 mod tag;
 
