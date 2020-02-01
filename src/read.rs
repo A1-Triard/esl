@@ -585,7 +585,7 @@ impl fmt::Display for UnknownFileType {
         write!(
             f, "unknown file type {:04X}h at {:X}h in HEDR field started at {:X}h in TES3 record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 12,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + 4,
             self.record_offset + 16 + self.field_offset as u64,
             self.record_offset
         )
@@ -631,7 +631,7 @@ impl fmt::Display for NonZeroNpcPaddingByte {
         write!(
             f, "found non-zero padding byte {:01X}h at {:X}h in NPDT field started at {:X}h in NPC_ record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 47,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + 47,
             self.record_offset + 16 + self.field_offset as u64,
             self.record_offset
         )
@@ -678,7 +678,7 @@ impl fmt::Display for InvalidEffectRange {
         write!(
             f, "invalid effect range {} at {:X}h in ENAM field started at {:X}h in {} record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + 4,
             self.record_offset + 16 + self.field_offset as u64,
             self.record_tag,
             self.record_offset
