@@ -3,7 +3,7 @@ use crate::core::*;
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
-use nom::number::complete::{le_u32, le_u64, le_i32};
+use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::types::Encoding;
@@ -189,6 +189,22 @@ fn deletion_mark_field(input: &[u8]) -> IResult<&[u8], (), FieldBodyError> {
     )(input)
 }
 
+fn int_field(input: &[u8]) -> IResult<&[u8], i32, FieldBodyError> {
+    set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
+}
+
+fn short_field(input: &[u8]) -> IResult<&[u8], i16, FieldBodyError> {
+    set_err(le_i16, |_| FieldBodyError::UnexpectedEndOfField(2))(input)
+}
+
+fn long_field(input: &[u8]) -> IResult<&[u8], i64, FieldBodyError> {
+    set_err(le_i64, |_| FieldBodyError::UnexpectedEndOfField(8))(input)
+}
+
+fn byte_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
+    set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1))(input)
+}
+
 fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
@@ -209,6 +225,14 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_si
                 map(file_metadata_field, Field::FileMetadata)(input),
             FieldType::DeletionMark =>
                 map(deletion_mark_field, |()| Field::DeletionMark)(input),
+            FieldType::Int =>
+                map(int_field, Field::Int)(input),
+            FieldType::Short =>
+                map(short_field, Field::Short)(input),
+            FieldType::Long =>
+                map(long_field, Field::Long)(input),
+            FieldType::Byte =>
+                map(byte_field, Field::Byte)(input),
             _ =>
                 map(binary_field, Field::Binary)(input)
         }
@@ -784,10 +808,6 @@ fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
 where
 f T3Float = T3FloatField s <$> floatField ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Int = T3IntField s <$> getInt32le ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Short = T3ShortField s <$> getInt16le ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Long = T3LongField s <$> getInt64le ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Byte = T3ByteField s <$> getWord8 ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Compressed = T3CompressedField s <$> compressedField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Ingredient = T3IngredientField s <$> ingredientField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Script = T3ScriptField s <$> scriptField ?>> T3UnexpectedEndOfField <$> bytesRead
