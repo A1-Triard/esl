@@ -653,13 +653,13 @@ fn read_and_ignore_interrupts(input: &mut (impl Read + ?Sized), buf: &mut [u8]) 
     }
 }
 
-pub struct RecordsReader {
+pub struct RecordReader {
     buf: Vec<u8>,
 }
 
-impl RecordsReader {
+impl RecordReader {
     pub fn new() -> Self {
-        RecordsReader {
+        RecordReader {
             buf: Vec::with_capacity(16)
         }
     }
@@ -742,19 +742,20 @@ impl RecordsReader {
     }
 }
 
-/*
 pub struct Records<'a, Input: Read + ?Sized> {
     input: &'a mut Input,
     offset: u64,
-    header_bytes: [u8; 16],
+    allow_coerce: bool,
+    reader: RecordReader,
 }
 
 impl<'a, Input: Read + ?Sized> Records<'a, Input> {
-    pub fn new(input: &'a mut Input, offset: u64) -> Self {
+    pub fn new(allow_coerce: bool, offset: u64, input: &'a mut Input) -> Self {
         Records {
             input,
+            allow_coerce,
             offset,
-            header_bytes: [0; 16]
+            reader: RecordReader::new()
         }
     }
 }
@@ -763,9 +764,20 @@ impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
     type Item = Result<Record, ReadRecordError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        match self.reader.read(self.allow_coerce, self.offset, self.input) {
+            Ok(None) => None,
+            Err(e) => {
+                self.offset += e.as_bytes().len() as u64;
+                Some(Err(e))
+            },
+            Ok(Some((record, read))) => {
+                self.offset += read as u64;
+                Some(Ok(record))
+            }
+        }
     }
 }
-*/
+
 /*
 fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
 fieldBody adjust record_sign s field_size =
@@ -812,7 +824,7 @@ mod tests {
         input.extend(TES3.dword.to_le_bytes().iter());
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0u64.to_le_bytes().iter());
-        let (result, read) = RecordsReader::new().read(false, 0x11, &mut (&input[..])).unwrap().unwrap();
+        let (result, read) = RecordReader::new().read(false, 0x11, &mut (&input[..])).unwrap().unwrap();
         assert_eq!(read, 16);
         assert_eq!(result.flags, RecordFlags::empty());
         assert_eq!(result.tag, TES3);
@@ -825,7 +837,7 @@ mod tests {
         input.extend(TES3.dword.to_le_bytes().iter());
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0x70000u64.to_le_bytes().iter());
-        let result = RecordsReader::new().read(false, 0x11, &mut (&input[..]));
+        let result = RecordReader::new().read(false, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
         if let RecordError::InvalidRecordFlags(error) = error.into_record_error() { 
             assert_eq!(error.value, 0x70000);
