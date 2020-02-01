@@ -110,6 +110,8 @@ enum FieldBodyError {
     NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
+    InvalidDialogType(u8),
+    UnexpectedDialogMetadataFieldSize(u32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldBodyError {
@@ -372,6 +374,23 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     )(input)
 }
 
+fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogType>, FieldBodyError> {
+    map(
+        map_res(
+            set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
+            |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBodyError::InvalidDialogType(d)))
+        ),
+        Either::Right
+    )(input)
+}
+
+fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogType>, FieldBodyError> {
+    map(
+        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
+        Either::Left
+    )(input)
+}
+
 fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
@@ -403,7 +422,11 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_siz
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedNpcFieldSize(x))),
             },
             FieldType::Effect => map(effect_field, Field::Effect)(input),
-            _ => map(binary_field, Field::Binary)(input)
+            FieldType::DialogMetadata => match field_size {
+                4 => map(dialog_metadata_4_field, Field::DialogMetadata)(input),
+                1 => map(dialog_metadata_1_field, Field::DialogMetadata)(input),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedDialogMetadataFieldSize(x))),
+            },
         }
     }
 }
@@ -421,6 +444,8 @@ enum FieldError {
     NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
+    InvalidDialogType(u8),
+    UnexpectedDialogMetadataFieldSize(u32),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldError {
@@ -463,6 +488,8 @@ fn field<'a>(allow_coerce: bool, record_tag: Tag)
                     FieldBodyError::NonZeroNpcPaddingByte(d) => FieldError::NonZeroNpcPaddingByte(d),
                     FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
                     FieldBodyError::InvalidEffectRange(d) => FieldError::InvalidEffectRange(d),
+                    FieldBodyError::InvalidDialogType(d) => FieldError::InvalidDialogType(d),
+                    FieldBodyError::UnexpectedDialogMetadataFieldSize(d) => FieldError::UnexpectedDialogMetadataFieldSize(d),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -643,25 +670,29 @@ impl Error for NonZeroDeletionMark {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnexpectedNpcFieldSize {
+pub struct UnexpectedFieldSize {
     pub record_offset: u64,
+    pub record_tag: Tag,
     pub field_offset: u32,
+    pub field_tag: Tag,
     pub field_size: u32
 }
 
-impl fmt::Display for UnexpectedNpcFieldSize {
+impl fmt::Display for UnexpectedFieldSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "found NPDT field at {:X}h with unexpected size {} at {:X}h in NPC_ record started at {:X}h",
+            f, "found {} field at {:X}h with unexpected size {} at {:X}h in {} record started at {:X}h",
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
             self.field_size,
             self.record_offset + 16 + self.field_offset as u64 + 4,
+            self.record_tag,
             self.record_offset
         )
     }
 }
 
-impl Error for UnexpectedNpcFieldSize {
+impl Error for UnexpectedFieldSize {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
@@ -691,6 +722,29 @@ impl Error for InvalidEffectRange {
 }
 
 #[derive(Debug, Clone)]
+pub struct InvalidDialogType {
+    pub record_offset: u64,
+    pub field_offset: u32,
+    pub value: u8
+}
+
+impl fmt::Display for InvalidDialogType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid dialog type {} at {:X}h in DATA field started at {:X}h in DIAL record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidDialogType {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
 pub enum RecordError {
     UnexpectedEof(UnexpectedEof),
     InvalidRecordFlags(InvalidRecordFlags),
@@ -699,8 +753,9 @@ pub enum RecordError {
     UnknownFileType(UnknownFileType),
     NonZeroDeletionMark(NonZeroDeletionMark),
     NonZeroNpcPaddingByte(NonZeroNpcPaddingByte),
-    UnexpectedNpcFieldSize(UnexpectedNpcFieldSize),
+    UnexpectedFieldSize(UnexpectedFieldSize),
     InvalidEffectRange(InvalidEffectRange),
+    InvalidDialogType(InvalidDialogType),
 }
 
 impl fmt::Display for RecordError {
@@ -713,8 +768,9 @@ impl fmt::Display for RecordError {
             RecordError::UnknownFileType(x) => x.fmt(f),
             RecordError::NonZeroDeletionMark(x) => x.fmt(f),
             RecordError::NonZeroNpcPaddingByte(x) => x.fmt(f),
-            RecordError::UnexpectedNpcFieldSize(x) => x.fmt(f),
+            RecordError::UnexpectedFieldSize(x) => x.fmt(f),
             RecordError::InvalidEffectRange(x) => x.fmt(f),
+            RecordError::InvalidDialogType(x) => x.fmt(f),
         }
     }
 }
@@ -729,8 +785,9 @@ impl Error for RecordError {
             RecordError::UnknownFileType(x) => x,
             RecordError::NonZeroDeletionMark(x) => x,
             RecordError::NonZeroNpcPaddingByte(x) => x,
-            RecordError::UnexpectedNpcFieldSize(x) => x,
+            RecordError::UnexpectedFieldSize(x) => x,
             RecordError::InvalidEffectRange(x) => x,
+            RecordError::InvalidDialogType(x) => x,
         })
     }
 }
@@ -833,9 +890,13 @@ fn read_record_body(record_offset: u64, allow_coerce: bool,
             RecordBodyError(FieldError::NonZeroNpcPaddingByte(value), field) =>
                 RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
             RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
-                RecordError::UnexpectedNpcFieldSize(UnexpectedNpcFieldSize { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
+                RecordError::UnexpectedFieldSize(UnexpectedFieldSize { record_tag: NPC_, field_tag: NPDT, record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
             RecordBodyError(FieldError::InvalidEffectRange(value), field) =>
                 RecordError::InvalidEffectRange(InvalidEffectRange { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+            RecordBodyError(FieldError::InvalidDialogType(value), field) =>
+                RecordError::InvalidDialogType(InvalidDialogType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+            RecordBodyError(FieldError::UnexpectedDialogMetadataFieldSize(field_size), field) =>
+                RecordError::UnexpectedFieldSize(UnexpectedFieldSize { record_tag: DIAL, field_tag: DATA, record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
         }
     )(input).map_err(|x| x.unwrap())?;
     if !remaining_record_bytes.is_empty() {
@@ -1062,14 +1123,6 @@ impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
         }
     }
 }
-
-/*
-fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
-fieldBody adjust record_sign s field_size =
-f (t3FieldType record_sign s)
-where
-f T3Dial = T3DialField s <$> dialField field_size
-*/
 
 #[cfg(test)]
 mod tests {
