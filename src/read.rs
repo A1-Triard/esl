@@ -789,7 +789,7 @@ f T3Effect = T3EffectField s <$> effectField
 mod tests {
     use crate::*;
     use ::nom;
-    use crate::nom::*;
+    use crate::read::*;
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
