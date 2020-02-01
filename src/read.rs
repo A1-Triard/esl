@@ -3,7 +3,7 @@ use crate::core::*;
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
-use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32};
+use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32, le_u16, le_i8};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::types::Encoding;
@@ -17,6 +17,7 @@ use std::fmt::{self};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use either::Either;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -106,6 +107,7 @@ enum FieldBodyError {
     UnexpectedEndOfField(u32),
     UnknownFileType(u32),
     NonZeroDeletionMark(u32),
+    NonZeroNpcPaddingByte(u8),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldBodyError {
@@ -272,7 +274,86 @@ fn script_metadata_field(input: &[u8]) -> IResult<&[u8], ScriptMetadata, FieldBo
     )(input)
 }
 
-fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
+fn saved_npc_field(input: &[u8]) -> IResult<&[u8], SavedNpc, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_i16,
+                le_i16,
+                le_u32
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(8)
+        ),
+        |(disposition, reputation, index)| SavedNpc {
+            disposition,
+            reputation,
+            index
+        }
+    )(input)
+}
+
+fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
+    map(
+        tuple((
+            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
+            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
+            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
+            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
+            tuple((le_i16, le_i16, le_i16))
+        )),
+        |(
+            (strength, intelligence, willpower, agility, speed, endurance, personality, luck, block),
+            (armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear, athletics, enchant),
+            (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
+            (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand, faction),
+            (health, magicka, fatigue)
+         )| NpcCharacteristics {
+            strength, intelligence, willpower, agility, speed,
+            endurance, personality, luck, block,
+            armorer, medium_armor, heavy_armor, blunt_weapon,
+            long_blade, axe, spear, athletics,
+            enchant, destruction, alteration, illusion,
+            conjuration, mysticism, restoration, alchemy,
+            unarmored, security, sneak, acrobatics, light_armor,
+            short_blade, marksman, mercantile, speechcraft,
+            hand_to_hand, faction, health, magicka, fatigue
+        }
+    )(input)
+}
+
+fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
+    map_res(
+        set_err(
+            tuple((le_u16, npc_characteristics, le_i8, le_i8, le_i8, le_u8, le_i32)),
+            |_| FieldBodyError::UnexpectedEndOfField(52)
+        ),
+        |(level, characteristics, disposition, reputation, rank, padding, gold), _| {
+            if padding != 0 {
+                Err(nom::Err::Error(FieldBodyError::NonZeroNpcPaddingByte(padding)))
+            } else {
+                Ok(Npc {
+                    level, disposition, reputation, rank, gold,
+                    characteristics: Either::Right(characteristics)
+                })
+            }
+        }
+    )(input)
+}
+
+fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_u16, le_i8, le_i8, le_i8, le_u8, le_u16, le_i32)),
+            |_| FieldBodyError::UnexpectedEndOfField(12)
+        ),
+        |(level, disposition, reputation, rank, u1, u2, gold)| Npc {
+            level, disposition, reputation, rank, gold,
+            characteristics: Either::Left((u1 as u32) << 16 | (u2 as u32))
+        }
+    )(input)
+}
+
+fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
@@ -310,6 +391,13 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_si
                 map(ingredient_field, Field::Ingredient)(input),
             FieldType::ScriptMetadata =>
                 map(script_metadata_field, Field::ScriptMetadata)(input),
+            FieldType::SavedNpc =>
+                map(saved_npc_field, Field::SavedNpc)(input),
+            FieldType::Npc => match field_size {
+                52 => map(npc_52_field, Field::Npc)(input),
+                12 => map(npc_12_field, Field::Npc)(input),
+                _ => panic!(),
+            },
             _ =>
                 map(binary_field, Field::Binary)(input)
         }
@@ -326,6 +414,7 @@ enum FieldError {
     FieldSizeMismatch(Tag, u32, u32),
     UnknownFileType(u32),
     NonZeroDeletionMark(u32),
+    NonZeroNpcPaddingByte(u8),
 }
 
 impl<'a> ParseError<&'a [u8]> for FieldError {
@@ -365,6 +454,7 @@ fn field<'a>(allow_coerce: bool, record_tag: Tag)
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                     FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
                     FieldBodyError::NonZeroDeletionMark(d) => FieldError::NonZeroDeletionMark(d),
+                    FieldBodyError::NonZeroNpcPaddingByte(d) => FieldError::NonZeroNpcPaddingByte(d),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -432,7 +522,7 @@ pub struct RecordSizeMismatch {
 impl fmt::Display for RecordSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "record size mismatch, expected {:8X}h, found {:8X}h at {:X}h in {} record started at {:X}h",
+            f, "record size mismatch, expected {:04X}h, found {:04X}h at {:X}h in {} record started at {:X}h",
             self.expected_size,
             self.actual_size,
             self.record_offset + 4,
@@ -459,7 +549,7 @@ pub struct FieldSizeMismatch {
 impl fmt::Display for FieldSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "field size mismatch, expected {:8X}h, found {:8X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            f, "field size mismatch, expected {:04X}h, found {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.expected_size,
             self.actual_size,
             self.record_offset + 16 + self.field_offset as u64 + 4,
@@ -485,7 +575,7 @@ pub struct UnknownFileType {
 impl fmt::Display for UnknownFileType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "unknown file type {:8X}h at {:X}h in HEDR field started at {:X}h in TES3 record started at {:X}h",
+            f, "unknown file type {:04X}h at {:X}h in HEDR field started at {:X}h in TES3 record started at {:X}h",
             self.value,
             self.record_offset + 16 + self.field_offset as u64 + 12,
             self.record_offset + 16 + self.field_offset as u64,
@@ -508,9 +598,32 @@ pub struct NonZeroDeletionMark {
 impl fmt::Display for NonZeroDeletionMark {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "found non-zero deletion mark value {:8X}h at {:X}h in DELE field started at {:X}h in DIAL record started at {:X}h",
+            f, "found non-zero deletion mark value {:04X}h at {:X}h in DELE field started at {:X}h in DIAL record started at {:X}h",
             self.value,
             self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for NonZeroNpcPaddingByte {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
+pub struct NonZeroNpcPaddingByte {
+    pub record_offset: u64,
+    pub field_offset: u32,
+    pub value: u8
+}
+
+impl fmt::Display for NonZeroNpcPaddingByte {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "found non-zero padding byte {:01X}h at {:X}h in NPDT field started at {:X}h in NPC_ record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 47,
             self.record_offset + 16 + self.field_offset as u64,
             self.record_offset
         )
@@ -521,6 +634,7 @@ impl Error for NonZeroDeletionMark {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
+
 #[derive(Debug, Clone)]
 pub enum RecordError {
     UnexpectedEof(UnexpectedEof),
@@ -529,6 +643,7 @@ pub enum RecordError {
     FieldSizeMismatch(FieldSizeMismatch),
     UnknownFileType(UnknownFileType),
     NonZeroDeletionMark(NonZeroDeletionMark),
+    NonZeroNpcPaddingByte(NonZeroNpcPaddingByte),
 }
 
 impl fmt::Display for RecordError {
@@ -540,6 +655,7 @@ impl fmt::Display for RecordError {
             RecordError::FieldSizeMismatch(x) => x.fmt(f),
             RecordError::UnknownFileType(x) => x.fmt(f),
             RecordError::NonZeroDeletionMark(x) => x.fmt(f),
+            RecordError::NonZeroNpcPaddingByte(x) => x.fmt(f),
         }
     }
 }
@@ -553,6 +669,7 @@ impl Error for RecordError {
             RecordError::FieldSizeMismatch(x) => x,
             RecordError::UnknownFileType(x) => x,
             RecordError::NonZeroDeletionMark(x) => x,
+            RecordError::NonZeroNpcPaddingByte(x) => x,
         })
     }
 }
@@ -652,6 +769,8 @@ fn read_record_body(record_offset: u64, allow_coerce: bool,
                 RecordError::UnknownFileType(UnknownFileType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
             RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
                 RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+            RecordBodyError(FieldError::NonZeroNpcPaddingByte(value), field) =>
+                RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
         }
     )(input).map_err(|x| x.unwrap())?;
     if !remaining_record_bytes.is_empty() {
@@ -884,10 +1003,7 @@ fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
 fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
 where
-f T3Script = T3ScriptField s <$> scriptField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Dial = T3DialField s <$> dialField field_size
-f T3EssNpc = T3EssNpcField s <$> essNpcData ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Npc = T3NpcField s <$> npcData field_size
 f T3Effect = T3EffectField s <$> effectField
 */
 
