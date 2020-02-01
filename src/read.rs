@@ -248,6 +248,30 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
     )(input)
 }
 
+fn script_metadata_field(input: &[u8]) -> IResult<&[u8], ScriptMetadata, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                fixed_string(32),
+                le_u32,
+                le_u32,
+                le_u32,
+                le_u32,
+                le_u32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(32 + 20)
+        ),
+        |(name, shorts, longs, floats, data_size, var_table_size)| ScriptMetadata {
+            name,
+            shorts,
+            longs,
+            floats,
+            data_size,
+            var_table_size
+        }
+    )(input)
+}
+
 fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
@@ -284,6 +308,8 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_si
                 map(float_field, Field::Float)(input),
             FieldType::Ingredient =>
                 map(ingredient_field, Field::Ingredient)(input),
+            FieldType::ScriptMetadata =>
+                map(script_metadata_field, Field::ScriptMetadata)(input),
             _ =>
                 map(binary_field, Field::Binary)(input)
         }
@@ -921,7 +947,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(6u32.to_le_bytes().iter());
-        input.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -937,7 +963,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
-        input.extend(vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -953,7 +979,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
-        input.extend(vec![0x00, 0x00]);
+        input.extend([0x00, 0x00].iter());
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
@@ -969,7 +995,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(4u32.to_le_bytes().iter());
-        input.extend(vec![0x01, 0x00, 0x00, 0x00]);
+        input.extend([0x01, 0x00, 0x00, 0x00].iter());
         let result = field(true, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::NonZeroDeletionMark(d)) = error {
@@ -1012,8 +1038,8 @@ mod tests {
     #[test]
     fn read_file_metadata() {
         let mut input: Vec<u8> = Vec::new();
-        input.extend(vec![0x00, 0x00, 0x00, 0x22]);
-        input.extend(vec![0x20, 0x00, 0x00, 0x00]);
+        input.extend([0x00, 0x00, 0x00, 0x22].iter());
+        input.extend([0x20, 0x00, 0x00, 0x00].iter());
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description\r\nlines\r\n")));
         input.extend(vec![0x01, 0x02, 0x03, 0x04]);
@@ -1032,11 +1058,11 @@ mod tests {
     #[test]
     fn read_invalid_file_type() {
         let mut input: Vec<u8> = Vec::new();
-        input.extend(vec![0x00, 0x00, 0x00, 0x22]);
-        input.extend(vec![0x00, 0x00, 0x10, 0x00]);
+        input.extend([0x00, 0x00, 0x00, 0x22].iter());
+        input.extend([0x00, 0x00, 0x10, 0x00].iter());
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description")));
-        input.extend(vec![0x01, 0x02, 0x03, 0x04]);
+        input.extend([0x01, 0x02, 0x03, 0x04].iter());
         let result = field_body(true, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
