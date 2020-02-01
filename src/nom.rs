@@ -698,45 +698,35 @@ mod tests {
         r
     }
 
-    /*
     #[test]
     fn read_record_flags_empty() {
-        let input: &'static [u8] = &[0, 0, 0, 0, 0, 0, 0, 0];
-        let (remaining_input, result) = record_flags(input).unwrap();
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&TES3.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&0u32.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&0u64.to_le_bytes()[..]));
+        let (remaining_input, result) = record(0x11, false)(&input).unwrap();
         assert_eq!(remaining_input.len(), 0);
-        assert_eq!(result, RecordFlags::empty());
+        assert_eq!(result.flags, RecordFlags::empty());
+        assert_eq!(result.tag, TES3);
+        assert!(result.fields.is_empty());
     }
 
     #[test]
     fn read_record_flags_invalid() {
-        let input: &'static [u8] = &[0, 0, 0, 0, 7, 0, 0, 0];
-        if let ::nom::Err::Error(e) = record_flags(input).err().unwrap() {
-            assert_eq!(e.remaining_input.len(), 8);
-            if let Either::Right(ErrorDescription::InvalidRecordFlags(d)) = e.description {
-                assert_eq!(d, 0x700000000);
-            } else {
-                panic!()
-            }
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut Vec::from(&TES3.dword.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&0u32.to_le_bytes()[..]));
+        input.append(&mut Vec::from(&0x70000u64.to_le_bytes()[..]));
+        let result = record(0x11, false)(&input);
+        let error = result.err().unwrap();
+        if let ::nom::Err::Error(RecordError::InvalidRecordFlags(error)) = error { 
+            assert_eq!(error.value, 0x70000);
+            assert_eq!(error.record_offset, 0x11);
+            assert_eq!(error.record_tag, TES3);
         } else {
             panic!()
         }
     }
-
-    #[test]
-    fn read_record_flags_unexpected_eof() {
-        let input: &'static [u8] = &[0, 0, 0, 0];
-        if let ::nom::Err::Error(e) = record_flags(input).err().unwrap() {
-            if let Either::Right(ErrorDescription::UnexpectedEndOfRecord(needed)) = e.description {
-                assert_eq!(e.remaining_input.len(), 4);
-                assert_eq!(needed, 8);
-            } else {
-                panic!()
-            }
-        } else {
-            panic!()
-        }
-    }
-*/
 
     #[test]
     fn read_deletion_mark_mismatching_size_greater() {
