@@ -3,7 +3,7 @@ use crate::core::*;
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
-use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8};
+use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::types::Encoding;
@@ -11,10 +11,12 @@ use encoding::{DecoderTrap};
 use encoding::all::WINDOWS_1251;
 use num_traits::cast::FromPrimitive;
 use nom::multi::many0;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::error::Error;
 use std::fmt::{self};
 use std::mem::replace;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -120,6 +122,12 @@ fn binary_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], input.into()))
 }
 
+fn compressed_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
+    encoder.write_all(input).unwrap();
+    Ok((&input[input.len() .. ], encoder.finish().unwrap()))
+}
+
 fn decode_string(coerce: StringCoerce, bytes: &[u8]) -> String {
     let mut s = WINDOWS_1251.decode(bytes, DecoderTrap::Strict).unwrap();
     coerce.coerce(&mut s);
@@ -205,12 +213,51 @@ fn byte_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
     set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1))(input)
 }
 
+fn float_field(input: &[u8]) -> IResult<&[u8], f32, FieldBodyError> {
+    set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
+}
+
+fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32,
+                le_u32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+                le_i32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(56)
+        ),
+        |(weight, value, e1, e2, e3, e4, s1, s2, s3, s4, a1, a2, a3, a4)| Ingredient {
+            weight,
+            value,
+            effects: [e1, e2, e3, e4],
+            skills: [s1, s2, s3, s4],
+            attributes: [a1, a2, a3, a4]
+        }
+    )(input)
+}
+
 fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
         let field_type = FieldType::from_tags(record_tag, field_tag).coerce(allow_coerce);
         match field_type {
+            FieldType::Binary =>
+                map(binary_field, Field::Binary)(input),
+            FieldType::Compressed =>
+                map(compressed_field, Field::Compressed)(input),
             FieldType::Multiline(linebreaks, coerce) =>
                 map(multiline_field(linebreaks, coerce), Field::Multiline)(input),
             FieldType::Reference =>
@@ -233,6 +280,10 @@ fn field_body<'a>(allow_coerce: bool, record_tag: Tag, field_tag: Tag, _field_si
                 map(long_field, Field::Long)(input),
             FieldType::Byte =>
                 map(byte_field, Field::Byte)(input),
+            FieldType::Float =>
+                map(float_field, Field::Float)(input),
+            FieldType::Ingredient =>
+                map(ingredient_field, Field::Ingredient)(input),
             _ =>
                 map(binary_field, Field::Binary)(input)
         }
@@ -807,9 +858,6 @@ fieldBody :: Bool -> T3Sign -> T3Sign -> Word32 -> Get T3Error T3Field
 fieldBody adjust record_sign s field_size =
 f (t3FieldType record_sign s)
 where
-f T3Float = T3FloatField s <$> floatField ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Compressed = T3CompressedField s <$> compressedField ?>> T3UnexpectedEndOfField <$> bytesRead
-f T3Ingredient = T3IngredientField s <$> ingredientField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Script = T3ScriptField s <$> scriptField ?>> T3UnexpectedEndOfField <$> bytesRead
 f T3Dial = T3DialField s <$> dialField field_size
 f T3EssNpc = T3EssNpcField s <$> essNpcData ?>> T3UnexpectedEndOfField <$> bytesRead

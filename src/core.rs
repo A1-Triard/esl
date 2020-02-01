@@ -364,7 +364,7 @@ pub enum Field {
     Multiline(Vec<String>),
     MultiString(Vec<String>),
     Reference(i32, String),
-    Float(Either<u32, f32>),
+    Float(f32),
     Int(i32),
     Short(i16),
     Long(i64),
