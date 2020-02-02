@@ -54,41 +54,37 @@ macro_attr! {
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum StringCoerce {
-    None,
-    CutTailZeros,
-    CutTailZerosExceptOne,
-}
-
-impl StringCoerce {
-    pub fn coerce(self, s: &mut String) {
-        if self == StringCoerce::None { return; }
-        while !s.is_empty() && s.as_bytes()[s.len() - 1] == 0 {
-            s.truncate(s.len() - 1);
-        }
-        if self == StringCoerce::CutTailZerosExceptOne {
-            s.push('\0');
-        }
-    }
-}
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum LinebreakStyle {
     Unix,
     Dos
 }
 
 impl LinebreakStyle {
-    pub fn split(self, s: &str) -> std::str::Split<&'static str> {
-        s.split(if self == LinebreakStyle::Unix { "\n" } else { "\r\n" })
+    pub fn new_line(self) -> &'static str {
+        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
     }
+}
+
+#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct StringZ {
+    pub str: String,
+    pub has_tail_zero: bool
+}
+
+impl Default for StringZ {
+    fn default() -> StringZ { StringZ { str: String::default(), has_tail_zero: true } }
+}
+
+impl<T: Into<String>> From<T> for StringZ {
+    fn from(t: T) -> StringZ { StringZ{ str: t.into(), has_tail_zero: true } }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub enum FieldType {
     Binary,
-    String(StringCoerce),
-    Multiline(LinebreakStyle, StringCoerce),
+    String { trim_tail_zeros: bool },
+    StringZ,
+    Multiline { linebreaks: LinebreakStyle, trim_tail_zeros: bool },
     MultiString,
     Reference,
     FixedString(u32),
@@ -109,70 +105,61 @@ pub enum FieldType {
 }
 
 impl FieldType {
-    pub fn coerce(self, allow: bool) -> FieldType {
-        if allow { return self; }
-        match self {
-            FieldType::String(_) => FieldType::String(StringCoerce::None),
-            FieldType::Multiline(linebreaks, _) => FieldType::Multiline(linebreaks, StringCoerce::None),
-            x => x
-        }
-    }
-    
     pub fn from_tags(record_tag: Tag, field_tag: Tag) -> FieldType {
         match (record_tag, field_tag) {
-            (INFO, ACDT) => FieldType::String(StringCoerce::None),
+            (INFO, ACDT) => FieldType::String { trim_tail_zeros: false },
             (CELL, ACTN) => FieldType::Int,
-            (NPC_, ANAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (_, ANAM) => FieldType::String(StringCoerce::None),
-            (_, ASND) => FieldType::String(StringCoerce::None),
-            (_, AVFX) => FieldType::String(StringCoerce::None),
-            (ARMO, BNAM) => FieldType::String(StringCoerce::CutTailZeros),
-            (BODY, BNAM) => FieldType::String(StringCoerce::CutTailZeros),
-            (CELL, BNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (CLOT, BNAM) => FieldType::String(StringCoerce::CutTailZeros),
-            (CONT, BNAM) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::CutTailZeros),
-            (INFO, BNAM) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::CutTailZeros),
-            (NPC_, BNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (PCDT, BNAM) => FieldType::String(StringCoerce::None),
-            (REGN, BNAM) => FieldType::String(StringCoerce::None),
-            (_, BNAM) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::None),
-            (_, BSND) => FieldType::String(StringCoerce::None),
-            (_, BVFX) => FieldType::String(StringCoerce::None),
-            (ARMO, CNAM) => FieldType::String(StringCoerce::CutTailZeros),
+            (NPC_, ANAM) => FieldType::StringZ,
+            (_, ANAM) => FieldType::String { trim_tail_zeros: false },
+            (_, ASND) => FieldType::String { trim_tail_zeros: false },
+            (_, AVFX) => FieldType::String { trim_tail_zeros: false },
+            (ARMO, BNAM) => FieldType::String { trim_tail_zeros: true },
+            (BODY, BNAM) => FieldType::String { trim_tail_zeros: true },
+            (CELL, BNAM) => FieldType::StringZ,
+            (CLOT, BNAM) => FieldType::String { trim_tail_zeros: true },
+            (CONT, BNAM) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: true },
+            (INFO, BNAM) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: true },
+            (NPC_, BNAM) => FieldType::StringZ,
+            (PCDT, BNAM) => FieldType::String { trim_tail_zeros: false },
+            (REGN, BNAM) => FieldType::String { trim_tail_zeros: false },
+            (_, BNAM) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: false },
+            (_, BSND) => FieldType::String { trim_tail_zeros: false },
+            (_, BVFX) => FieldType::String { trim_tail_zeros: false },
+            (ARMO, CNAM) => FieldType::String { trim_tail_zeros: true },
             (KLST, CNAM) => FieldType::Int,
-            (NPC_, CNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
+            (NPC_, CNAM) => FieldType::StringZ,
             (REGN, CNAM) => FieldType::Int,
-            (_, CNAM) => FieldType::String(StringCoerce::None),
-            (_, CSND) => FieldType::String(StringCoerce::None),
-            (_, CVFX) => FieldType::String(StringCoerce::None),
+            (_, CNAM) => FieldType::String { trim_tail_zeros: false },
+            (_, CSND) => FieldType::String { trim_tail_zeros: false },
+            (_, CVFX) => FieldType::String { trim_tail_zeros: false },
             (DIAL, DATA) => FieldType::DialogMetadata,
             (LAND, DATA) => FieldType::Int,
             (LEVC, DATA) => FieldType::Int,
             (LEVI, DATA) => FieldType::Int,
-            (LTEX, DATA) => FieldType::String(StringCoerce::None),
-            (SSCR, DATA) => FieldType::String(StringCoerce::CutTailZeros),
+            (LTEX, DATA) => FieldType::String { trim_tail_zeros: false },
+            (SSCR, DATA) => FieldType::String { trim_tail_zeros: true },
             (TES3, DATA) => FieldType::Long,
-            (QUES, DATA) => FieldType::String(StringCoerce::None),
+            (QUES, DATA) => FieldType::String { trim_tail_zeros: false },
             (DIAL, DELE) => FieldType::DeletionMark,
-            (_, DESC) => FieldType::String(StringCoerce::None),
-            (_, DNAM) => FieldType::String(StringCoerce::None),
+            (_, DESC) => FieldType::String { trim_tail_zeros: false },
+            (_, DNAM) => FieldType::String { trim_tail_zeros: false },
             (ALCH, ENAM) => FieldType::Effect,
-            (ARMO, ENAM) => FieldType::String(StringCoerce::None),
+            (ARMO, ENAM) => FieldType::String { trim_tail_zeros: false },
             (ENCH, ENAM) => FieldType::Effect,
             (PCDT, ENAM) => FieldType::Long,
             (SPEL, ENAM) => FieldType::Effect,
-            (CELL, FGTN) => FieldType::String(StringCoerce::None),
+            (CELL, FGTN) => FieldType::String { trim_tail_zeros: false },
             (_, FLAG) => FieldType::Int,
             (_, FLTV) => FieldType::Float,
-            (ACTI, FNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
+            (ACTI, FNAM) => FieldType::StringZ,
             (PCDT, FNAM) => FieldType::Binary,
-            (RACE, FNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (_, FNAM) => FieldType::String(StringCoerce::None),
+            (RACE, FNAM) => FieldType::StringZ,
+            (_, FNAM) => FieldType::String { trim_tail_zeros: false },
             (CELL, FRMR) => FieldType::Int,
             (TES3, HEDR) => FieldType::FileMetadata,
-            (_, HSND) => FieldType::String(StringCoerce::None),
-            (_, HVFX) => FieldType::String(StringCoerce::None),
-            (_, INAM) => FieldType::String(StringCoerce::None),
+            (_, HSND) => FieldType::String { trim_tail_zeros: false },
+            (_, HVFX) => FieldType::String { trim_tail_zeros: false },
+            (_, INAM) => FieldType::String { trim_tail_zeros: false },
             (ARMO, INDX) => FieldType::Byte,
             (CLOT, INDX) => FieldType::Byte,
             (_, INDX) => FieldType::Int,
@@ -181,65 +168,65 @@ impl FieldType {
             (LEVI, INTV) => FieldType::Short,
             (_, INTV) => FieldType::Int,
             (INGR, IRDT) => FieldType::Ingredient,
-            (_, ITEX) => FieldType::String(StringCoerce::None),
-            (NPC_, KNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
+            (_, ITEX) => FieldType::String { trim_tail_zeros: false },
+            (NPC_, KNAM) => FieldType::StringZ,
             (PCDT, KNAM) => FieldType::Binary,
-            (_, KNAM) => FieldType::String(StringCoerce::None),
+            (_, KNAM) => FieldType::String { trim_tail_zeros: false },
             (PCDT, LNAM) => FieldType::Long,
-            (CELL, LSHN) => FieldType::String(StringCoerce::None),
-            (CELL, LSTN) => FieldType::String(StringCoerce::None),
+            (CELL, LSHN) => FieldType::String { trim_tail_zeros: false },
+            (CELL, LSTN) => FieldType::String { trim_tail_zeros: false },
             (_, LVCR) => FieldType::Byte,
             (FMAP, MAPD) => FieldType::Compressed,
             (FMAP, MAPH) => FieldType::Long,
-            (TES3, MAST) => FieldType::String(StringCoerce::None),
-            (PCDT, MNAM) => FieldType::String(StringCoerce::None),
+            (TES3, MAST) => FieldType::String { trim_tail_zeros: false },
+            (PCDT, MNAM) => FieldType::String { trim_tail_zeros: false },
             (CELL, MNAM) => FieldType::Byte,
-            (LIGH, MODL) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (_, MODL) => FieldType::String(StringCoerce::None),
+            (LIGH, MODL) => FieldType::StringZ,
+            (_, MODL) => FieldType::String { trim_tail_zeros: false },
             (CELL, NAM0) => FieldType::Int,
             (SPLM, NAM0) => FieldType::Byte,
             (CELL, NAM5) => FieldType::Int,
             (CELL, NAM9) => FieldType::Int,
             (PCDT, NAM9) => FieldType::Int,
-            (CELL, NAME) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
-            (JOUR, NAME) => FieldType::Multiline(LinebreakStyle::Unix, StringCoerce::None),
+            (CELL, NAME) => FieldType::StringZ,
+            (JOUR, NAME) => FieldType::Multiline { linebreaks: LinebreakStyle::Unix, trim_tail_zeros: false },
             (SPLM, NAME) => FieldType::Int,
-            (SSCR, NAME) => FieldType::String(StringCoerce::CutTailZeros),
-            (_, NAME) => FieldType::String(StringCoerce::None),
+            (SSCR, NAME) => FieldType::String { trim_tail_zeros: true },
+            (_, NAME) => FieldType::String { trim_tail_zeros: false },
             (_, ND3D) => FieldType::Byte,
-            (INFO, NNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
+            (INFO, NNAM) => FieldType::StringZ,
             (LEVC, NNAM) => FieldType::Byte,
             (LEVI, NNAM) => FieldType::Byte,
-            (_, NNAM) => FieldType::String(StringCoerce::None),
+            (_, NNAM) => FieldType::String { trim_tail_zeros: false },
             (_, NPCO) => FieldType::Reference,
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::SavedNpc,
             (BSGN, NPCS) => FieldType::FixedString(32),
             (NPC_, NPCS) => FieldType::FixedString(32),
             (RACE, NPCS) => FieldType::FixedString(32),
-            (_, NPCS) => FieldType::String(StringCoerce::None),
-            (_, ONAM) => FieldType::String(StringCoerce::None),
-            (INFO, PNAM) => FieldType::String(StringCoerce::CutTailZerosExceptOne),
+            (_, NPCS) => FieldType::String { trim_tail_zeros: false },
+            (_, ONAM) => FieldType::String { trim_tail_zeros: false },
+            (INFO, PNAM) => FieldType::StringZ,
             (PCDT, PNAM) => FieldType::Binary,
-            (_, PNAM) => FieldType::String(StringCoerce::None),
-            (_, PTEX) => FieldType::String(StringCoerce::None),
-            (_, RGNN) => FieldType::String(StringCoerce::None),
+            (_, PNAM) => FieldType::String { trim_tail_zeros: false },
+            (_, PTEX) => FieldType::String { trim_tail_zeros: false },
+            (_, RGNN) => FieldType::String { trim_tail_zeros: false },
             (FACT, RNAM) => FieldType::FixedString(32),
-            (_, RNAM) => FieldType::String(StringCoerce::None),
+            (_, RNAM) => FieldType::String { trim_tail_zeros: false },
             (SCPT, SCHD) => FieldType::ScriptMetadata,
-            (_, SCRI) => FieldType::String(StringCoerce::None),
-            (_, SCTX) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::CutTailZeros),
+            (_, SCRI) => FieldType::String { trim_tail_zeros: false },
+            (_, SCTX) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: true },
             (SCPT, SCVR) => FieldType::MultiString,
-            (_, SCVR) => FieldType::String(StringCoerce::None),
+            (_, SCVR) => FieldType::String { trim_tail_zeros: false },
             (CELL, SLSD) => FieldType::Binary,
             (PCDT, SNAM) => FieldType::Binary,
             (REGN, SNAM) => FieldType::Binary,
-            (_, SNAM) => FieldType::String(StringCoerce::None),
-            (_, STRV) => FieldType::String(StringCoerce::None),
-            (ALCH, TEXT) => FieldType::String(StringCoerce::None),
-            (BOOK, TEXT) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::CutTailZeros),
-            (_, TEXT) => FieldType::Multiline(LinebreakStyle::Dos, StringCoerce::None),
-            (_, TNAM) => FieldType::String(StringCoerce::None),
+            (_, SNAM) => FieldType::String { trim_tail_zeros: false },
+            (_, STRV) => FieldType::String { trim_tail_zeros: false },
+            (ALCH, TEXT) => FieldType::String { trim_tail_zeros: false },
+            (BOOK, TEXT) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: true },
+            (_, TEXT) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: false },
+            (_, TNAM) => FieldType::String { trim_tail_zeros: false },
             (_, VCLR) => FieldType::Compressed,
             (_, VHGT) => FieldType::Compressed,
             (_, VNML) => FieldType::Compressed,
@@ -251,7 +238,7 @@ impl FieldType {
             (_, XCHG) => FieldType::Int,
             (_, XHLT) => FieldType::Int,
             (_, XIDX) => FieldType::Int,
-            (_, XSOL) => FieldType::String(StringCoerce::None),
+            (_, XSOL) => FieldType::String { trim_tail_zeros: false },
             (SPLM, XNAM) => FieldType::Byte,
             (CELL, XSCL) => FieldType::Int,
             (CELL, ZNAM) => FieldType::Byte,
@@ -364,6 +351,7 @@ pub struct Npc {
 pub enum Field {
     Binary(Vec<u8>),
     String(String),
+    StringZ(StringZ),
     Multiline(Vec<String>),
     MultiString(Vec<String>),
     Reference(i32, String),
@@ -508,14 +496,5 @@ mod tests {
                 assert_eq!(b[0], byte);
             }
         }
-    }
-    
-    #[test]
-    fn string_coerce() {
-        let mut a = "a\0\0\0".into();
-        StringCoerce::CutTailZerosExceptOne.coerce(&mut a);
-        assert_eq!(a, "a\0");
-        StringCoerce::CutTailZeros.coerce(&mut a);
-        assert_eq!(a, "a");
     }
 }

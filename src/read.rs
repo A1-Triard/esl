@@ -149,20 +149,47 @@ fn compressed_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], encoder.finish().unwrap()))
 }
 
-fn decode_string(code_page: CodePage, coerce: StringCoerce, bytes: &[u8]) -> String {
-    let mut s = code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap();
-    coerce.coerce(&mut s);
-    s
+fn trim_end_nulls(mut bytes: &[u8]) -> &[u8] {
+    while !bytes.is_empty() && bytes[bytes.len() - 1] == 0 {
+        bytes = &bytes[..bytes.len() - 1];
+    }
+    bytes
 }
 
-fn string_field<E>(code_page: CodePage, coerce: StringCoerce) -> impl Fn(&[u8]) -> IResult<&[u8], String, E> {
+fn decode_string(code_page: CodePage, bytes: &[u8]) -> String {
+    code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap()
+}
+
+fn string_field<E>(code_page: CodePage, trim_tail_zeros: bool) -> impl Fn(&[u8]) -> IResult<&[u8], String, E> {
     move |input| {
-        Ok((&input[input.len()..], decode_string(code_page, coerce, input)))
+        Ok((&input[input.len()..], {
+            let input = if trim_tail_zeros {
+                trim_end_nulls(input)
+            } else {
+                input
+            };
+            decode_string(code_page, input)
+        }))
+    }
+}
+
+fn string_z_field<E>(code_page: CodePage, allow_coerce: bool) -> impl Fn(&[u8]) -> IResult<&[u8], StringZ, E> {
+    move |input| {
+        Ok((&input[input.len()..], {
+            let (input, has_tail_zero) = if allow_coerce {
+                (trim_end_nulls(input), true)
+            } else if !input.is_empty() && input[input.len() - 1] == 0 {
+                (&input[..input.len() - 1], true)                
+            } else {
+                (input, false)
+            };
+            StringZ { str: decode_string(code_page, input), has_tail_zero }
+        }))
     }
 }
 
 fn fixed_string<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String, ()> {
-    map(take(length), move |bytes| decode_string(code_page, StringCoerce::CutTailZeros, bytes))
+    map(take(length), move |bytes| decode_string(code_page, trim_end_nulls(bytes)))
 }
 
 fn file_metadata_field<'a>(code_page: CodePage)
@@ -178,7 +205,10 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(
                 tuple((
                     fixed_string(code_page, 32),
-                    map(fixed_string(code_page, 256), |s| LinebreakStyle::Dos.split(&s).map(String::from).collect()),
+                    map(
+                        fixed_string(code_page, 256), 
+                        |s| s.split(LinebreakStyle::Dos.new_line()).map(String::from).collect()
+                    ),
                     le_u32
                 )),
                 |_| FieldBodyError::UnexpectedEndOfField(300)
@@ -196,17 +226,20 @@ fn fixed_string_field<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8])
     set_err(fixed_string(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))
 }
 
-fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle, coerce: StringCoerce)
+fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle, trim_tail_zeros: bool)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
 
     no_err(
-        map(string_field(code_page, coerce), move |s| linebreaks.split(&s).map(String::from).collect())
+        map(
+            string_field(code_page, trim_tail_zeros),
+            move |s| s.split(linebreaks.new_line()).map(String::from).collect()
+        )
     )
 }
 
 fn multi_string_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
     no_err(
-        map(string_field(code_page, StringCoerce::None), |s| s.split("\0").map(String::from).collect())
+        map(string_field(code_page, false), |s| s.split("\0").map(String::from).collect())
     )
 }
 
@@ -420,16 +453,18 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
-        let field_type = FieldType::from_tags(record_tag, field_tag).coerce(allow_coerce);
+        let field_type = FieldType::from_tags(record_tag, field_tag);
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
-            FieldType::Multiline(linebreaks, coerce) =>
-                map(multiline_field(code_page, linebreaks, coerce), Field::Multiline)(input),
+            FieldType::Multiline { linebreaks, trim_end_zeros } =>
+                map(multiline_field(code_page, linebreaks, trim_end_zeros && allow_coerce), Field::Multiline)(input),
             FieldType::Reference =>
                 map(reference_field(code_page), |(count, name)| Field::Reference(count, name))(input),
             FieldType::FixedString(len) => map(fixed_string_field(code_page, len), Field::String)(input),
-            FieldType::String(coerce) => map(string_field(code_page, coerce), Field::String)(input),
+            FieldType::String { trim_end_zeros } =>
+                map(string_field(code_page, trim_end_zeros && allow_coerce), Field::String)(input),
+            FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
             FieldType::MultiString => map(multi_string_field(code_page), Field::MultiString)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
             FieldType::DeletionMark => map(deletion_mark_field, |()| Field::DeletionMark)(input),
