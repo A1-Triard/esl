@@ -529,7 +529,6 @@ pub struct InvalidRecordFlags {
     pub record_offset: u64,
     pub record_tag: Tag,
     pub value: u64
-    
 }
 
 impl fmt::Display for InvalidRecordFlags {
@@ -605,17 +604,22 @@ impl Error for FieldSizeMismatch {
 #[derive(Debug, Clone)]
 pub struct UnknownFileType {
     pub record_offset: u64,
+    pub record_tag: Tag,
     pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
     pub value: u32
 }
 
 impl fmt::Display for UnknownFileType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "unknown file type {:04X}h at {:X}h in HEDR field started at {:X}h in TES3 record started at {:X}h",
+            f, "unknown file type {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + 4,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
             self.record_offset
         )
     }
@@ -628,17 +632,21 @@ impl Error for UnknownFileType {
 #[derive(Debug, Clone)]
 pub struct NonZeroDeletionMark {
     pub record_offset: u64,
+    pub record_tag: Tag,
     pub field_offset: u32,
+    pub field_tag: Tag,
     pub value: u32
 }
 
 impl fmt::Display for NonZeroDeletionMark {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "found non-zero deletion mark value {:04X}h at {:X}h in DELE field started at {:X}h in DIAL record started at {:X}h",
+            f, "found non-zero deletion mark value {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
             self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
             self.record_offset
         )
     }
@@ -651,17 +659,22 @@ impl Error for NonZeroNpcPaddingByte {
 #[derive(Debug, Clone)]
 pub struct NonZeroNpcPaddingByte {
     pub record_offset: u64,
+    pub record_tag: Tag,
     pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
     pub value: u8
 }
 
 impl fmt::Display for NonZeroNpcPaddingByte {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "found non-zero padding byte {:01X}h at {:X}h in NPDT field started at {:X}h in NPC_ record started at {:X}h",
+            f, "found non-zero padding byte {:01X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + 47,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
             self.record_offset
         )
     }
@@ -703,15 +716,18 @@ pub struct InvalidEffectRange {
     pub record_offset: u64,
     pub record_tag: Tag,
     pub field_offset: u32,
-    pub value: i32
+    pub field_tag: Tag,
+    pub value_offset: u32,
+    pub value: i32,
 }
 
 impl fmt::Display for InvalidEffectRange {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "invalid effect range {} at {:X}h in ENAM field started at {:X}h in {} record started at {:X}h",
+            f, "invalid effect range {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + 4,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
             self.record_tag,
             self.record_offset
@@ -726,17 +742,22 @@ impl Error for InvalidEffectRange {
 #[derive(Debug, Clone)]
 pub struct InvalidDialogType {
     pub record_offset: u64,
+    pub record_tag: Tag,
     pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
     pub value: u8
 }
 
 impl fmt::Display for InvalidDialogType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "invalid dialog type {} at {:X}h in DATA field started at {:X}h in DIAL record started at {:X}h",
+            f, "invalid dialog type {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
             self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
             self.record_offset
         )
     }
@@ -882,23 +903,58 @@ fn read_record_body(record_offset: u64, allow_coerce: bool,
         record_body(allow_coerce, record_tag),
         move |e, input| match e {
             RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
-                RecordError::RecordSizeMismatch(RecordSizeMismatch { record_offset, record_tag, expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n, actual_size: record_size }),
+                RecordError::RecordSizeMismatch(RecordSizeMismatch {
+                    record_offset, record_tag,
+                    expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n,
+                    actual_size: record_size
+                }),
             RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
-                RecordError::FieldSizeMismatch(FieldSizeMismatch { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_tag, expected_size, actual_size }),
+                RecordError::FieldSizeMismatch(FieldSizeMismatch {
+                    record_offset, record_tag, field_tag, expected_size, actual_size,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
+                }),
             RecordBodyError(FieldError::UnknownFileType(value), field) =>
-                RecordError::UnknownFileType(UnknownFileType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                RecordError::UnknownFileType(UnknownFileType {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: TES3, field_tag: HEDR, value_offset: 4
+                }),
             RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
-                RecordError::NonZeroDeletionMark(NonZeroDeletionMark { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                RecordError::NonZeroDeletionMark(NonZeroDeletionMark {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: DIAL, field_tag: DELE
+                }),
             RecordBodyError(FieldError::NonZeroNpcPaddingByte(value), field) =>
-                RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: NPC_, field_tag: NPDT, value_offset: 47
+                }),
             RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
-                RecordError::UnexpectedFieldSize(UnexpectedFieldSize { record_tag: NPC_, field_tag: NPDT, record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
+                RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
+                    record_offset, field_size,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: NPC_, field_tag: NPDT
+                }),
             RecordBodyError(FieldError::InvalidEffectRange(value), field) =>
-                RecordError::InvalidEffectRange(InvalidEffectRange { record_offset, record_tag, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                RecordError::InvalidEffectRange(InvalidEffectRange {
+                    record_offset, record_tag, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    field_tag: ENAM, value_offset: 4
+                }),
             RecordBodyError(FieldError::InvalidDialogType(value), field) =>
-                RecordError::InvalidDialogType(InvalidDialogType { record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, value }),
+                RecordError::InvalidDialogType(InvalidDialogType {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: DIAL, field_tag: DATA, value_offset: 0
+                }),
             RecordBodyError(FieldError::UnexpectedDialogMetadataFieldSize(field_size), field) =>
-                RecordError::UnexpectedFieldSize(UnexpectedFieldSize { record_tag: DIAL, field_tag: DATA, record_offset, field_offset: 16 + unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32, field_size }),
+                RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
+                    record_offset,  field_size,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: DIAL, field_tag: DATA
+                }),
         }
     )(input).map_err(|x| x.unwrap())?;
     if !remaining_record_bytes.is_empty() {
