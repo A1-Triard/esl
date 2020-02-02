@@ -477,6 +477,22 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
 
     #[test]
+    fn string_into_string_z() {
+        let z = Field::StringZ(String::from("Y").into());
+        if let Field::StringZ(z) = z {
+            assert_eq!(z.str, "Y");
+        } else {
+            panic!()
+        }
+        let z = Field::StringZ("Y".into());
+        if let Field::StringZ(z) = z {
+            assert_eq!(z.str, "Y");
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
     fn record_flags_traits() {
         assert_eq!(RecordFlags::PERSISTENT, *&RecordFlags::PERSISTENT);
         assert!(RecordFlags::PERSISTENT < RecordFlags::BLOCKED);
