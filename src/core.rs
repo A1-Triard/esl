@@ -8,6 +8,8 @@ use ::nom::bytes::complete::tag as nom_tag;
 use ::nom::multi::{fold_many0};
 use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
+use encoding::types::Encoding;
+use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 
 pub use crate::tag::*;
 
@@ -429,15 +431,31 @@ pub struct Record {
     pub fields: Vec<Field>,
 }
 
+macro_attr! {
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+    #[derive(IterVariants!(CodePageVariants))]
+    pub enum CodePage {
+        English,
+        Russian,
+    }
+}
+
+impl CodePage {
+    pub fn encoding(self) -> &'static dyn Encoding {
+        match self {
+            CodePage::English => WINDOWS_1252,
+            CodePage::Russian => WINDOWS_1251,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
     use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
     use std::hash::Hash;
-    use encoding::types::Encoding;
     use encoding::{DecoderTrap, EncoderTrap};
-    use encoding::all::WINDOWS_1251;
     use std::collections::hash_map::DefaultHasher;
 
     #[test]
@@ -478,141 +496,18 @@ mod tests {
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
         assert_eq!(Err(()), RecordFlags::from_str(" "));
     }
-    
-    #[test]
-    fn text_decoding() {
-        assert_eq!(Ok("\u{402}".into()), WINDOWS_1251.decode(b"\x80", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{403}".into()), WINDOWS_1251.decode(b"\x81", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{201A}".into()), WINDOWS_1251.decode(b"\x82", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{453}".into()), WINDOWS_1251.decode(b"\x83", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{201E}".into()), WINDOWS_1251.decode(b"\x84", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2026}".into()), WINDOWS_1251.decode(b"\x85", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2020}".into()), WINDOWS_1251.decode(b"\x86", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2021}".into()), WINDOWS_1251.decode(b"\x87", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{20AC}".into()), WINDOWS_1251.decode(b"\x88", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2030}".into()), WINDOWS_1251.decode(b"\x89", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{409}".into()), WINDOWS_1251.decode(b"\x8A", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2039}".into()), WINDOWS_1251.decode(b"\x8B", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{40A}".into()), WINDOWS_1251.decode(b"\x8C", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{40C}".into()), WINDOWS_1251.decode(b"\x8D", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{40B}".into()), WINDOWS_1251.decode(b"\x8E", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{40F}".into()), WINDOWS_1251.decode(b"\x8F", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{452}".into()), WINDOWS_1251.decode(b"\x90", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2018}".into()), WINDOWS_1251.decode(b"\x91", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2019}".into()), WINDOWS_1251.decode(b"\x92", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{201C}".into()), WINDOWS_1251.decode(b"\x93", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{201D}".into()), WINDOWS_1251.decode(b"\x94", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2022}".into()), WINDOWS_1251.decode(b"\x95", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2013}".into()), WINDOWS_1251.decode(b"\x96", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2014}".into()), WINDOWS_1251.decode(b"\x97", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{98}".into()), WINDOWS_1251.decode(b"\x98", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2122}".into()), WINDOWS_1251.decode(b"\x99", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{459}".into()), WINDOWS_1251.decode(b"\x9A", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{203A}".into()), WINDOWS_1251.decode(b"\x9B", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{45A}".into()), WINDOWS_1251.decode(b"\x9C", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{45C}".into()), WINDOWS_1251.decode(b"\x9D", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{45B}".into()), WINDOWS_1251.decode(b"\x9E", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{45F}".into()), WINDOWS_1251.decode(b"\x9F", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{A0}".into()), WINDOWS_1251.decode(b"\xA0", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{40E}".into()), WINDOWS_1251.decode(b"\xA1", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{45E}".into()), WINDOWS_1251.decode(b"\xA2", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{408}".into()), WINDOWS_1251.decode(b"\xA3", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{A4}".into()), WINDOWS_1251.decode(b"\xA4", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{490}".into()), WINDOWS_1251.decode(b"\xA5", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{A6}".into()), WINDOWS_1251.decode(b"\xA6", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{A7}".into()), WINDOWS_1251.decode(b"\xA7", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{401}".into()), WINDOWS_1251.decode(b"\xA8", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{A9}".into()), WINDOWS_1251.decode(b"\xA9", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{404}".into()), WINDOWS_1251.decode(b"\xAA", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{AB}".into()), WINDOWS_1251.decode(b"\xAB", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{AC}".into()), WINDOWS_1251.decode(b"\xAC", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{AD}".into()), WINDOWS_1251.decode(b"\xAD", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{AE}".into()), WINDOWS_1251.decode(b"\xAE", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{407}".into()), WINDOWS_1251.decode(b"\xAF", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{B0}".into()), WINDOWS_1251.decode(b"\xB0", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{B1}".into()), WINDOWS_1251.decode(b"\xB1", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{406}".into()), WINDOWS_1251.decode(b"\xB2", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{456}".into()), WINDOWS_1251.decode(b"\xB3", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{491}".into()), WINDOWS_1251.decode(b"\xB4", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{B5}".into()), WINDOWS_1251.decode(b"\xB5", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{B6}".into()), WINDOWS_1251.decode(b"\xB6", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{B7}".into()), WINDOWS_1251.decode(b"\xB7", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{451}".into()), WINDOWS_1251.decode(b"\xB8", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{2116}".into()), WINDOWS_1251.decode(b"\xB9", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{454}".into()), WINDOWS_1251.decode(b"\xBA", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{BB}".into()), WINDOWS_1251.decode(b"\xBB", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{458}".into()), WINDOWS_1251.decode(b"\xBC", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{405}".into()), WINDOWS_1251.decode(b"\xBD", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{455}".into()), WINDOWS_1251.decode(b"\xBE", DecoderTrap::Strict));
-        assert_eq!(Ok("\u{457}".into()), WINDOWS_1251.decode(b"\xBF", DecoderTrap::Strict));
-    }
 
     #[test]
-    fn text_encoding() {
-        assert_eq!(Ok(vec![0x80]), WINDOWS_1251.encode("\u{402}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x81]), WINDOWS_1251.encode("\u{403}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x82]), WINDOWS_1251.encode("\u{201A}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x83]), WINDOWS_1251.encode("\u{453}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x84]), WINDOWS_1251.encode("\u{201E}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x85]), WINDOWS_1251.encode("\u{2026}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x86]), WINDOWS_1251.encode("\u{2020}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x87]), WINDOWS_1251.encode("\u{2021}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x88]), WINDOWS_1251.encode("\u{20AC}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x89]), WINDOWS_1251.encode("\u{2030}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8A]), WINDOWS_1251.encode("\u{409}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8B]), WINDOWS_1251.encode("\u{2039}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8C]), WINDOWS_1251.encode("\u{40A}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8D]), WINDOWS_1251.encode("\u{40C}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8E]), WINDOWS_1251.encode("\u{40B}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x8F]), WINDOWS_1251.encode("\u{40F}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x90]), WINDOWS_1251.encode("\u{452}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x91]), WINDOWS_1251.encode("\u{2018}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x92]), WINDOWS_1251.encode("\u{2019}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x93]), WINDOWS_1251.encode("\u{201C}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x94]), WINDOWS_1251.encode("\u{201D}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x95]), WINDOWS_1251.encode("\u{2022}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x96]), WINDOWS_1251.encode("\u{2013}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x97]), WINDOWS_1251.encode("\u{2014}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x98]), WINDOWS_1251.encode("\u{98}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x99]), WINDOWS_1251.encode("\u{2122}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9A]), WINDOWS_1251.encode("\u{459}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9B]), WINDOWS_1251.encode("\u{203A}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9C]), WINDOWS_1251.encode("\u{45A}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9D]), WINDOWS_1251.encode("\u{45C}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9E]), WINDOWS_1251.encode("\u{45B}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0x9F]), WINDOWS_1251.encode("\u{45F}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA0]), WINDOWS_1251.encode("\u{A0}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA1]), WINDOWS_1251.encode("\u{40E}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA2]), WINDOWS_1251.encode("\u{45E}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA3]), WINDOWS_1251.encode("\u{408}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA4]), WINDOWS_1251.encode("\u{A4}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA5]), WINDOWS_1251.encode("\u{490}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA6]), WINDOWS_1251.encode("\u{A6}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA7]), WINDOWS_1251.encode("\u{A7}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA8]), WINDOWS_1251.encode("\u{401}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xA9]), WINDOWS_1251.encode("\u{A9}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAA]), WINDOWS_1251.encode("\u{404}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAB]), WINDOWS_1251.encode("\u{AB}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAC]), WINDOWS_1251.encode("\u{AC}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAD]), WINDOWS_1251.encode("\u{AD}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAE]), WINDOWS_1251.encode("\u{AE}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xAF]), WINDOWS_1251.encode("\u{407}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB0]), WINDOWS_1251.encode("\u{B0}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB1]), WINDOWS_1251.encode("\u{B1}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB2]), WINDOWS_1251.encode("\u{406}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB3]), WINDOWS_1251.encode("\u{456}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB4]), WINDOWS_1251.encode("\u{491}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB5]), WINDOWS_1251.encode("\u{B5}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB6]), WINDOWS_1251.encode("\u{B6}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB7]), WINDOWS_1251.encode("\u{B7}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB8]), WINDOWS_1251.encode("\u{451}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xB9]), WINDOWS_1251.encode("\u{2116}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBA]), WINDOWS_1251.encode("\u{454}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBB]), WINDOWS_1251.encode("\u{BB}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBC]), WINDOWS_1251.encode("\u{458}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBD]), WINDOWS_1251.encode("\u{405}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBE]), WINDOWS_1251.encode("\u{455}", EncoderTrap::Strict));
-        assert_eq!(Ok(vec![0xBF]), WINDOWS_1251.encode("\u{457}", EncoderTrap::Strict));
+    fn all_code_pages_are_single_byte_encodings() {
+        for code_page in CodePage::iter_variants() {
+            let encoding = code_page.encoding();
+            for byte in 0u8 ..= 255 {
+                let c = encoding.decode(&[byte], DecoderTrap::Strict).unwrap();
+                let b = encoding.encode(&c, EncoderTrap::Strict).unwrap();
+                assert_eq!(b.len(), 1);
+                assert_eq!(b[0], byte);
+            }
+        }
     }
     
     #[test]
