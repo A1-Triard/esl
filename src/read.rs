@@ -102,6 +102,31 @@ impl<E> ErrExt<E> for nom::Err<E> {
     fn into_err(self) -> nom::Err<E> { self }
 }
 
+macro_rules! impl_parse_error {
+    (<$($lifetimes:lifetime),+>, $input:ty, $name:ident) => {
+        impl<$($lifetimes),+> ::nom::error::ParseError<$input> for $name {
+            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+        
+            fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
+        
+            fn or(self, _other: Self) -> Self { panic!() }
+        
+            fn add_context(_input: $input, _ctx: &'static str, _other: Self) -> Self { panic!() }
+        }
+    };
+    (<$($lifetime:lifetime),+>, $input:ty, $name:ident<$($name_lt:lifetime),+>) => {
+        impl<$($lifetime),+> ::nom::error::ParseError<$input> for $name<$($name_lt),+> {
+            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+        
+            fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
+        
+            fn or(self, _other: Self) -> Self { panic!() }
+        
+            fn add_context(_input: $input, _ctx: &'static str, _other: Self) -> Self { panic!() }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum FieldBodyError {
     UnexpectedEndOfField(u32),
@@ -114,15 +139,7 @@ enum FieldBodyError {
     UnexpectedDialogMetadataFieldSize(u32),
 }
 
-impl<'a> ParseError<&'a [u8]> for FieldBodyError {
-    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
-
-    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
-
-    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
-}
+impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
 
 fn binary_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], input.into()))
@@ -450,15 +467,7 @@ enum FieldError {
     UnexpectedDialogMetadataFieldSize(u32),
 }
 
-impl<'a> ParseError<&'a [u8]> for FieldError {
-    fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
-
-    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
-
-    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
-}
+impl_parse_error!(<'a>, &'a [u8], FieldError);
 
 fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
     flat_map(
@@ -815,15 +824,7 @@ impl Error for RecordError {
     }
 }
 
-impl<'a> ParseError<&'a [u8]> for RecordError {
-    fn from_error_kind(_input: &'a [u8], _kind: ErrorKind) -> Self { panic!() }
-
-    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
-
-    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
-}
+impl_parse_error!(<'a>, &'a [u8], RecordError);
 
 fn record_head<'a>(record_offset: u64) -> impl Fn(&'a [u8])
     -> IResult<&'a [u8], (Tag, u32, RecordFlags), RecordError> {
@@ -868,15 +869,7 @@ fn read_record_head(record_offset: u64, input: &[u8]) -> Result<(Tag, u32, Recor
 #[derive(Debug, Clone)]
 struct RecordBodyError<'a>(FieldError, &'a [u8]);
 
-impl<'a> ParseError<&'a [u8]> for RecordBodyError<'a> {
-    fn from_error_kind(_input: &'a [u8], kind: ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
-
-    fn append(_input: &'a [u8], _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
-
-    fn add_context(_input: &'a [u8], _ctx: &'static str, _other: Self) -> Self { panic!() }
-}
+impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
 
 fn record_body<'a>(allow_coerce: bool, record_tag: Tag)
                   -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<Field>, RecordBodyError<'a>> {
