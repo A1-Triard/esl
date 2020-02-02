@@ -457,13 +457,13 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
-            FieldType::Multiline { linebreaks, trim_end_zeros } =>
-                map(multiline_field(code_page, linebreaks, trim_end_zeros && allow_coerce), Field::Multiline)(input),
+            FieldType::Multiline { linebreaks, trim_tail_zeros } =>
+                map(multiline_field(code_page, linebreaks, trim_tail_zeros && allow_coerce), Field::Multiline)(input),
             FieldType::Reference =>
                 map(reference_field(code_page), |(count, name)| Field::Reference(count, name))(input),
             FieldType::FixedString(len) => map(fixed_string_field(code_page, len), Field::String)(input),
-            FieldType::String { trim_end_zeros } =>
-                map(string_field(code_page, trim_end_zeros && allow_coerce), Field::String)(input),
+            FieldType::String { trim_tail_zeros } =>
+                map(string_field(code_page, trim_tail_zeros && allow_coerce), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
             FieldType::MultiString => map(multi_string_field(code_page), Field::MultiString)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),

@@ -1,11 +1,12 @@
 #![deny(warnings)]
-#![allow(dead_code)]
 use std::env;
 use std::fs::File;
 use std::io::{Write, BufReader, BufRead};
 use std::path::Path;
 use std::str::FromStr;
 
+#[allow(dead_code)]
+#[allow(unused_macros)]
 mod tag {
     include!("src/tag.rs");
 }

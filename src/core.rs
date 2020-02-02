@@ -10,6 +10,10 @@ use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
 use encoding::types::Encoding;
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
+use std::cell::Cell;
+//use serde::{Serialize, Serializer, Deserialize, Deserializer};
+//use serde::de::{self, Unexpected};
+//use num_traits::cast::{ToPrimitive, FromPrimitive};
 
 pub use crate::tag::*;
 
@@ -27,6 +31,12 @@ macro_attr! {
     }
 }
 
+enum_serde!([
+    FileType, FileTypeDeserializer, "file type",
+    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+]);
+
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -41,6 +51,12 @@ macro_attr! {
     }
 }
 
+enum_serde!([
+    DialogType, DialogTypeDeserializer, "dialog type",
+    u8, from_u8, to_u8, visit_u8, serialize_u8, deserialize_u8,
+    Unsigned, u64
+]);
+
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -52,6 +68,12 @@ macro_attr! {
         Target = 2,
     }
 }
+
+enum_serde!([
+    EffectRange, EffectRangeDeserializer, "effect range",
+    i32, from_i32, to_i32, visit_i32, serialize_i32, deserialize_i32,
+    Signed, i64
+]);
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum LinebreakStyle {
@@ -412,6 +434,12 @@ impl FromStr for RecordFlags {
     }
 }
 
+enum_serde!({
+    RecordFlags, RecordFlagsDeserializer, "record flags",
+    u64, from_bits, bits, visit_u64, serialize_u64, deserialize_u64,
+    Unsigned, u64
+});
+
 #[derive(Debug, Clone)]
 pub struct Record {
     pub tag: Tag,
@@ -436,6 +464,8 @@ impl CodePage {
         }
     }
 }
+
+thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
 
 #[cfg(test)]
 mod tests {

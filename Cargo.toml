@@ -17,3 +17,7 @@ encoding = "0.2.33"
 debug_panic = "0.1.2"
 lazy_static = "1.4.0"
 flate2 = "1.0.13"
+serde = { version = "1.0.104", features = ["derive"] }
+
+[build-dependencies]
+serde = { version = "1.0.104", features = ["derive"] }

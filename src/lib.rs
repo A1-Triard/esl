@@ -14,6 +14,7 @@ extern crate debug_panic;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
 mod tag;
 
 pub use crate::tag::*;
