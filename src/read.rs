@@ -162,12 +162,14 @@ fn file_metadata_field(input: &[u8]) -> IResult<&[u8], FileMetadata, FieldBodyEr
                 tuple((
                     fixed_string(32),
                     map(fixed_string(256), |s| LinebreakStyle::Dos.split(&s).map(String::from).collect()),
-                    map(le_u32, |_| ())
+                    le_u32
                 )),
                 |_| FieldBodyError::UnexpectedEndOfField(300)
             )
         )),
-        |(version, file_type, (author, description, ()))| FileMetadata { version, file_type, author, description}
+        |(version, file_type, (author, description, records_count))| FileMetadata {
+            version, file_type, author, description, records_count
+        }
     )(input)
 }
 

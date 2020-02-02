@@ -282,7 +282,8 @@ pub struct FileMetadata {
     pub version: u32,
     pub file_type: FileType,
     pub author: String,
-    pub description: Vec<String>
+    pub description: Vec<String>,
+    pub records_count: u32
 }
 
 #[derive(Debug, Clone)]
