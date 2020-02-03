@@ -11,6 +11,7 @@ use ::nom::bytes::complete::take_while;
 use encoding::types::Encoding;
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 use std::cell::Cell;
+use serde::{Serialize, Deserialize};
 //use serde::{Serialize, Serializer, Deserialize, Deserializer};
 //use serde::de::{self, Unexpected};
 //use num_traits::cast::{ToPrimitive, FromPrimitive};
@@ -269,7 +270,7 @@ impl FieldType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ingredient {
     pub weight: f32,
     pub value: u32,

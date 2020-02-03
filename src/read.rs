@@ -1417,4 +1417,31 @@ mod tests {
             panic!()
         }
     }
+    
+    #[test]
+    fn serialize_ingredient() {
+        let ingredient = Ingredient {
+            weight: 10.0,
+            value: 117,
+            effects: [22, 23, 24, 25],
+            skills: [-1, 0, 17, 19],
+            attributes: [-1, 1, 10, 14]
+        };
+        let bin: Vec<u8> = bincode::serialize(&ingredient).unwrap();
+        let res = ingredient_field(&bin).unwrap().1;
+        assert_eq!(res.weight, ingredient.weight);
+        assert_eq!(res.value, ingredient.value);
+        assert_eq!(res.effects[0], ingredient.effects[0]);
+        assert_eq!(res.effects[1], ingredient.effects[1]);
+        assert_eq!(res.effects[2], ingredient.effects[2]);
+        assert_eq!(res.effects[3], ingredient.effects[3]);
+        assert_eq!(res.skills[0], ingredient.skills[0]);
+        assert_eq!(res.skills[1], ingredient.skills[1]);
+        assert_eq!(res.skills[2], ingredient.skills[2]);
+        assert_eq!(res.skills[3], ingredient.skills[3]);
+        assert_eq!(res.attributes[0], ingredient.attributes[0]);
+        assert_eq!(res.attributes[1], ingredient.attributes[1]);
+        assert_eq!(res.attributes[2], ingredient.attributes[2]);
+        assert_eq!(res.attributes[3], ingredient.attributes[3]);
+    }
 }

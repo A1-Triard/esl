@@ -21,3 +21,6 @@ serde = { version = "1.0.104", features = ["derive"] }
 
 [build-dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
+
+[dev-dependencies]
+bincode = "1.2.1"
