@@ -1464,4 +1464,22 @@ mod tests {
         assert_eq!(res.data_size, script_metadata.data_size);
         assert_eq!(res.var_table_size, script_metadata.var_table_size);
     }
+
+    #[test]
+    fn serialize_file_metadata() {
+        let file_metadata = FileMetadata {
+            version: 42424242,
+            file_type: FileType::ESS,
+            author: "Some author".into(),
+            description: vec!["descr line1".into(), "descr line2".into()],
+            records_count: 1333
+        };
+        let bin: Vec<u8> = bincode::serialize(&file_metadata).unwrap();
+        let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
+        assert_eq!(res.version, file_metadata.version);
+        assert_eq!(res.file_type, file_metadata.file_type);
+        assert_eq!(res.author, file_metadata.author);
+        assert_eq!(res.description, file_metadata.description);
+        assert_eq!(res.records_count, file_metadata.records_count);
+    }
 }
