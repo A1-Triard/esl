@@ -525,7 +525,7 @@ enum_serde!({
 pub struct Record {
     pub tag: Tag,
     pub flags: RecordFlags,
-    pub fields: Vec<Field>,
+    pub fields: Vec<(Tag, Field)>,
 }
 
 macro_attr! {

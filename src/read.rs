@@ -526,7 +526,7 @@ fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
 }
 
 fn field<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldError> {
+    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     
     map_res(
         field_bytes,
@@ -547,7 +547,7 @@ fn field<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag)
             if !remaining_field_bytes.is_empty() {
                 return Err(nom::Err::Error(FieldError::FieldSizeMismatch(field_tag, field_size - remaining_field_bytes.len() as u32, field_size)));
             }
-            Ok(field_body)
+            Ok((field_tag, field_body))
         }
     )
 }
@@ -913,7 +913,7 @@ struct RecordBodyError<'a>(FieldError, &'a [u8]);
 impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
 
 fn record_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag) 
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<Field>, RecordBodyError<'a>> {
+    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
     
     many0(
         preceded(
