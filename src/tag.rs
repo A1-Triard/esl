@@ -217,7 +217,7 @@ macro_rules! enum_serde {
 }
 
 enum_serde!(<
-    Tag, TagDeserializer, "tag",
+    Tag, TagDeserializer, "four-byte tag",
     u32, from, dword, visit_u32, serialize_u32, deserialize_u32,
     Unsigned, u64
 >);

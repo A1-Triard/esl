@@ -279,14 +279,94 @@ pub struct Ingredient {
     pub attributes: [i32; 4]
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptMetadata {
+    #[serde(with = "str_32")]
     pub name: String,
     pub shorts: u32,
     pub longs: u32,
     pub floats: u32,
     pub data_size: u32,
     pub var_table_size: u32
+}
+
+mod str_32 {
+    use serde::{Serializer, Deserializer};
+    use encoding::{DecoderTrap, EncoderTrap};
+    use serde::ser::{SerializeTuple, Error as ser_Error};
+    use serde::de::{self, Error as de_Error};
+    use crate::core::CODE_PAGE;
+
+    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        if serializer.is_human_readable() {
+            serializer.serialize_str(s)
+        } else {
+            let bytes = CODE_PAGE.with(|x| x.get().encoding().encode(s, EncoderTrap::Strict).unwrap());
+            if bytes.len() > 32 {
+                return Err(S::Error::custom("string length is above 32 bytes"));
+            }
+            let mut serializer = serializer.serialize_tuple(32)?;
+            for byte in &bytes {
+                serializer.serialize_element(byte)?;
+            }
+            for _ in bytes.len() .. 32 {
+                serializer.serialize_element(&0u8)?;
+            }
+            serializer.end()
+        }
+    }
+
+    struct StringDeserializer {
+        is_human_readable: bool
+    }
+
+    impl<'de> de::Visitor<'de> for StringDeserializer {
+        type Value = String;
+    
+        fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            if self.is_human_readable {
+                write!(f, "string")
+            } else {
+                write!(f, "array of 32 bytes")
+            }
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            if self.is_human_readable {
+                Ok(v.into())
+            } else {
+                Err(E::invalid_type(de::Unexpected::Str(v), &self))
+            }
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
+            A: de::SeqAccess<'de> {
+
+            let mut bytes: Vec<u8> = Vec::with_capacity(32);
+            while let Some(byte) = seq.next_element()? {
+                bytes.push(byte);
+            }
+            if self.is_human_readable {
+                Err(A::Error::invalid_type(de::Unexpected::Bytes(&bytes[..]), &self))
+            } else if bytes.len() != 32 {
+                Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            } else {
+                Ok(CODE_PAGE.with(|x| x.get().encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap()))
+            }
+        }
+    }
+    
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
+        D: Deserializer<'de> {
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(StringDeserializer { is_human_readable: true })
+        } else {
+            deserializer.deserialize_tuple(32, StringDeserializer { is_human_readable: true })
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

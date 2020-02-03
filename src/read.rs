@@ -1444,4 +1444,24 @@ mod tests {
         assert_eq!(res.attributes[2], ingredient.attributes[2]);
         assert_eq!(res.attributes[3], ingredient.attributes[3]);
     }
+
+    #[test]
+    fn serialize_script_metadata() {
+        let script_metadata = ScriptMetadata {
+            name: "ScriptName".into(),
+            shorts: 22,
+            longs: 3,
+            floats: 12,
+            data_size: 65500,
+            var_table_size: 100
+        };
+        let bin: Vec<u8> = bincode::serialize(&script_metadata).unwrap();
+        let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
+        assert_eq!(res.name, script_metadata.name);
+        assert_eq!(res.shorts, script_metadata.shorts);
+        assert_eq!(res.longs, script_metadata.longs);
+        assert_eq!(res.floats, script_metadata.floats);
+        assert_eq!(res.data_size, script_metadata.data_size);
+        assert_eq!(res.var_table_size, script_metadata.var_table_size);
+    }
 }
