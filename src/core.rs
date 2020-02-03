@@ -742,6 +742,11 @@ mod tests {
                 assert_eq!(b.len(), 1);
                 assert_eq!(b[0], byte);
             }
+            for byte in 0u8 .. 128 {
+                let c = encoding.decode(&[byte], DecoderTrap::Strict).unwrap();
+                assert_eq!(c.len(), 1);
+                assert_eq!(byte as u32, c.as_bytes()[0] as u32);
+            }
         }
     }
 }
