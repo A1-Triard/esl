@@ -333,7 +333,7 @@ mod multiline_256 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Effect {
     pub id: i16,
     pub skill: i8,
@@ -345,14 +345,14 @@ pub struct Effect {
     pub magnitude_max: i32
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedNpc {
     pub disposition: i16,
     pub reputation: i16,
     pub index: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NpcCharacteristics {
     pub strength: u8,
     pub intelligence: u8,

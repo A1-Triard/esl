@@ -1482,4 +1482,128 @@ mod tests {
         assert_eq!(res.description, file_metadata.description);
         assert_eq!(res.records_count, file_metadata.records_count);
     }
+
+    #[test]
+    fn serialize_effect() {
+        let effect = Effect {
+            id: 12700,
+            skill: 127,
+            attribute: -128,
+            range: EffectRange::Touch,
+            area: 1333,
+            duration: 200,
+            magnitude_min: 1,
+            magnitude_max: 300
+        };
+        let bin: Vec<u8> = bincode::serialize(&effect).unwrap();
+        let res = effect_field(&bin).unwrap().1;
+        assert_eq!(res.id, effect.id);
+        assert_eq!(res.skill, effect.skill);
+        assert_eq!(res.attribute, effect.attribute);
+        assert_eq!(res.range, effect.range);
+        assert_eq!(res.area, effect.area);
+        assert_eq!(res.duration, effect.duration);
+        assert_eq!(res.magnitude_min, effect.magnitude_min);
+        assert_eq!(res.magnitude_max, effect.magnitude_max);
+    }
+
+    #[test]
+    fn serialize_saved_npc() {
+        let saved_npc = SavedNpc {
+            disposition: -100,
+            reputation: -200,
+            index: 129
+        };
+        let bin: Vec<u8> = bincode::serialize(&saved_npc).unwrap();
+        let res = saved_npc_field(&bin).unwrap().1;
+        assert_eq!(res.disposition, saved_npc.disposition);
+        assert_eq!(res.reputation, saved_npc.reputation);
+        assert_eq!(res.index, saved_npc.index);
+    }
+
+    #[test]
+    fn serialize_npc_characteristics() {
+        let npc_char = NpcCharacteristics {
+            strength: 1,
+            intelligence: 2,
+            willpower: 3,
+            agility: 4,
+            speed: 5,
+            endurance: 6,
+            personality: 7,
+            luck: 8,
+            block: 9,
+            armorer: 10,
+            medium_armor: 11,
+            heavy_armor: 12,
+            blunt_weapon: 13,
+            long_blade: 14,
+            axe: 15,
+            spear: 16,
+            athletics: 17,
+            enchant: 18,
+            destruction: 19,
+            alteration: 20,
+            illusion: 21,
+            conjuration: 22,
+            mysticism: 23,
+            restoration: 24,
+            alchemy: 25,
+            unarmored: 26,
+            security: 27,
+            sneak: 28,
+            acrobatics: 29,
+            light_armor: 30,
+            short_blade: 31,
+            marksman: 32,
+            mercantile: 33,
+            speechcraft: 34,
+            hand_to_hand: 35,
+            faction: 36,
+            health: -37,
+            magicka: -38,
+            fatigue: 39
+        };
+        let bin: Vec<u8> = bincode::serialize(&npc_char).unwrap();
+        let res = npc_characteristics(&bin).unwrap().1;
+        assert_eq!(res.strength, npc_char.strength);
+        assert_eq!(res.intelligence, npc_char.intelligence);
+        assert_eq!(res.willpower, npc_char.willpower);
+        assert_eq!(res.agility, npc_char.agility);
+        assert_eq!(res.speed, npc_char.speed);
+        assert_eq!(res.endurance, npc_char.endurance);
+        assert_eq!(res.personality, npc_char.personality);
+        assert_eq!(res.luck, npc_char.luck);
+        assert_eq!(res.block, npc_char.block);
+        assert_eq!(res.armorer, npc_char.armorer);
+        assert_eq!(res.medium_armor, npc_char.medium_armor);
+        assert_eq!(res.heavy_armor, npc_char.heavy_armor);
+        assert_eq!(res.blunt_weapon, npc_char.blunt_weapon);
+        assert_eq!(res.long_blade, npc_char.long_blade);
+        assert_eq!(res.axe, npc_char.axe);
+        assert_eq!(res.spear, npc_char.spear);
+        assert_eq!(res.athletics, npc_char.athletics);
+        assert_eq!(res.enchant, npc_char.enchant);
+        assert_eq!(res.destruction, npc_char.destruction);
+        assert_eq!(res.alteration, npc_char.alteration);
+        assert_eq!(res.illusion, npc_char.illusion);
+        assert_eq!(res.conjuration, npc_char.conjuration);
+        assert_eq!(res.mysticism, npc_char.mysticism);
+        assert_eq!(res.restoration, npc_char.restoration);
+        assert_eq!(res.alchemy, npc_char.alchemy);
+        assert_eq!(res.unarmored, npc_char.unarmored);
+        assert_eq!(res.security, npc_char.security);
+        assert_eq!(res.sneak, npc_char.sneak);
+        assert_eq!(res.acrobatics, npc_char.acrobatics);
+        assert_eq!(res.light_armor, npc_char.light_armor);
+        assert_eq!(res.short_blade, npc_char.short_blade);
+        assert_eq!(res.marksman, npc_char.marksman);
+        assert_eq!(res.mercantile, npc_char.mercantile);
+        assert_eq!(res.speechcraft, npc_char.speechcraft);
+        assert_eq!(res.hand_to_hand, npc_char.hand_to_hand);
+        assert_eq!(res.faction, npc_char.faction);
+        assert_eq!(res.health, npc_char.health);
+        assert_eq!(res.magicka, npc_char.magicka);
+        assert_eq!(res.fatigue, npc_char.fatigue);
+    }
 }
