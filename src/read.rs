@@ -186,6 +186,17 @@ fn string_z_field<E>(code_page: CodePage, allow_coerce: bool) -> impl Fn(&[u8]) 
     }
 }
 
+fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) 
+    -> IResult<&'a [u8], StringZList, E> {
+    
+    no_err(
+        map(
+            string_z_field(code_page, false),
+            |s| StringZList { vec: s.str.split("\0").map(String::from).collect(), has_tail_zero: s.has_tail_zero }
+        )
+    )
+}
+
 fn fixed_string<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String, ()> {
     map(take(length), move |bytes| decode_string(code_page, trim_end_nulls(bytes)))
 }
@@ -232,12 +243,6 @@ fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle, trim_
             string_field(code_page, trim_tail_zeros),
             move |s| s.split(linebreaks.new_line()).map(String::from).collect()
         )
-    )
-}
-
-fn multi_string_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
-    no_err(
-        map(string_field(code_page, false), |s| s.split("\0").map(String::from).collect())
     )
 }
 
@@ -453,7 +458,7 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
             FieldType::String { trim_tail_zeros } =>
                 map(string_field(code_page, trim_tail_zeros && allow_coerce), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
-            FieldType::MultiString => map(multi_string_field(code_page), Field::MultiString)(input),
+            FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),

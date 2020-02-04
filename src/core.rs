@@ -99,7 +99,21 @@ impl Default for StringZ {
 }
 
 impl<T: Into<String>> From<T> for StringZ {
-    fn from(t: T) -> StringZ { StringZ{ str: t.into(), has_tail_zero: true } }
+    fn from(t: T) -> StringZ { StringZ { str: t.into(), has_tail_zero: true } }
+}
+
+#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct StringZList {
+    pub vec: Vec<String>,
+    pub has_tail_zero: bool
+}
+
+impl Default for StringZList {
+    fn default() -> StringZList { StringZList { vec: Vec::default(), has_tail_zero: true } }
+}
+
+impl<T: Into<Vec<String>>> From<T> for StringZList {
+    fn from(t: T) -> StringZList { StringZList { vec: t.into(), has_tail_zero: true } }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -108,7 +122,7 @@ pub enum FieldType {
     String { trim_tail_zeros: bool },
     StringZ,
     Multiline { linebreaks: LinebreakStyle, trim_tail_zeros: bool },
-    MultiString,
+    StringZList,
     Item,
     FixedString(u32),
     Float,
@@ -238,7 +252,7 @@ impl FieldType {
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (_, SCRI) => FieldType::String { trim_tail_zeros: false },
             (_, SCTX) => FieldType::Multiline { linebreaks: LinebreakStyle::Dos, trim_tail_zeros: true },
-            (SCPT, SCVR) => FieldType::MultiString,
+            (SCPT, SCVR) => FieldType::StringZList,
             (_, SCVR) => FieldType::String { trim_tail_zeros: false },
             (CELL, SLSD) => FieldType::Binary,
             (PCDT, SNAM) => FieldType::Binary,
@@ -480,7 +494,7 @@ pub enum Field {
     String(String),
     StringZ(StringZ),
     Multiline(Vec<String>),
-    MultiString(Vec<String>),
+    StringZList(StringZList),
     Item(Item),
     Float(f32),
     Int(i32),
