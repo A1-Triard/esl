@@ -241,13 +241,16 @@ fn multi_string_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResul
     )
 }
 
-fn reference_field<'a>(code_page: CodePage) 
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (i32, String), FieldBodyError> {
+fn item_field<'a>(code_page: CodePage)
+                  -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
 
     set_err(
-        pair(
-            le_i32,
-            fixed_string(code_page, 32)
+        map(
+            pair(
+                le_i32,
+                fixed_string(code_page, 32)
+            ),
+            |(count, id)| Item { count, item_id: id }
         ),
         |_| FieldBodyError::UnexpectedEndOfField(4 + 32)
     )
@@ -444,8 +447,8 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
             FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
             FieldType::Multiline { linebreaks, trim_tail_zeros } =>
                 map(multiline_field(code_page, linebreaks, trim_tail_zeros && allow_coerce), Field::Multiline)(input),
-            FieldType::Reference =>
-                map(reference_field(code_page), |(count, name)| Field::Reference(count, name))(input),
+            FieldType::Item =>
+                map(item_field(code_page), Field::Item)(input),
             FieldType::FixedString(len) => map(fixed_string_field(code_page, len), Field::String)(input),
             FieldType::String { trim_tail_zeros } =>
                 map(string_field(code_page, trim_tail_zeros && allow_coerce), Field::String)(input),

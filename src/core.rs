@@ -109,7 +109,7 @@ pub enum FieldType {
     StringZ,
     Multiline { linebreaks: LinebreakStyle, trim_tail_zeros: bool },
     MultiString,
-    Reference,
+    Item,
     FixedString(u32),
     Float,
     Int,
@@ -220,7 +220,7 @@ impl FieldType {
             (LEVC, NNAM) => FieldType::Byte,
             (LEVI, NNAM) => FieldType::Byte,
             (_, NNAM) => FieldType::String { trim_tail_zeros: false },
-            (_, NPCO) => FieldType::Reference,
+            (_, NPCO) => FieldType::Item,
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::SavedNpc,
             (BSGN, NPCS) => FieldType::FixedString(32),
@@ -467,6 +467,13 @@ pub struct Npc52 {
     pub gold: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Item {
+    pub count: i32,
+    #[serde(with = "string_32")]
+    pub item_id: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum Field {
     Binary(Vec<u8>),
@@ -474,7 +481,7 @@ pub enum Field {
     StringZ(StringZ),
     Multiline(Vec<String>),
     MultiString(Vec<String>),
-    Reference(i32, String),
+    Item(Item),
     Float(f32),
     Int(i32),
     Short(i16),
