@@ -63,11 +63,7 @@ impl CodePage {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use num_traits::cast::FromPrimitive;
-    use std::str::FromStr;
-    use std::hash::Hash;
     use encoding::{DecoderTrap, EncoderTrap};
-    use std::collections::hash_map::DefaultHasher;
 
     #[test]
     fn string_into_string_z() {

@@ -261,17 +261,18 @@ pub struct ScriptMetadata {
 
 mod string_32 {
     use serde::{Serializer, Deserializer};
+    use crate::serde::*;
 
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
         
-        crate::serde::serialize_string(32, s, serializer)
+        CODE_PAGE.with(|x| serialize_string(x.get(), 32, s, serializer))
     }
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
         D: Deserializer<'de> {
 
-        crate::serde::deserialize_string(32, deserializer)
+        CODE_PAGE.with(|x| deserialize_string(x.get(), 32, deserializer))
     }
 }
 
@@ -281,24 +282,26 @@ pub struct FileMetadata {
     pub file_type: FileType,
     #[serde(with = "string_32")]
     pub author: String,
-    #[serde(with = "multiline_256")]
+    #[serde(with = "multiline_256_dos")]
     pub description: Vec<String>,
     pub records_count: u32
 }
 
-mod multiline_256 {
+mod multiline_256_dos {
     use serde::{Serializer, Deserializer};
+    use crate::base::*;
+    use crate::serde::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
-        crate::serde::serialize_multiline(256, lines, serializer)
+        CODE_PAGE.with(|x| serialize_multiline(x.get(), LinebreakStyle::Dos, 256, lines, serializer))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
         D: Deserializer<'de> {
-
-        crate::serde::deserialize_multiline(256, deserializer)
+        
+        CODE_PAGE.with(|x| deserialize_multiline(x.get(), LinebreakStyle::Dos, 256, deserializer))
     }
 }
 
@@ -527,7 +530,6 @@ mod tests {
     use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
     use std::hash::Hash;
-    use encoding::{DecoderTrap, EncoderTrap};
     use std::collections::hash_map::DefaultHasher;
 
     #[test]

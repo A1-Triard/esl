@@ -8,14 +8,15 @@ use crate::base::*;
 
 thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
 
-pub fn serialize_string<S>(len: usize, s: &str, serializer: S) -> Result<S::Ok, S::Error> where
+pub fn serialize_string<S>(code_page: CodePage, len: usize, s: &str, serializer: S)
+    -> Result<S::Ok, S::Error> where
     S: Serializer {
 
     if serializer.is_human_readable() {
         serializer.serialize_str(s)
     } else {
-        let bytes = CODE_PAGE.with(|x| x.get().encoding().encode(s, EncoderTrap::Strict)
-            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x))))?;
+        let bytes = code_page.encoding().encode(s, EncoderTrap::Strict)
+            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
         if bytes.len() > len {
             return Err(S::Error::custom(&format!("string length is above {} bytes", len)));
         }
@@ -30,7 +31,8 @@ pub fn serialize_string<S>(len: usize, s: &str, serializer: S) -> Result<S::Ok, 
     }
 }
 
-pub fn serialize_multiline<S>(len: usize, lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
+pub fn serialize_multiline<S>(code_page: CodePage, linebreaks: LinebreakStyle, len: usize, lines: &[String], serializer: S)
+    -> Result<S::Ok, S::Error> where
     S: Serializer {
 
     if serializer.is_human_readable() {
@@ -40,21 +42,23 @@ pub fn serialize_multiline<S>(len: usize, lines: &[String], serializer: S) -> Re
         }
         serializer.end()
     } else {
+        let new_line = code_page.encoding().encode(linebreaks.new_line(), EncoderTrap::Strict).unwrap();
         let mut serializer = serializer.serialize_tuple(len)?;
         let mut lines_len = 0;
         let mut first_line = true;
         for line in lines {
-            let bytes = CODE_PAGE.with(|x| x.get().encoding().encode(line, EncoderTrap::Strict)
-                .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x))))?;
+            let bytes = code_page.encoding().encode(line, EncoderTrap::Strict)
+                .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
             if first_line {
                 first_line = false;
             } else {
-                lines_len += 2;
+                lines_len += new_line.len();
                 if lines_len > len {
                     return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
                 }
-                serializer.serialize_element(&13u8)?;
-                serializer.serialize_element(&10u8)?;
+                for byte in &new_line {
+                    serializer.serialize_element(byte)?;
+                }
             }
             lines_len += bytes.len();
             if lines_len > len {
@@ -73,7 +77,8 @@ pub fn serialize_multiline<S>(len: usize, lines: &[String], serializer: S) -> Re
 
 struct StringDeserializer {
     is_human_readable: bool,
-    len: usize
+    len: usize,
+    code_page: CodePage,
 }
 
 impl<'de> de::Visitor<'de> for StringDeserializer {
@@ -107,24 +112,27 @@ impl<'de> de::Visitor<'de> for StringDeserializer {
         } else if bytes.len() != self.len {
             Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
         } else {
-            Ok(CODE_PAGE.with(|x| x.get().encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap()))
+            Ok(self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap())
         }
     }
 }
 
-pub fn deserialize_string<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where
+pub fn deserialize_string<'de, D>(code_page: CodePage, len: usize, deserializer: D)
+    -> Result<String, D::Error> where
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_str(StringDeserializer { len, is_human_readable: true })
+        deserializer.deserialize_str(StringDeserializer { code_page, len, is_human_readable: true })
     } else {
-        deserializer.deserialize_tuple(len, StringDeserializer { len, is_human_readable: false })
+        deserializer.deserialize_tuple(len, StringDeserializer { code_page, len, is_human_readable: false })
     }
 }
 
 struct MultilineDeserializer {
     is_human_readable: bool,
-    len: usize
+    len: usize,
+    code_page: CodePage,
+    linebreaks: LinebreakStyle,
 }
 
 impl<'de> de::Visitor<'de> for MultilineDeserializer {
@@ -156,19 +164,20 @@ impl<'de> de::Visitor<'de> for MultilineDeserializer {
             if bytes.len() != self.len {
                 Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
             } else {
-                let s = CODE_PAGE.with(|x| x.get().encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap());
-                Ok(s.split(LinebreakStyle::Dos.new_line()).map(String::from).collect())
+                let s = self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap();
+                Ok(s.split(self.linebreaks.new_line()).map(String::from).collect())
             }
         }
     }
 }
 
-pub fn deserialize_multiline<'de, D>(len: usize, deserializer: D) -> Result<Vec<String>, D::Error> where
+pub fn deserialize_multiline<'de, D>(code_page: CodePage, linebreaks: LinebreakStyle, len: usize, deserializer: D)
+    -> Result<Vec<String>, D::Error> where
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_seq(MultilineDeserializer { len, is_human_readable: true })
+        deserializer.deserialize_seq(MultilineDeserializer { code_page, linebreaks, len, is_human_readable: true })
     } else {
-        deserializer.deserialize_tuple(len, MultilineDeserializer { len, is_human_readable: false })
+        deserializer.deserialize_tuple(len, MultilineDeserializer { code_page, linebreaks, len, is_human_readable: false })
     }
 }
