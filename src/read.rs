@@ -15,7 +15,7 @@ use std::fmt::{self};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use either::Either;
+use either::{Either, Left, Right};
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -431,14 +431,14 @@ fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogTyp
             set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
             |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBodyError::InvalidDialogType(d)))
         ),
-        Either::Right
+        Right
     )(input)
 }
 
 fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogType>, FieldBodyError> {
     map(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        Either::Left
+        Left
     )(input)
 }
 
@@ -1144,7 +1144,7 @@ mod tests {
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
-    use either::Either;
+    use either::{Left, Right};
 
     fn string(s: &str) -> Vec<u8> {
         WINDOWS_1251.encode(s, EncoderTrap::Strict).unwrap()
@@ -1485,7 +1485,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: Either::Right(NpcCharacteristics {
+            characteristics: Right(NpcCharacteristics {
                 strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
                 personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
                 blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1495,7 +1495,7 @@ mod tests {
                 hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
             })
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.ser().right().unwrap()).unwrap();
+        let bin: Vec<u8> = bincode::serialize(&npc.bin().right().unwrap()).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1515,9 +1515,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: Either::Left(30001)
+            characteristics: Left(30001)
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.ser().left().unwrap()).unwrap();
+        let bin: Vec<u8> = bincode::serialize(&npc.bin().left().unwrap()).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);

@@ -1,4 +1,4 @@
-use either::{Either};
+use either::{Either, Left, Right};
 use std::fmt::{self, Display, Debug};
 use std::str::{FromStr};
 use ::nom::IResult;
@@ -408,7 +408,7 @@ pub struct NpcCharacteristics {
     pub fatigue: i16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Npc {
     pub level: u16,
     pub disposition: i8,
@@ -420,16 +420,16 @@ pub struct Npc {
 }
 
 impl Npc {
-    pub fn ser(&self) -> Either<Npc12, Npc52> {
+    pub fn bin(&self) -> Either<Npc12, Npc52> {
         match &self.characteristics {
-            Either::Right(characteristics) => Either::Right(Npc52 {
+            Right(characteristics) => Right(Npc52 {
                 level: self.level, disposition: self.disposition,
                 reputation: self.reputation, rank: self.rank,
                 padding: self.padding,
                 gold: self.gold,
                 characteristics: characteristics.clone()
             }),
-            &Either::Left(padding_16) => Either::Left(Npc12 {
+            &Left(padding_16) => Left(Npc12 {
                 level: self.level, disposition: self.disposition,
                 reputation: self.reputation, rank: self.rank,
                 padding_8: self.padding, padding_16,
@@ -444,7 +444,7 @@ impl From<Npc12> for Npc {
         Npc {
             level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
             rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
-            characteristics: Either::Left(npc.padding_16)
+            characteristics: Left(npc.padding_16)
         }
     }
 }
@@ -454,7 +454,7 @@ impl From<Npc52> for Npc {
         Npc {
             level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
             rank: npc.rank, gold: npc.gold, padding: npc.padding,
-            characteristics: Either::Right(npc.characteristics)
+            characteristics: Right(npc.characteristics)
         }
     }
 }
