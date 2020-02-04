@@ -1527,4 +1527,16 @@ mod tests {
         assert_eq!(res.padding, npc.padding);
         assert_eq!(res.characteristics.left().unwrap(), npc.characteristics.left().unwrap());
     }
+
+    #[test]
+    fn serialize_item() {
+        let item = Item {
+            count: -3,
+            item_id: "b_item_01 ".into()
+        };
+        let bin: Vec<u8> = bincode::serialize(&item).unwrap();
+        let res = item_field(CodePage::English)(&bin).unwrap().1;
+        assert_eq!(res.count, item.count);
+        assert_eq!(res.item_id, item.item_id);
+    }
 }
