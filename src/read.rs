@@ -129,8 +129,6 @@ macro_rules! impl_parse_error {
 enum FieldBodyError {
     UnexpectedEndOfField(u32),
     UnknownFileType(u32),
-    NonZeroDeletionMark(u32),
-    NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
     InvalidDialogType(u8),
@@ -255,13 +253,6 @@ fn reference_field<'a>(code_page: CodePage)
     )
 }
 
-fn deletion_mark_field(input: &[u8]) -> IResult<&[u8], (), FieldBodyError> {
-    map_res(
-        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        |d, _| if d == 0 { Ok(()) } else { Err(nom::Err::Error(FieldBodyError::NonZeroDeletionMark(d))) }
-    )(input)
-}
-
 fn int_field(input: &[u8]) -> IResult<&[u8], i32, FieldBodyError> {
     set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
 }
@@ -374,21 +365,15 @@ fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
 }
 
 fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
-    map_res(
+    map(
         set_err(
             tuple((le_u16, npc_characteristics, le_i8, le_i8, le_i8, le_u8, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(52)
         ),
-        |(level, characteristics, disposition, reputation, rank, padding, gold), _| {
-            if padding != 0 {
-                Err(nom::Err::Error(FieldBodyError::NonZeroNpcPaddingByte(padding)))
-            } else {
-                Ok(Npc {
-                    level, disposition, reputation, rank, gold,
-                    characteristics: Either::Right(characteristics)
-                })
-            }
-        }
+        |(level, characteristics, disposition, reputation, rank, padding, gold)| Npc52 {
+            level, disposition, reputation, rank, gold,
+            characteristics, padding
+        }.into()
     )(input)
 }
 
@@ -398,10 +383,10 @@ fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
             tuple((le_u16, le_i8, le_i8, le_i8, le_u8, le_u16, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(12)
         ),
-        |(level, disposition, reputation, rank, u1, u2, gold)| Npc {
+        |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc12 {
             level, disposition, reputation, rank, gold,
-            characteristics: Either::Left((u1 as u32) << 16 | (u2 as u32))
-        }
+            padding_8, padding_16
+        }.into()
     )(input)
 }
 
@@ -467,7 +452,6 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
             FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
             FieldType::MultiString => map(multi_string_field(code_page), Field::MultiString)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
-            FieldType::DeletionMark => map(deletion_mark_field, |()| Field::DeletionMark)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),
@@ -500,8 +484,6 @@ enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
     UnknownFileType(u32),
-    NonZeroDeletionMark(u32),
-    NonZeroNpcPaddingByte(u8),
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
     InvalidDialogType(u8),
@@ -536,8 +518,6 @@ fn field<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag)
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                     FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
-                    FieldBodyError::NonZeroDeletionMark(d) => FieldError::NonZeroDeletionMark(d),
-                    FieldBodyError::NonZeroNpcPaddingByte(d) => FieldError::NonZeroNpcPaddingByte(d),
                     FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
                     FieldBodyError::InvalidEffectRange(d) => FieldError::InvalidEffectRange(d),
                     FieldBodyError::InvalidDialogType(d) => FieldError::InvalidDialogType(d),
@@ -680,61 +660,6 @@ impl Error for UnknownFileType {
 }
 
 #[derive(Debug, Clone)]
-pub struct NonZeroDeletionMark {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value: u32
-}
-
-impl fmt::Display for NonZeroDeletionMark {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "found non-zero deletion mark value {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for NonZeroNpcPaddingByte {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct NonZeroNpcPaddingByte {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u8
-}
-
-impl fmt::Display for NonZeroNpcPaddingByte {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "found non-zero padding byte {:01X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for NonZeroDeletionMark {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
 pub struct UnexpectedFieldSize {
     pub record_offset: u64,
     pub record_tag: Tag,
@@ -824,8 +749,6 @@ pub enum RecordError {
     RecordSizeMismatch(RecordSizeMismatch),
     FieldSizeMismatch(FieldSizeMismatch),
     UnknownFileType(UnknownFileType),
-    NonZeroDeletionMark(NonZeroDeletionMark),
-    NonZeroNpcPaddingByte(NonZeroNpcPaddingByte),
     UnexpectedFieldSize(UnexpectedFieldSize),
     InvalidEffectRange(InvalidEffectRange),
     InvalidDialogType(InvalidDialogType),
@@ -839,8 +762,6 @@ impl fmt::Display for RecordError {
             RecordError::RecordSizeMismatch(x) => x.fmt(f),
             RecordError::FieldSizeMismatch(x) => x.fmt(f),
             RecordError::UnknownFileType(x) => x.fmt(f),
-            RecordError::NonZeroDeletionMark(x) => x.fmt(f),
-            RecordError::NonZeroNpcPaddingByte(x) => x.fmt(f),
             RecordError::UnexpectedFieldSize(x) => x.fmt(f),
             RecordError::InvalidEffectRange(x) => x.fmt(f),
             RecordError::InvalidDialogType(x) => x.fmt(f),
@@ -856,8 +777,6 @@ impl Error for RecordError {
             RecordError::RecordSizeMismatch(x) => x,
             RecordError::FieldSizeMismatch(x) => x,
             RecordError::UnknownFileType(x) => x,
-            RecordError::NonZeroDeletionMark(x) => x,
-            RecordError::NonZeroNpcPaddingByte(x) => x,
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::InvalidEffectRange(x) => x,
             RecordError::InvalidDialogType(x) => x,
@@ -953,18 +872,6 @@ fn read_record_body(record_offset: u64, code_page: CodePage, allow_coerce: bool,
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag: TES3, field_tag: HEDR, value_offset: 4
-                }),
-            RecordBodyError(FieldError::NonZeroDeletionMark(value), field) =>
-                RecordError::NonZeroDeletionMark(NonZeroDeletionMark {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: DIAL, field_tag: DELE
-                }),
-            RecordBodyError(FieldError::NonZeroNpcPaddingByte(value), field) =>
-                RecordError::NonZeroNpcPaddingByte(NonZeroNpcPaddingByte {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: NPC_, field_tag: NPDT, value_offset: 47
                 }),
             RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
@@ -1316,21 +1223,6 @@ mod tests {
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 2);
-        } else {
-            panic!()
-        }
-    }
-
-    #[test]
-    fn read_deletion_mark_non_zero() {
-        let mut input: Vec<u8> = Vec::new();
-        input.extend(DELE.dword.to_le_bytes().iter());
-        input.extend(4u32.to_le_bytes().iter());
-        input.extend([0x01, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, true, DIAL)(&input);
-        let error = result.err().unwrap();
-        if let nom::Err::Error(FieldError::NonZeroDeletionMark(d)) = error {
-            assert_eq!(d, 1);
         } else {
             panic!()
         }

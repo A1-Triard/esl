@@ -120,7 +120,6 @@ pub enum FieldType {
     Ingredient,
     ScriptMetadata,
     DialogMetadata,
-    DeletionMark,
     FileMetadata,
     Npc,
     SavedNpc,
@@ -163,7 +162,7 @@ impl FieldType {
             (SSCR, DATA) => FieldType::String { trim_tail_zeros: true },
             (TES3, DATA) => FieldType::Long,
             (QUES, DATA) => FieldType::String { trim_tail_zeros: false },
-            (DIAL, DELE) => FieldType::DeletionMark,
+            (DIAL, DELE) => FieldType::Int,
             (_, DESC) => FieldType::String { trim_tail_zeros: false },
             (_, DNAM) => FieldType::String { trim_tail_zeros: false },
             (ALCH, ENAM) => FieldType::Effect,
@@ -392,7 +391,7 @@ pub struct NpcCharacteristics {
     pub faction: u8,
     pub health: i16,
     pub magicka: i16,
-    pub fatigue: i16
+    pub fatigue: i16,
 }
 
 #[derive(Debug, Clone)]
@@ -402,7 +401,70 @@ pub struct Npc {
     pub reputation: i8,
     pub rank: i8,
     pub gold: i32,
-    pub characteristics: Either<u32, NpcCharacteristics>
+    pub padding: u8,
+    pub characteristics: Either<u16, NpcCharacteristics>
+}
+
+impl Npc {
+    pub fn ser(&self) -> Either<Npc12, Npc52> {
+        match &self.characteristics {
+            Either::Right(characteristics) => Either::Right(Npc52 {
+                level: self.level, disposition: self.disposition,
+                reputation: self.reputation, rank: self.rank,
+                padding: self.padding,
+                gold: self.gold,
+                characteristics: characteristics.clone()
+            }),
+            &Either::Left(padding_16) => Either::Left(Npc12 {
+                level: self.level, disposition: self.disposition,
+                reputation: self.reputation, rank: self.rank,
+                padding_8: self.padding, padding_16,
+                gold: self.gold
+            })
+        }
+    }
+}
+
+impl From<Npc12> for Npc {
+    fn from(npc: Npc12) -> Npc {
+        Npc {
+            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+            rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
+            characteristics: Either::Left(npc.padding_16)
+        }
+    }
+}
+
+impl From<Npc52> for Npc {
+    fn from(npc: Npc52) -> Npc {
+        Npc {
+            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+            rank: npc.rank, gold: npc.gold, padding: npc.padding,
+            characteristics: Either::Right(npc.characteristics)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Npc12 {
+    pub level: u16,
+    pub disposition: i8,
+    pub reputation: i8,
+    pub rank: i8,
+    pub padding_8: u8,
+    pub padding_16: u16,
+    pub gold: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Npc52 {
+    pub level: u16,
+    pub characteristics: NpcCharacteristics,
+    pub disposition: i8,
+    pub reputation: i8,
+    pub rank: i8,
+    pub padding: u8,
+    pub gold: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -422,7 +484,6 @@ pub enum Field {
     Ingredient(Ingredient),
     ScriptMetadata(ScriptMetadata),
     DialogMetadata(Either<u32, DialogType>),
-    DeletionMark,
     FileMetadata(FileMetadata),
     SavedNpc(SavedNpc),
     Npc(Npc),
