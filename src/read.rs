@@ -1,5 +1,3 @@
-use crate::core::*;
-
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
@@ -16,6 +14,9 @@ use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Either, Left, Right};
+
+use crate::base::*;
+use crate::core::*;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }

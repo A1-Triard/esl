@@ -8,13 +8,9 @@ use ::nom::bytes::complete::tag as nom_tag;
 use ::nom::multi::{fold_many0};
 use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
-use encoding::types::Encoding;
-use encoding::all::{WINDOWS_1251, WINDOWS_1252};
-use std::cell::Cell;
-use serde::{Serialize, Deserialize, Deserializer, Serializer};
-use serde::de::{self, Error as de_Error};
-use encoding::{DecoderTrap, EncoderTrap};
-use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
+use serde::{Serialize, Deserialize};
+
+use crate::base::*;
 
 pub use crate::tag::*;
 
@@ -75,46 +71,6 @@ enum_serde!([
     i32, from_i32, to_i32, visit_i32, serialize_i32, deserialize_i32,
     Signed, i64
 ]);
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum LinebreakStyle {
-    Unix,
-    Dos
-}
-
-impl LinebreakStyle {
-    pub fn new_line(self) -> &'static str {
-        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
-    }
-}
-
-#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct StringZ {
-    pub str: String,
-    pub has_tail_zero: bool
-}
-
-impl Default for StringZ {
-    fn default() -> StringZ { StringZ { str: String::default(), has_tail_zero: true } }
-}
-
-impl<T: Into<String>> From<T> for StringZ {
-    fn from(t: T) -> StringZ { StringZ { str: t.into(), has_tail_zero: true } }
-}
-
-#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct StringZList {
-    pub vec: Vec<String>,
-    pub has_tail_zero: bool
-}
-
-impl Default for StringZList {
-    fn default() -> StringZList { StringZList { vec: Vec::default(), has_tail_zero: true } }
-}
-
-impl<T: Into<Vec<String>>> From<T> for StringZList {
-    fn from(t: T) -> StringZList { StringZList { vec: t.into(), has_tail_zero: true } }
-}
 
 #[derive(Copy, Clone, Debug)]
 pub enum FieldType {
@@ -309,13 +265,13 @@ mod string_32 {
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
         
-        crate::core::serialize_string(32, s, serializer)
+        crate::serde::serialize_string(32, s, serializer)
     }
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
         D: Deserializer<'de> {
 
-        crate::core::deserialize_string(32, deserializer)
+        crate::serde::deserialize_string(32, deserializer)
     }
 }
 
@@ -336,13 +292,13 @@ mod multiline_256 {
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
-        crate::core::serialize_multiline(256, lines, serializer)
+        crate::serde::serialize_multiline(256, lines, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
         D: Deserializer<'de> {
 
-        crate::core::deserialize_multiline(256, deserializer)
+        crate::serde::deserialize_multiline(256, deserializer)
     }
 }
 
@@ -565,191 +521,6 @@ pub struct Record {
     pub fields: Vec<(Tag, Field)>,
 }
 
-macro_attr! {
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-    #[derive(IterVariants!(CodePageVariants))]
-    pub enum CodePage {
-        English,
-        Russian,
-    }
-}
-
-impl CodePage {
-    pub fn encoding(self) -> &'static dyn Encoding {
-        match self {
-            CodePage::English => WINDOWS_1252,
-            CodePage::Russian => WINDOWS_1251,
-        }
-    }
-}
-
-thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
-
-fn serialize_string<S>(len: usize, s: &str, serializer: S) -> Result<S::Ok, S::Error> where
-    S: Serializer {
-
-    if serializer.is_human_readable() {
-        serializer.serialize_str(s)
-    } else {
-        let bytes = CODE_PAGE.with(|x| x.get().encoding().encode(s, EncoderTrap::Strict)
-            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x))))?;
-        if bytes.len() > len {
-            return Err(S::Error::custom(&format!("string length is above {} bytes", len)));
-        }
-        let mut serializer = serializer.serialize_tuple(len)?;
-        for byte in &bytes {
-            serializer.serialize_element(byte)?;
-        }
-        for _ in bytes.len() .. len {
-            serializer.serialize_element(&0u8)?;
-        }
-        serializer.end()
-    }
-}
-
-fn serialize_multiline<S>(len: usize, lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
-    S: Serializer {
-
-    if serializer.is_human_readable() {
-        let mut serializer = serializer.serialize_seq(Some(lines.len()))?;
-        for line in lines {
-            serializer.serialize_element(line)?;
-        }
-        serializer.end()
-    } else {
-        let mut serializer = serializer.serialize_tuple(len)?;
-        let mut lines_len = 0;
-        let mut first_line = true;
-        for line in lines {
-            let bytes = CODE_PAGE.with(|x| x.get().encoding().encode(line, EncoderTrap::Strict)
-                .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x))))?;
-            if first_line {
-                first_line = false;
-            } else {
-                lines_len += 2;
-                if lines_len > len {
-                    return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
-                }
-                serializer.serialize_element(&13u8)?;
-                serializer.serialize_element(&10u8)?;
-            }
-            lines_len += bytes.len();
-            if lines_len > len {
-                return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
-            }
-            for byte in &bytes {
-                serializer.serialize_element(byte)?;
-            }
-        }
-        for _ in lines_len..len {
-            serializer.serialize_element(&0u8)?;
-        }
-        serializer.end()
-    }
-}
-
-struct StringDeserializer {
-    is_human_readable: bool,
-    len: usize
-}
-
-impl<'de> de::Visitor<'de> for StringDeserializer {
-    type Value = String;
-
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        if self.is_human_readable {
-            write!(f, "string")
-        } else {
-            write!(f, "array of {} bytes", self.len)
-        }
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        if self.is_human_readable {
-            Ok(v.into())
-        } else {
-            Err(E::invalid_type(de::Unexpected::Str(v), &self))
-        }
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
-        A: de::SeqAccess<'de> {
-
-        let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
-        while let Some(byte) = seq.next_element()? {
-            bytes.push(byte);
-        }
-        if self.is_human_readable {
-            Err(A::Error::invalid_type(de::Unexpected::Bytes(&bytes[..]), &self))
-        } else if bytes.len() != self.len {
-            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
-        } else {
-            Ok(CODE_PAGE.with(|x| x.get().encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap()))
-        }
-    }
-}
-
-fn deserialize_string<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where
-    D: Deserializer<'de> {
-
-    if deserializer.is_human_readable() {
-        deserializer.deserialize_str(StringDeserializer { len, is_human_readable: true })
-    } else {
-        deserializer.deserialize_tuple(len, StringDeserializer { len, is_human_readable: false })
-    }
-}
-
-struct MultilineDeserializer {
-    is_human_readable: bool,
-    len: usize
-}
-
-impl<'de> de::Visitor<'de> for MultilineDeserializer {
-    type Value = Vec<String>;
-
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        if self.is_human_readable {
-            write!(f, "lines sequence")
-        } else {
-            write!(f, "array of {} bytes", self.len)
-        }
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
-        A: de::SeqAccess<'de> {
-
-        if self.is_human_readable {
-            let mut lines: Vec<String> =
-                seq.size_hint().map_or_else(|| Vec::new(), |x| Vec::with_capacity(x));
-            while let Some(line) = seq.next_element()? {
-                lines.push(line);
-            }
-            Ok(lines)
-        } else {
-            let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
-            while let Some(byte) = seq.next_element()? {
-                bytes.push(byte);
-            }
-            if bytes.len() != self.len {
-                Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
-            } else {
-                let s = CODE_PAGE.with(|x| x.get().encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap());
-                Ok(s.split(LinebreakStyle::Dos.new_line()).map(String::from).collect())
-            }
-        }
-    }
-}
-
-fn deserialize_multiline<'de, D>(len: usize, deserializer: D) -> Result<Vec<String>, D::Error> where
-    D: Deserializer<'de> {
-
-    if deserializer.is_human_readable() {
-        deserializer.deserialize_seq(MultilineDeserializer { len, is_human_readable: true })
-    } else {
-        deserializer.deserialize_tuple(len, MultilineDeserializer { len, is_human_readable: false })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -758,22 +529,6 @@ mod tests {
     use std::hash::Hash;
     use encoding::{DecoderTrap, EncoderTrap};
     use std::collections::hash_map::DefaultHasher;
-
-    #[test]
-    fn string_into_string_z() {
-        let z = Field::StringZ(String::from("Y").into());
-        if let Field::StringZ(z) = z {
-            assert_eq!(z.str, "Y");
-        } else {
-            panic!()
-        }
-        let z = Field::StringZ("Y".into());
-        if let Field::StringZ(z) = z {
-            assert_eq!(z.str, "Y");
-        } else {
-            panic!()
-        }
-    }
 
     #[test]
     fn record_flags_traits() {
@@ -812,23 +567,5 @@ mod tests {
         assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT | DELETED"));
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
         assert_eq!(Err(()), RecordFlags::from_str(" "));
-    }
-
-    #[test]
-    fn all_code_pages_are_single_byte_encodings() {
-        for code_page in CodePage::iter_variants() {
-            let encoding = code_page.encoding();
-            for byte in 0u8 ..= 255 {
-                let c = encoding.decode(&[byte], DecoderTrap::Strict).unwrap();
-                let b = encoding.encode(&c, EncoderTrap::Strict).unwrap();
-                assert_eq!(b.len(), 1);
-                assert_eq!(b[0], byte);
-            }
-            for byte in 0u8 .. 128 {
-                let c = encoding.decode(&[byte], DecoderTrap::Strict).unwrap();
-                assert_eq!(c.len(), 1);
-                assert_eq!(byte as u32, c.as_bytes()[0] as u32);
-            }
-        }
     }
 }

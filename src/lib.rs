@@ -24,3 +24,9 @@ mod core;
 pub use crate::core::*;
 
 pub mod read;
+
+pub mod serde;
+
+mod base;
+
+pub use crate::base::*;
