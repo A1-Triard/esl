@@ -1144,6 +1144,7 @@ mod tests {
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
+    use either::Either;
 
     fn string(s: &str) -> Vec<u8> {
         WINDOWS_1251.encode(s, EncoderTrap::Strict).unwrap()
@@ -1424,45 +1425,13 @@ mod tests {
     #[test]
     fn serialize_npc_characteristics() {
         let npc_char = NpcCharacteristics {
-            strength: 1,
-            intelligence: 2,
-            willpower: 3,
-            agility: 4,
-            speed: 5,
-            endurance: 6,
-            personality: 7,
-            luck: 8,
-            block: 9,
-            armorer: 10,
-            medium_armor: 11,
-            heavy_armor: 12,
-            blunt_weapon: 13,
-            long_blade: 14,
-            axe: 15,
-            spear: 16,
-            athletics: 17,
-            enchant: 18,
-            destruction: 19,
-            alteration: 20,
-            illusion: 21,
-            conjuration: 22,
-            mysticism: 23,
-            restoration: 24,
-            alchemy: 25,
-            unarmored: 26,
-            security: 27,
-            sneak: 28,
-            acrobatics: 29,
-            light_armor: 30,
-            short_blade: 31,
-            marksman: 32,
-            mercantile: 33,
-            speechcraft: 34,
-            hand_to_hand: 35,
-            faction: 36,
-            health: -37,
-            magicka: -38,
-            fatigue: 39
+            strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
+            personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+            blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
+            destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
+            restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
+            light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
+            hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
         let bin: Vec<u8> = bincode::serialize(&npc_char).unwrap();
         let res = npc_characteristics(&bin).unwrap().1;
@@ -1505,5 +1474,57 @@ mod tests {
         assert_eq!(res.health, npc_char.health);
         assert_eq!(res.magicka, npc_char.magicka);
         assert_eq!(res.fatigue, npc_char.fatigue);
+    }
+
+    #[test]
+    fn serialize_npc_52() {
+        let npc = Npc {
+            level: 100,
+            disposition: -100,
+            reputation: -92,
+            rank: 33,
+            gold: 20000,
+            padding: 17,
+            characteristics: Either::Right(NpcCharacteristics {
+                strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
+                personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+                blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
+                destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
+                restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
+                light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
+                hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
+            })
+        };
+        let bin: Vec<u8> = bincode::serialize(&npc.ser().right().unwrap()).unwrap();
+        let res = npc_52_field(&bin).unwrap().1;
+        assert_eq!(res.level, npc.level);
+        assert_eq!(res.disposition, npc.disposition);
+        assert_eq!(res.reputation, npc.reputation);
+        assert_eq!(res.rank, npc.rank);
+        assert_eq!(res.gold, npc.gold);
+        assert_eq!(res.padding, npc.padding);
+        assert_eq!(res.characteristics.right().unwrap().enchant, npc.characteristics.right().unwrap().enchant);
+    }
+
+    #[test]
+    fn serialize_npc_12() {
+        let npc = Npc {
+            level: 100,
+            disposition: -100,
+            reputation: -92,
+            rank: 33,
+            gold: 20000,
+            padding: 17,
+            characteristics: Either::Left(30001)
+        };
+        let bin: Vec<u8> = bincode::serialize(&npc.ser().left().unwrap()).unwrap();
+        let res = npc_12_field(&bin).unwrap().1;
+        assert_eq!(res.level, npc.level);
+        assert_eq!(res.disposition, npc.disposition);
+        assert_eq!(res.reputation, npc.reputation);
+        assert_eq!(res.rank, npc.rank);
+        assert_eq!(res.gold, npc.gold);
+        assert_eq!(res.padding, npc.padding);
+        assert_eq!(res.characteristics.left().unwrap(), npc.characteristics.left().unwrap());
     }
 }
