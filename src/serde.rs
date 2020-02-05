@@ -4,6 +4,7 @@ use serde::de::{self, Error as de_Error};
 use encoding::{DecoderTrap, EncoderTrap};
 use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
 use std::iter::{self};
+use std::marker::PhantomData;
 
 use crate::base::*;
 
@@ -116,13 +117,14 @@ pub fn serialize_string_z_list<S>(code_page: CodePage, list: &StringZList, seria
     }
 }
 
-struct StringDeserializer {
+struct StringDeserializer<T> {
     is_human_readable: bool,
     len: usize,
     code_page: CodePage,
+    phantom: PhantomData<T>
 }
 
-impl<'de> de::Visitor<'de> for StringDeserializer {
+impl<'de> de::Visitor<'de> for StringDeserializer<String> {
     type Value = String;
 
     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -163,9 +165,74 @@ pub fn deserialize_string<'de, D>(code_page: CodePage, len: usize, deserializer:
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_str(StringDeserializer { code_page, len, is_human_readable: true })
+        deserializer.deserialize_str(StringDeserializer::<String> { 
+            code_page, len, is_human_readable: true,
+            phantom: PhantomData
+        })
     } else {
-        deserializer.deserialize_tuple(len, StringDeserializer { code_page, len, is_human_readable: false })
+        deserializer.deserialize_tuple(len, StringDeserializer::<String> {
+            code_page, len, is_human_readable: false,
+            phantom: PhantomData
+        })
+    }
+}
+
+impl<'de> de::Visitor<'de> for StringDeserializer<StringZ> {
+    type Value = StringZ;
+
+    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        if self.is_human_readable {
+            write!(f, "string")
+        } else {
+            write!(f, "array of {} bytes", self.len)
+        }
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        if self.is_human_readable {
+            let carets = v.rfind(|x| x != '^').map_or(0, |i| v.len() - i);
+            let has_tail_zero = carets % 2 == 1;
+            let carets = (carets + 1) / 2;
+            Ok(StringZ { str: v[v.len() - carets .. ].into(), has_tail_zero })
+        } else {
+            Err(E::invalid_type(de::Unexpected::Str(v), &self))
+        }
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
+        A: de::SeqAccess<'de> {
+
+        let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
+        while let Some(byte) = seq.next_element()? {
+            bytes.push(byte);
+        }
+        if self.is_human_readable {
+            Err(A::Error::invalid_type(de::Unexpected::Bytes(&bytes[..]), &self))
+        } else if bytes.len() != self.len {
+            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+        } else {
+            let has_tail_zero = bytes.last().map_or(false, |&x| x == 0);
+            let bytes = if has_tail_zero { &bytes[.. bytes.len() - 1] } else { &bytes };
+            let str = self.code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap();
+            Ok(StringZ { str, has_tail_zero })
+        }
+    }
+}
+
+pub fn deserialize_string_z<'de, D>(code_page: CodePage, len: usize, deserializer: D) 
+    -> Result<StringZ, D::Error> where
+    D: Deserializer<'de> {
+
+    if deserializer.is_human_readable() {
+        deserializer.deserialize_str(StringDeserializer::<StringZ> {
+            code_page, len, is_human_readable: true,
+            phantom: PhantomData
+        })
+    } else {
+        deserializer.deserialize_tuple(len, StringDeserializer::<StringZ> {
+            code_page, len, is_human_readable: false,
+            phantom: PhantomData
+        })
     }
 }
 
