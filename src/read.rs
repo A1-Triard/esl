@@ -198,7 +198,7 @@ fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8])
     )
 }
 
-fn fixed_string<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String, ()> {
+fn string_len<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String, ()> {
     map(take(length), move |bytes| decode_string(code_page, trim_end_nulls(bytes)))
 }
 
@@ -214,9 +214,9 @@ fn file_metadata_field<'a>(code_page: CodePage)
             ),
             set_err(
                 tuple((
-                    fixed_string(code_page, 32),
+                    string_len(code_page, 32),
                     map(
-                        fixed_string(code_page, 256), 
+                        string_len(code_page, 256),
                         |s| s.split(LinebreakStyle::Dos.new_line()).map(String::from).collect()
                     ),
                     le_u32
@@ -230,10 +230,10 @@ fn file_metadata_field<'a>(code_page: CodePage)
     )
 }
 
-fn fixed_string_field<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8])
+fn string_len_field<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8])
     -> IResult<&'a [u8], String, FieldBodyError> {
     
-    set_err(fixed_string(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))
+    set_err(string_len(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))
 }
 
 fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle, trim_tail_zeros: bool)
@@ -254,7 +254,7 @@ fn item_field<'a>(code_page: CodePage)
         map(
             pair(
                 le_i32,
-                fixed_string(code_page, 32)
+                string_len(code_page, 32)
             ),
             |(count, id)| Item { count, item_id: id }
         ),
@@ -309,7 +309,7 @@ fn script_metadata_field<'a>(code_page: CodePage)
     map(
         set_err(
             tuple((
-                fixed_string(code_page, 32),
+                string_len(code_page, 32),
                 le_u32, le_u32, le_u32,
                 le_u32, le_u32,
             )),
@@ -451,13 +451,13 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
-            FieldType::Multiline { linebreaks, trim_tail_zeros } =>
-                map(multiline_field(code_page, linebreaks, trim_tail_zeros && allow_coerce), Field::Multiline)(input),
+            FieldType::Multiline(coerce, linebreaks) =>
+                map(multiline_field(code_page, linebreaks, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::Multiline)(input),
             FieldType::Item =>
                 map(item_field(code_page), Field::Item)(input),
-            FieldType::String { len: Some(len), .. } => map(fixed_string_field(code_page, len), Field::String)(input),
-            FieldType::String { trim_tail_zeros, len: None } =>
-                map(string_field(code_page, trim_tail_zeros && allow_coerce), Field::String)(input),
+            FieldType::String(Right(len)) => map(string_len_field(code_page, len), Field::String)(input),
+            FieldType::String(Left(coerce)) =>
+                map(string_field(code_page, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
