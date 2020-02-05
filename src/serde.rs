@@ -3,12 +3,13 @@ use serde::{Deserializer, Serializer};
 use serde::de::{self, Error as de_Error};
 use encoding::{DecoderTrap, EncoderTrap};
 use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
+use std::iter::{self};
 
 use crate::base::*;
 
 thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
 
-pub fn serialize_string<S>(code_page: CodePage, len: usize, s: &str, serializer: S)
+pub fn serialize_string<S>(code_page: CodePage, len: Option<usize>, s: &str, serializer: S)
     -> Result<S::Ok, S::Error> where
     S: Serializer {
 
@@ -17,6 +18,7 @@ pub fn serialize_string<S>(code_page: CodePage, len: usize, s: &str, serializer:
     } else {
         let bytes = code_page.encoding().encode(s, EncoderTrap::Strict)
             .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
+        let len = len.unwrap_or(bytes.len());
         if bytes.len() > len {
             return Err(S::Error::custom(&format!("string length is above {} bytes", len)));
         }
@@ -31,7 +33,35 @@ pub fn serialize_string<S>(code_page: CodePage, len: usize, s: &str, serializer:
     }
 }
 
-pub fn serialize_multiline<S>(code_page: CodePage, linebreaks: LinebreakStyle, len: usize, lines: &[String], serializer: S)
+pub fn serialize_string_z<S>(code_page: CodePage, s: &StringZ, serializer: S) 
+    -> Result<S::Ok, S::Error> where
+    S: Serializer {
+
+    if serializer.is_human_readable() {
+        let mut carets = s.str.rfind(|x| x != '^').map_or(0, |i| s.str.len() - i);
+        if !s.has_tail_zero {
+            carets += 1;
+        }
+        let mut e = String::with_capacity(s.str.len() + carets);
+        e.push_str(&s.str);
+        e.extend(iter::repeat('^').take(carets));
+        serializer.serialize_str(&e)
+    } else {
+        let bytes = code_page.encoding().encode(&s.str, EncoderTrap::Strict)
+            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
+        let len = bytes.len() + if s.has_tail_zero { 1 } else { 0 };
+        let mut serializer = serializer.serialize_tuple(len)?;
+        for byte in &bytes {
+            serializer.serialize_element(byte)?;
+        }
+        if s.has_tail_zero {
+            serializer.serialize_element(&0u8)?;
+        }
+        serializer.end()
+    }
+}
+
+pub fn serialize_multiline<S>(code_page: CodePage, linebreaks: LinebreakStyle, len: Option<usize>, lines: &[String], serializer: S)
     -> Result<S::Ok, S::Error> where
     S: Serializer {
 
@@ -42,33 +72,44 @@ pub fn serialize_multiline<S>(code_page: CodePage, linebreaks: LinebreakStyle, l
         }
         serializer.end()
     } else {
-        let new_line = code_page.encoding().encode(linebreaks.new_line(), EncoderTrap::Strict).unwrap();
-        let mut serializer = serializer.serialize_tuple(len)?;
-        let mut lines_len = 0;
-        let mut first_line = true;
-        for line in lines {
-            let bytes = code_page.encoding().encode(line, EncoderTrap::Strict)
-                .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
-            if first_line {
-                first_line = false;
-            } else {
-                lines_len += new_line.len();
-                if lines_len > len {
-                    return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
-                }
-                for byte in &new_line {
-                    serializer.serialize_element(byte)?;
-                }
-            }
-            lines_len += bytes.len();
-            if lines_len > len {
-                return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
-            }
-            for byte in &bytes {
-                serializer.serialize_element(byte)?;
-            }
+        let text = lines.join(linebreaks.new_line());
+        let bytes = code_page.encoding().encode(&text, EncoderTrap::Strict)
+            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
+        let len = len.unwrap_or(bytes.len());
+        if bytes.len() > len {
+            return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
         }
-        for _ in lines_len..len {
+        let mut serializer = serializer.serialize_tuple(len)?;
+        for byte in &bytes {
+            serializer.serialize_element(byte)?;
+        }
+        for _ in bytes.len() .. len {
+            serializer.serialize_element(&0u8)?;
+        }
+        serializer.end()
+    }
+}
+
+pub fn serialize_string_z_list<S>(code_page: CodePage, list: &StringZList, serializer: S) 
+    -> Result<S::Ok, S::Error> where
+    S: Serializer {
+
+    if serializer.is_human_readable() {
+        let mut serializer = serializer.serialize_seq(Some(list.vec.len()))?;
+        for s in &list.vec {
+            serializer.serialize_element(s)?;
+        }
+        serializer.end()
+    } else {
+        let text = list.vec.join("\0");
+        let bytes = code_page.encoding().encode(&text, EncoderTrap::Strict)
+            .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
+        let len = bytes.len() + if list.has_tail_zero { 1 } else { 0 };
+        let mut serializer = serializer.serialize_tuple(len)?;
+        for byte in &bytes {
+            serializer.serialize_element(byte)?;
+        }
+        if list.has_tail_zero {
             serializer.serialize_element(&0u8)?;
         }
         serializer.end()
