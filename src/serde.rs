@@ -278,6 +278,7 @@ struct StringListDeserializer<'a> {
     len: usize,
     code_page: CodePage,
     separator: &'a str,
+    trim_tail_zeros: bool,
 }
 
 impl<'de, 'a> de::Visitor<'de> for StringListDeserializer<'a> {
@@ -309,6 +310,11 @@ impl<'de, 'a> de::Visitor<'de> for StringListDeserializer<'a> {
             if bytes.len() != self.len {
                 Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
             } else {
+                let bytes = if self.trim_tail_zeros {
+                    trim_end_nulls(&bytes[..])
+                } else {
+                    &bytes[..]
+                };
                 let s = self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap();
                 Ok(s.split(self.separator).map(String::from).collect())
             }
@@ -316,17 +322,19 @@ impl<'de, 'a> de::Visitor<'de> for StringListDeserializer<'a> {
     }
 }
 
-pub fn deserialize_string_list<'de, D>(code_page: CodePage, separator: &str, len: usize, deserializer: D)
+pub fn deserialize_string_list<'de, D>(code_page: CodePage, separator: &str, len: usize, trim_tail_zeros: bool, deserializer: D)
     -> Result<Vec<String>, D::Error> where
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
         deserializer.deserialize_seq(StringListDeserializer { 
-            code_page, separator, len, is_human_readable: true
+            code_page, separator, len, is_human_readable: true,
+            trim_tail_zeros
         })
     } else {
         deserializer.deserialize_tuple(len, StringListDeserializer {
-            code_page, separator, len, is_human_readable: false
+            code_page, separator, len, is_human_readable: false,
+            trim_tail_zeros
         })
     }
 }

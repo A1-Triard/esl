@@ -318,7 +318,7 @@ mod multiline_256_dos {
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
         D: Deserializer<'de> {
         
-        CODE_PAGE.with(|x| deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, deserializer))
+        CODE_PAGE.with(|x| deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, true, deserializer))
     }
 }
 
