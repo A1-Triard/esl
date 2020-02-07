@@ -78,6 +78,18 @@ pub enum StringCoerce {
     TrimTailZeros
 }
 
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
+pub enum LinebreakStyle {
+    Unix,
+    Dos
+}
+
+impl LinebreakStyle {
+    pub fn new_line(self) -> &'static str {
+        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum FieldType {
     Binary,
@@ -277,7 +289,7 @@ mod string_32 {
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
         D: Deserializer<'de> {
 
-        CODE_PAGE.with(|x| deserialize_string(x.get(), 32, deserializer))
+        CODE_PAGE.with(|x| deserialize_string(x.get(), 32, true, deserializer))
     }
 }
 
@@ -294,19 +306,19 @@ pub struct FileMetadata {
 
 mod multiline_256_dos {
     use serde::{Serializer, Deserializer};
-    use crate::base::*;
+    use crate::core::*;
     use crate::serde::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
-        CODE_PAGE.with(|x| serialize_multiline(x.get(), LinebreakStyle::Dos, Some(256), lines, serializer))
+        CODE_PAGE.with(|x| serialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), Some(256), lines, serializer))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
         D: Deserializer<'de> {
         
-        CODE_PAGE.with(|x| deserialize_multiline(x.get(), LinebreakStyle::Dos, 256, deserializer))
+        CODE_PAGE.with(|x| deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, deserializer))
     }
 }
 
@@ -457,7 +469,7 @@ pub enum Field {
     Binary(Vec<u8>),
     String(String),
     StringZ(StringZ),
-    Multiline(Vec<String>),
+    StringList(Vec<String>),
     StringZList(StringZList),
     Item(Item),
     Float(f32),

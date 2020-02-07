@@ -2,18 +2,6 @@ use std::fmt::{Debug};
 use encoding::types::Encoding;
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum LinebreakStyle {
-    Unix,
-    Dos
-}
-
-impl LinebreakStyle {
-    pub fn new_line(self) -> &'static str {
-        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
-    }
-}
-
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct StringZ {
     pub str: String,

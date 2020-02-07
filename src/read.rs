@@ -452,7 +452,7 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
             FieldType::Multiline(coerce, linebreaks) =>
-                map(multiline_field(code_page, linebreaks, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::Multiline)(input),
+                map(multiline_field(code_page, linebreaks, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::StringList)(input),
             FieldType::Item =>
                 map(item_field(code_page), Field::Item)(input),
             FieldType::String(Right(len)) => map(string_len_field(code_page, len), Field::String)(input),
@@ -1239,9 +1239,9 @@ mod tests {
     }
 
     #[test]
-    fn read_multiline_field() {
+    fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
-        if let (remaining_input, Field::Multiline(result)) =
+        if let (remaining_input, Field::StringList(result)) =
                 field_body(CodePage::Russian, true, CONT, BNAM, input.len() as u32)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);

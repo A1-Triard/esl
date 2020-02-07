@@ -4,7 +4,6 @@ use serde::de::{self, Error as de_Error};
 use encoding::{DecoderTrap, EncoderTrap};
 use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
 use std::iter::{self};
-use std::marker::PhantomData;
 
 use crate::base::*;
 
@@ -17,6 +16,9 @@ pub fn serialize_string<S>(code_page: CodePage, len: Option<usize>, s: &str, ser
     if serializer.is_human_readable() {
         serializer.serialize_str(s)
     } else {
+        if len.is_some() && s.as_bytes().last().map_or(false, |&x| x == 0) {
+            return Err(S::Error::custom("string has tail zero"));
+        }
         let bytes = code_page.encoding().encode(s, EncoderTrap::Strict)
             .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
         let len = len.unwrap_or(bytes.len());
@@ -39,7 +41,7 @@ pub fn serialize_string_z<S>(code_page: CodePage, s: &StringZ, serializer: S)
     S: Serializer {
 
     if serializer.is_human_readable() {
-        let mut carets = s.str.rfind(|x| x != '^').map_or(0, |i| s.str.len() - i);
+        let mut carets = s.str.len() - s.str.rfind(|x| x != '^').map_or(0, |i| 1 + i);
         if !s.has_tail_zero {
             carets += 1;
         }
@@ -48,6 +50,9 @@ pub fn serialize_string_z<S>(code_page: CodePage, s: &StringZ, serializer: S)
         e.extend(iter::repeat('^').take(carets));
         serializer.serialize_str(&e)
     } else {
+        if !s.has_tail_zero && s.str.as_bytes().last().map_or(false, |&x| x == 0) {
+            return Err(S::Error::custom("zero-terminated string value has tail zero"));
+        }
         let bytes = code_page.encoding().encode(&s.str, EncoderTrap::Strict)
             .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
         let len = bytes.len() + if s.has_tail_zero { 1 } else { 0 };
@@ -62,23 +67,29 @@ pub fn serialize_string_z<S>(code_page: CodePage, s: &StringZ, serializer: S)
     }
 }
 
-pub fn serialize_multiline<S>(code_page: CodePage, linebreaks: LinebreakStyle, len: Option<usize>, lines: &[String], serializer: S)
+pub fn serialize_string_list<S>(code_page: CodePage, separator: &str, len: Option<usize>, list: &[String], serializer: S)
     -> Result<S::Ok, S::Error> where
     S: Serializer {
 
     if serializer.is_human_readable() {
-        let mut serializer = serializer.serialize_seq(Some(lines.len()))?;
-        for line in lines {
-            serializer.serialize_element(line)?;
+        let mut serializer = serializer.serialize_seq(Some(list.len()))?;
+        for str in list {
+            serializer.serialize_element(str)?;
         }
         serializer.end()
     } else {
-        let text = lines.join(linebreaks.new_line());
+        if list.iter().find(|x| x.contains(separator)).is_some() {
+            return Err(S::Error::custom("string list item contains separator"));
+        }
+        let text = list.join(separator);
+        if len.is_some() && text.as_bytes().last().map_or(false, |&x| x == 0) {
+            return Err(S::Error::custom("string list has tail zero"));
+        }
         let bytes = code_page.encoding().encode(&text, EncoderTrap::Strict)
             .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
         let len = len.unwrap_or(bytes.len());
         if bytes.len() > len {
-            return Err(S::Error::custom(&format!("lines total length is above {} bytes", len)));
+            return Err(S::Error::custom(&format!("string list total length is above {} bytes", len)));
         }
         let mut serializer = serializer.serialize_tuple(len)?;
         for byte in &bytes {
@@ -96,12 +107,22 @@ pub fn serialize_string_z_list<S>(code_page: CodePage, list: &StringZList, seria
     S: Serializer {
 
     if serializer.is_human_readable() {
-        let mut serializer = serializer.serialize_seq(Some(list.vec.len()))?;
+        let mut carets = list.vec.len() - list.vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+        if !list.has_tail_zero {
+            carets += 1;
+        }
+        let mut serializer = serializer.serialize_seq(Some(list.vec.len() + carets))?;
         for s in &list.vec {
             serializer.serialize_element(s)?;
         }
+        for _ in 0 .. carets {
+            serializer.serialize_element("^")?;
+        }
         serializer.end()
     } else {
+        if list.vec.iter().find(|x| x.contains('\0')).is_some() {
+            return Err(S::Error::custom("zero-terminated string list item contains zero byte"));
+        }
         let text = list.vec.join("\0");
         let bytes = code_page.encoding().encode(&text, EncoderTrap::Strict)
             .map_err(|x| S::Error::custom(&format!("unencodable char: {}", x)))?;
@@ -117,14 +138,21 @@ pub fn serialize_string_z_list<S>(code_page: CodePage, list: &StringZList, seria
     }
 }
 
-struct StringDeserializer<T> {
+struct StringDeserializer {
     is_human_readable: bool,
     len: usize,
+    trim_tail_zeros: bool,
     code_page: CodePage,
-    phantom: PhantomData<T>
 }
 
-impl<'de> de::Visitor<'de> for StringDeserializer<String> {
+fn trim_end_nulls(mut bytes: &[u8]) -> &[u8] {
+    while !bytes.is_empty() && bytes[bytes.len() - 1] == 0 {
+        bytes = &bytes[..bytes.len() - 1];
+    }
+    bytes
+}
+
+impl<'de> de::Visitor<'de> for StringDeserializer {
     type Value = String;
 
     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -155,29 +183,40 @@ impl<'de> de::Visitor<'de> for StringDeserializer<String> {
         } else if bytes.len() != self.len {
             Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
         } else {
-            Ok(self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap())
+            let bytes = if self.trim_tail_zeros {
+                trim_end_nulls(&bytes[..])
+            } else {
+                &bytes[..]
+            };
+            Ok(self.code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap())
         }
     }
 }
 
-pub fn deserialize_string<'de, D>(code_page: CodePage, len: usize, deserializer: D)
+pub fn deserialize_string<'de, D>(code_page: CodePage, len: usize, trim_tail_zeros: bool, deserializer: D)
     -> Result<String, D::Error> where
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_str(StringDeserializer::<String> { 
+        deserializer.deserialize_str(StringDeserializer { 
             code_page, len, is_human_readable: true,
-            phantom: PhantomData
+            trim_tail_zeros
         })
     } else {
-        deserializer.deserialize_tuple(len, StringDeserializer::<String> {
+        deserializer.deserialize_tuple(len, StringDeserializer {
             code_page, len, is_human_readable: false,
-            phantom: PhantomData
+            trim_tail_zeros
         })
     }
 }
 
-impl<'de> de::Visitor<'de> for StringDeserializer<StringZ> {
+struct StringZDeserializer {
+    is_human_readable: bool,
+    len: usize,
+    code_page: CodePage,
+}
+
+impl<'de> de::Visitor<'de> for StringZDeserializer {
     type Value = StringZ;
 
     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
@@ -190,10 +229,10 @@ impl<'de> de::Visitor<'de> for StringDeserializer<StringZ> {
 
     fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
         if self.is_human_readable {
-            let carets = v.rfind(|x| x != '^').map_or(0, |i| v.len() - i);
+            let carets = v.len() - v.rfind(|x| x != '^').map_or(0, |i| 1 + i);
             let has_tail_zero = carets % 2 == 1;
             let carets = (carets + 1) / 2;
-            Ok(StringZ { str: v[v.len() - carets .. ].into(), has_tail_zero })
+            Ok(StringZ { str: v[.. v.len() - carets].into(), has_tail_zero })
         } else {
             Err(E::invalid_type(de::Unexpected::Str(v), &self))
         }
@@ -224,31 +263,29 @@ pub fn deserialize_string_z<'de, D>(code_page: CodePage, len: usize, deserialize
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_str(StringDeserializer::<StringZ> {
+        deserializer.deserialize_str(StringZDeserializer {
             code_page, len, is_human_readable: true,
-            phantom: PhantomData
         })
     } else {
-        deserializer.deserialize_tuple(len, StringDeserializer::<StringZ> {
+        deserializer.deserialize_tuple(len, StringZDeserializer {
             code_page, len, is_human_readable: false,
-            phantom: PhantomData
         })
     }
 }
 
-struct MultilineDeserializer {
+struct StringListDeserializer<'a> {
     is_human_readable: bool,
     len: usize,
     code_page: CodePage,
-    linebreaks: LinebreakStyle,
+    separator: &'a str,
 }
 
-impl<'de> de::Visitor<'de> for MultilineDeserializer {
+impl<'de, 'a> de::Visitor<'de> for StringListDeserializer<'a> {
     type Value = Vec<String>;
 
     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         if self.is_human_readable {
-            write!(f, "lines sequence")
+            write!(f, "string sequence")
         } else {
             write!(f, "array of {} bytes", self.len)
         }
@@ -258,12 +295,12 @@ impl<'de> de::Visitor<'de> for MultilineDeserializer {
         A: de::SeqAccess<'de> {
 
         if self.is_human_readable {
-            let mut lines: Vec<String> =
+            let mut list: Vec<String> =
                 seq.size_hint().map_or_else(|| Vec::new(), |x| Vec::with_capacity(x));
             while let Some(line) = seq.next_element()? {
-                lines.push(line);
+                list.push(line);
             }
-            Ok(lines)
+            Ok(list)
         } else {
             let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
             while let Some(byte) = seq.next_element()? {
@@ -273,19 +310,85 @@ impl<'de> de::Visitor<'de> for MultilineDeserializer {
                 Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
             } else {
                 let s = self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap();
-                Ok(s.split(self.linebreaks.new_line()).map(String::from).collect())
+                Ok(s.split(self.separator).map(String::from).collect())
             }
         }
     }
 }
 
-pub fn deserialize_multiline<'de, D>(code_page: CodePage, linebreaks: LinebreakStyle, len: usize, deserializer: D)
+pub fn deserialize_string_list<'de, D>(code_page: CodePage, separator: &str, len: usize, deserializer: D)
     -> Result<Vec<String>, D::Error> where
     D: Deserializer<'de> {
 
     if deserializer.is_human_readable() {
-        deserializer.deserialize_seq(MultilineDeserializer { code_page, linebreaks, len, is_human_readable: true })
+        deserializer.deserialize_seq(StringListDeserializer { 
+            code_page, separator, len, is_human_readable: true
+        })
     } else {
-        deserializer.deserialize_tuple(len, MultilineDeserializer { code_page, linebreaks, len, is_human_readable: false })
+        deserializer.deserialize_tuple(len, StringListDeserializer {
+            code_page, separator, len, is_human_readable: false
+        })
+    }
+}
+
+struct StringZListDeserializer {
+    is_human_readable: bool,
+    len: usize,
+    code_page: CodePage,
+}
+
+impl<'de> de::Visitor<'de> for StringZListDeserializer {
+    type Value = StringZList;
+
+    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        if self.is_human_readable {
+            write!(f, "string sequence")
+        } else {
+            write!(f, "array of {} bytes", self.len)
+        }
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
+        A: de::SeqAccess<'de> {
+
+        if self.is_human_readable {
+            let mut vec: Vec<String> =
+                seq.size_hint().map_or_else(|| Vec::new(), |x| Vec::with_capacity(x));
+            while let Some(line) = seq.next_element()? {
+                vec.push(line);
+            }
+            let carets = vec.len() - vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+            let has_tail_zero = carets % 2 == 1;
+            let carets = (carets + 1) / 2;
+            Ok(StringZList { vec: vec[.. vec.len() - carets].into(), has_tail_zero })
+        } else {
+            let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
+            while let Some(byte) = seq.next_element()? {
+                bytes.push(byte);
+            }
+            if bytes.len() != self.len {
+                Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            } else {
+                let has_tail_zero = bytes.last().map_or(false, |&x| x == 0);
+                let bytes = if has_tail_zero { &bytes[.. bytes.len() - 1] } else { &bytes };
+                let s = self.code_page.encoding().decode(&bytes[..], DecoderTrap::Strict).unwrap();
+                Ok(StringZList { vec: s.split("\0").map(String::from).collect(), has_tail_zero })
+            }
+        }
+    }
+}
+
+pub fn deserialize_string_z_list<'de, D>(code_page: CodePage, len: usize, deserializer: D) 
+    -> Result<StringZList, D::Error> where
+    D: Deserializer<'de> {
+
+    if deserializer.is_human_readable() {
+        deserializer.deserialize_seq(StringZListDeserializer {
+            code_page, len, is_human_readable: true
+        })
+    } else {
+        deserializer.deserialize_tuple(len, StringZListDeserializer {
+            code_page, len, is_human_readable: false
+        })
     }
 }
