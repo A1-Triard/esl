@@ -12,8 +12,8 @@ use serde::{Serialize, Deserialize, Serializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 
-use crate::base::*;
-use crate::serde::*;
+use crate::strings::*;
+use crate::strings_serde::*;
 
 pub use crate::tag::*;
 
@@ -281,7 +281,7 @@ pub struct ScriptMetadata {
 
 mod string_32 {
     use serde::{Serializer, Deserializer};
-    use crate::serde::*;
+    use crate::strings_serde::*;
 
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
@@ -309,7 +309,8 @@ pub struct FileMetadata {
 
 mod multiline_256_dos {
     use serde::{Serializer, Deserializer};
-    use crate::core::*;
+    use crate::strings_serde::*;
+    use crate::record::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {

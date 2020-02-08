@@ -5,7 +5,7 @@ use encoding::{DecoderTrap, EncoderTrap};
 use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
 use std::iter::{self};
 
-use crate::base::*;
+use crate::strings::*;
 
 thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
 

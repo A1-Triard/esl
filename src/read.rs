@@ -15,8 +15,8 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Either, Left, Right};
 
-use crate::base::*;
-use crate::core::*;
+use crate::strings::*;
+use crate::record::*;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }
@@ -1496,7 +1496,7 @@ mod tests {
                 hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
             })
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.bin().right().unwrap()).unwrap();
+        let bin: Vec<u8> = bincode::serialize(&npc.variant().right().unwrap()).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1518,7 +1518,7 @@ mod tests {
             padding: 17,
             characteristics: Left(30001)
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.bin().left().unwrap()).unwrap();
+        let bin: Vec<u8> = bincode::serialize(&npc.variant().left().unwrap()).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);

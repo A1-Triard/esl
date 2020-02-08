@@ -20,14 +20,18 @@ mod tag;
 
 pub use crate::tag::*;
 
-mod core;
+mod record;
 
-pub use crate::core::*;
+pub use crate::record::*;
 
 pub mod read;
 
-pub mod serde;
+mod strings_serde;
 
-mod base;
+pub mod serde {
+    pub use crate::strings_serde::*;
+}
 
-pub use crate::base::*;
+mod strings;
+
+pub use crate::strings::*;
