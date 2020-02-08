@@ -66,7 +66,14 @@ pub trait SerializerFieldExt: Serializer {
                 Err(Self::Error::custom(&format!("{} {} field should have effect type", record_tag, field_tag)))
             },
             FieldType::Npc => if let Field::Npc(v) = field {
-                v.serialize(self)
+                if self.is_human_readable() {
+                    v.serialize(self)
+                } else {
+                    match v.variant() {
+                        Left(v) => v.serialize(self),
+                        Right(v) => v.serialize(self)
+                    }
+                }
             } else {
                 Err(Self::Error::custom(&format!("{} {} field should have NPC type", record_tag, field_tag)))
             },
