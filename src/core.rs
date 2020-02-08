@@ -8,9 +8,12 @@ use ::nom::bytes::complete::tag as nom_tag;
 use ::nom::multi::{fold_many0};
 use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer};
+use serde::ser::Error as ser_Error;
+use serde::ser::{SerializeMap, SerializeSeq};
 
 use crate::base::*;
+use crate::serde::*;
 
 pub use crate::tag::*;
 
@@ -283,13 +286,13 @@ mod string_32 {
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
         
-        CODE_PAGE.with(|x| serialize_string(x.get(), Some(32), s, serializer))
+        CODE_PAGE.with(|x| serializer.serialize_string(x.get(), Some(32), s))
     }
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
         D: Deserializer<'de> {
 
-        CODE_PAGE.with(|x| deserialize_string(x.get(), 32, true, deserializer))
+        CODE_PAGE.with(|x| deserializer.deserialize_string_ext(x.get(), 32, true))
     }
 }
 
@@ -307,18 +310,17 @@ pub struct FileMetadata {
 mod multiline_256_dos {
     use serde::{Serializer, Deserializer};
     use crate::core::*;
-    use crate::serde::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
-        CODE_PAGE.with(|x| serialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), Some(256), lines, serializer))
+        CODE_PAGE.with(|x| serializer.serialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), Some(256), lines))
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
         D: Deserializer<'de> {
         
-        CODE_PAGE.with(|x| deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, true, deserializer))
+        CODE_PAGE.with(|x| deserializer.deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, true))
     }
 }
 
@@ -396,7 +398,7 @@ pub struct Npc {
 }
 
 impl Npc {
-    pub fn bin(&self) -> Either<Npc12, Npc52> {
+    pub fn variant(&self) -> Either<Npc12, Npc52> {
         match &self.characteristics {
             Right(characteristics) => Right(Npc52 {
                 level: self.level, disposition: self.disposition,
@@ -477,7 +479,6 @@ pub enum Field {
     Short(i16),
     Long(i64),
     Byte(u8),
-    Compressed(Vec<u8>),
     Ingredient(Ingredient),
     ScriptMetadata(ScriptMetadata),
     DialogMetadata(Either<u32, DialogType>),
@@ -517,7 +518,7 @@ fn record_flag(input: &str) -> IResult<&str, RecordFlags, ()> {
 
 impl FromStr for RecordFlags {
     type Err = ();
-    
+
     fn from_str(s: &str) -> Result<RecordFlags, Self::Err> {
         let (unconsumed, flags) = map(opt(map(pair(
             record_flag,
@@ -539,6 +540,167 @@ pub struct Record {
     pub tag: Tag,
     pub flags: RecordFlags,
     pub fields: Vec<(Tag, Field)>,
+}
+
+struct FieldBodySerializer<'a>(Tag, Tag, &'a Field);
+
+impl<'a> Serialize for FieldBodySerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        match FieldType::from_tags(self.0, self.1) {
+            FieldType::String(p) => if let Field::String(s) = self.2 {
+                CODE_PAGE.with(|x| serializer.serialize_string(x.get(), p.either(|_| None, |n| Some(n as usize)), s))
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have string type", self.0, self.1)))
+            },
+            FieldType::StringZ => if let Field::StringZ(s) = self.2 {
+                CODE_PAGE.with(|x| serializer.serialize_string_z(x.get(), s))
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.0, self.1)))
+            },
+            FieldType::Multiline(_, lb) => if let Field::StringList(s) = self.2 {
+                CODE_PAGE.with(|x| serializer.serialize_string_list(x.get(), lb.new_line(), None, s))
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have string list type", self.0, self.1)))
+            },
+            FieldType::StringZList => if let Field::StringZList(s) = self.2 {
+                CODE_PAGE.with(|x| serializer.serialize_string_z_list(x.get(), s))
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.0, self.1)))
+            },
+            FieldType::Binary | FieldType::Compressed => if let Field::Binary(v) = self.2 {
+                serializer.serialize_bytes(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have binary type", self.0, self.1)))
+            },
+            FieldType::Item => if let Field::Item(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have item type", self.0, self.1)))
+            },
+            FieldType::Ingredient => if let Field::Ingredient(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have ingredient type", self.0, self.1)))
+            },
+            FieldType::ScriptMetadata => if let Field::ScriptMetadata(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have script metadata type", self.0, self.1)))
+            },
+            FieldType::FileMetadata => if let Field::FileMetadata(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have file metadata type", self.0, self.1)))
+            },
+            FieldType::SavedNpc => if let Field::SavedNpc(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have saved npc type", self.0, self.1)))
+            },
+            FieldType::Effect => if let Field::Effect(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have effect type", self.0, self.1)))
+            },
+            FieldType::Npc => if let Field::Npc(v) = self.2 {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have NPC type", self.0, self.1)))
+            },
+            FieldType::DialogMetadata => if let &Field::DialogMetadata(v) = self.2 {
+                match v {
+                    Left(v) => serializer.serialize_u32(v),
+                    Right(v) => v.serialize(serializer)
+                }
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have dialog metadata type", self.0, self.1)))
+            },
+            FieldType::Float => if let &Field::Float(v) = self.2 {
+                serializer.serialize_f32(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have float type", self.0, self.1)))
+            },
+            FieldType::Int => if let &Field::Int(v) = self.2 {
+                serializer.serialize_i32(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have int type", self.0, self.1)))
+            },
+            FieldType::Short => if let &Field::Short(v) = self.2 {
+                serializer.serialize_i16(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have short type", self.0, self.1)))
+            },
+            FieldType::Long => if let &Field::Long(v) = self.2 {
+                serializer.serialize_i64(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have long type", self.0, self.1)))
+            },
+            FieldType::Byte => if let &Field::Byte(v) = self.2 {
+                serializer.serialize_u8(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have byte type", self.0, self.1)))
+            },
+        }
+    }
+}
+
+struct FieldSerializer<'a>(Tag, Either<RecordFlags, (Tag, &'a Field)>);
+
+impl<'a> Serialize for FieldSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        let mut serializer = serializer.serialize_map(Some(1))?;
+        match self.1 {
+            Left(flags) => serializer.serialize_entry(&META, &flags)?,
+            Right((field_tag, field)) => {
+                if field_tag == META {
+                    return Err(S::Error::custom("META tag is reserved"));
+                }
+                serializer.serialize_entry(&field_tag, &FieldBodySerializer(self.0, field_tag, field))?;
+            }
+        };
+        serializer.end()
+    }
+}
+
+struct RecordBodySerializer<'a>(&'a Record);
+
+impl<'a> Serialize for RecordBodySerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+        
+        let has_flags = !self.0.flags.is_empty();
+        let entry_count = self.0.fields.len() + if has_flags { 1 } else { 0 };
+        let mut serializer = serializer.serialize_seq(Some(entry_count))?;
+        if has_flags {
+            serializer.serialize_element(&FieldSerializer(self.0.tag, Left(self.0.flags)))?;
+        }
+        for &(field_tag, ref field) in &self.0.fields {
+            serializer.serialize_element(&FieldSerializer(self.0.tag, Right((field_tag, &field))))?;
+        }
+        serializer.end()
+    }
+}
+
+impl Serialize for Record {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        if serializer.is_human_readable() {
+            let mut serializer = serializer.serialize_map(Some(1))?;
+            serializer.serialize_entry(&self.tag, &RecordBodySerializer(self))?;
+            serializer.end()
+        } else {
+            unimplemented!()
+//            let mut record = serializer.serialize_struct("Record", 4)?;
+//            record.serialize_field("tag", &self.tag)?;
+//            record.serialize_field("size", &)
+//            record.serialize_field("flags", &self.flags)?;
+        }
+    }
 }
 
 #[cfg(test)]

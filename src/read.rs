@@ -450,7 +450,7 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
         let field_type = FieldType::from_tags(record_tag, field_tag);
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
-            FieldType::Compressed => map(compressed_field, Field::Compressed)(input),
+            FieldType::Compressed => map(compressed_field, Field::Binary)(input),
             FieldType::Multiline(coerce, linebreaks) =>
                 map(multiline_field(code_page, linebreaks, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::StringList)(input),
             FieldType::Item =>

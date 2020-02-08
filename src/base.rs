@@ -1,8 +1,10 @@
 use std::fmt::{Debug};
 use encoding::types::Encoding;
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
+use serde::{Serialize, Deserialize};
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
+#[derive(Serialize,Deserialize)]
 pub struct StringZ {
     pub str: String,
     pub has_tail_zero: bool
@@ -17,6 +19,7 @@ impl<T: Into<String>> From<T> for StringZ {
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
+#[derive(Serialize,Deserialize)]
 pub struct StringZList {
     pub vec: Vec<String>,
     pub has_tail_zero: bool

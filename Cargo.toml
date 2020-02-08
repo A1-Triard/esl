@@ -18,9 +18,7 @@ debug_panic = "0.1.2"
 lazy_static = "1.4.0"
 flate2 = "1.0.13"
 serde = { version = "1.0.104", features = ["derive"] }
+bincode = "1.2.1"
 
 [build-dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
-
-[dev-dependencies]
-bincode = "1.2.1"
