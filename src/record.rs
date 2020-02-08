@@ -8,6 +8,10 @@ use ::nom::bytes::complete::tag as nom_tag;
 use ::nom::multi::{fold_many0};
 use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
+//use serde::{Serialize, Serializer, Deserialize, Deserializer};
+//use serde::ser::Error as ser_Error;
+//use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
+//use serde::de::{self};
 use serde::{Serialize, Serializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
@@ -177,6 +181,42 @@ impl Serialize for Record {
         }
     }
 }
+
+/*
+struct RecordHRDeserializer;
+
+impl<'de> de::Visitor<'de> for RecordHRDeserializer {
+    type Value = Record;
+
+    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "record")
+    }
+
+    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where
+        A: de::MapAccess<'de> {
+        
+        let record: (Tag, ) = map.next_entry()?;
+    }
+}
+
+
+impl<'de> Deserialize<'de> for Record {
+    fn deserialize<D>(deserializer: D) -> Result<Record, D::Error> where
+        D: Deserializer {
+
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_map(RecordHRDeserializer)
+        } else {
+            let bytes = bincode::serialize(&RecordBodyNHRSerializer(self)).map_err(S::Error::custom)?;
+            let mut serializer = serializer.serialize_tuple(4)?;
+            serializer.serialize_element(&self.tag)?;
+            serializer.serialize_element(&(bytes.len() as u32))?;
+            serializer.serialize_element(&self.flags)?;
+            serializer.serialize_element(&BytesSerializer(&bytes))?;
+            serializer.end()
+        }
+    }
+}*/
 
 #[cfg(test)]
 mod tests {
