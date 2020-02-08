@@ -1,11 +1,24 @@
 use either::{Left, Right};
 use serde::{Serialize, Serializer};
+use serde::ser::SerializeTuple;
 use serde::ser::Error as ser_Error;
 
 use crate::strings_serde::*;
 use crate::field::*;
 
 pub trait SerializerFieldExt: Serializer {
+    fn serialize_bytes_ext(self, bytes: &[u8]) -> Result<Self::Ok, Self::Error> {
+        if self.is_human_readable() {
+            self.serialize_bytes(bytes)
+        } else {
+            let mut serializer = self.serialize_tuple(bytes.len())?;
+            for byte in bytes {
+                serializer.serialize_element(byte)?;
+            }
+            serializer.end()
+        }
+    }
+    
     fn serialize_field(self, record_tag: Tag, field_tag: Tag, field: &Field)
         -> Result<Self::Ok, Self::Error> {
 
@@ -31,7 +44,7 @@ pub trait SerializerFieldExt: Serializer {
                 Err(Self::Error::custom(&format!("{} {} field should have zero-terminated string list type", record_tag, field_tag)))
             },
             FieldType::Binary | FieldType::Compressed => if let Field::Binary(v) = field {
-                self.serialize_bytes(v)
+                self.serialize_bytes_ext(v)
             } else {
                 Err(Self::Error::custom(&format!("{} {} field should have binary type", record_tag, field_tag)))
             },

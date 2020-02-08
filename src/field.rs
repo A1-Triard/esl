@@ -484,8 +484,6 @@ mod tests {
     use crate::*;
     use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
-    use std::hash::Hash;
-    use std::collections::hash_map::DefaultHasher;
 
     #[test]
     fn debug_and_display_tag() {

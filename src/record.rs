@@ -10,7 +10,7 @@ use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
 use serde::{Serialize, Serializer};
 use serde::ser::Error as ser_Error;
-use serde::ser::{SerializeMap, SerializeSeq};
+use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
 
 use crate::field::*;
 use crate::field_serde::*;
@@ -79,9 +79,9 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     }
 }
 
-struct FieldSerializer<'a>(Tag, Either<RecordFlags, (Tag, &'a Field)>);
+struct FieldHRSerializer<'a>(Tag, Either<RecordFlags, (Tag, &'a Field)>);
 
-impl<'a> Serialize for FieldSerializer<'a> {
+impl<'a> Serialize for FieldHRSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
@@ -99,9 +99,35 @@ impl<'a> Serialize for FieldSerializer<'a> {
     }
 }
 
-struct RecordBodySerializer<'a>(&'a Record);
+struct BytesSerializer<'a>(&'a [u8]);
 
-impl<'a> Serialize for RecordBodySerializer<'a> {
+impl<'a> Serialize for BytesSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+    
+        serializer.serialize_bytes_ext(self.0)
+    }
+}
+
+struct FieldNHRSerializer<'a>(Tag, Tag, &'a Field);
+
+impl<'a> Serialize for FieldNHRSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        let bytes = bincode::serialize(&FieldBodySerializer(self.0, self.1, self.2))
+            .map_err(S::Error::custom)?;
+        let mut serializer = serializer.serialize_tuple(3)?;
+        serializer.serialize_element(&self.1)?;
+        serializer.serialize_element(&(bytes.len() as u32))?;
+        serializer.serialize_element(&BytesSerializer(&bytes))?;
+        serializer.end()
+    }
+}
+
+struct RecordBodyHRSerializer<'a>(&'a Record);
+
+impl<'a> Serialize for RecordBodyHRSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
         S: Serializer {
 
@@ -109,10 +135,24 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
         let entry_count = self.0.fields.len() + if has_flags { 1 } else { 0 };
         let mut serializer = serializer.serialize_seq(Some(entry_count))?;
         if has_flags {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, Left(self.0.flags)))?;
+            serializer.serialize_element(&FieldHRSerializer(self.0.tag, Left(self.0.flags)))?;
         }
         for &(field_tag, ref field) in &self.0.fields {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, Right((field_tag, &field))))?;
+            serializer.serialize_element(&FieldHRSerializer(self.0.tag, Right((field_tag, &field))))?;
+        }
+        serializer.end()
+    }
+}
+
+struct RecordBodyNHRSerializer<'a>(&'a Record);
+
+impl<'a> Serialize for RecordBodyNHRSerializer<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where
+        S: Serializer {
+
+        let mut serializer = serializer.serialize_tuple(self.0.fields.len())?;
+        for &(field_tag, ref field) in &self.0.fields {
+            serializer.serialize_element(&FieldNHRSerializer(self.0.tag, field_tag, &field))?;
         }
         serializer.end()
     }
@@ -124,14 +164,16 @@ impl Serialize for Record {
 
         if serializer.is_human_readable() {
             let mut serializer = serializer.serialize_map(Some(1))?;
-            serializer.serialize_entry(&self.tag, &RecordBodySerializer(self))?;
+            serializer.serialize_entry(&self.tag, &RecordBodyHRSerializer(self))?;
             serializer.end()
         } else {
-            unimplemented!()
-//            let mut record = serializer.serialize_struct("Record", 4)?;
-//            record.serialize_field("tag", &self.tag)?;
-//            record.serialize_field("size", &)
-//            record.serialize_field("flags", &self.flags)?;
+            let bytes = bincode::serialize(&RecordBodyNHRSerializer(self)).map_err(S::Error::custom)?;
+            let mut serializer = serializer.serialize_tuple(4)?;
+            serializer.serialize_element(&self.tag)?;
+            serializer.serialize_element(&(bytes.len() as u32))?;
+            serializer.serialize_element(&self.flags)?;
+            serializer.serialize_element(&BytesSerializer(&bytes))?;
+            serializer.end()
         }
     }
 }
@@ -139,7 +181,6 @@ impl Serialize for Record {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
     use std::hash::Hash;
     use std::collections::hash_map::DefaultHasher;
