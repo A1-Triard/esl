@@ -1541,4 +1541,33 @@ mod tests {
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
     }
+
+    #[test]
+    fn serialize_record() {
+        let record = Record {
+            tag: SCPT,
+            flags: RecordFlags::PERSISTENT,
+            fields: vec![
+                (SCHD, Field::ScriptMetadata(ScriptMetadata {
+                    name: "Scr1".into(),
+                    shorts: 1, longs: 2, floats: 3,
+                    data_size: 800, var_table_size: 35
+                })),
+                (TEXT, Field::StringList(vec![
+                    "Begin Scr1".into(),
+                    "short i".into(),
+                    "End Scr1".into(),
+                ]))
+            ]
+        };
+        let bin: Vec<u8> = bincode::serialize(&record).unwrap();
+        let mut bin = &bin[..];
+        let records = Records::new(CodePage::English, true, 0, &mut bin);
+        let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
+        assert_eq!(records.len(), 1);
+        let res = &records[0];
+        assert_eq!(res.tag, record.tag);
+        assert_eq!(res.flags, record.flags);
+        assert_eq!(res.fields.len(), 2);
+    }
 }

@@ -22,3 +22,6 @@ bincode = "1.2.1"
 
 [build-dependencies]
 serde = { version = "1.0.104", features = ["derive"] }
+
+[dev-dependencies]
+serde_yaml = "0.8.11"
