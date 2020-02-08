@@ -20,6 +20,10 @@ mod tag;
 
 pub use crate::tag::*;
 
+mod field;
+
+pub use crate::field::*;
+
 mod record;
 
 pub use crate::record::*;
@@ -27,9 +31,11 @@ pub use crate::record::*;
 pub mod read;
 
 mod strings_serde;
+mod field_serde;
 
 pub mod serde {
     pub use crate::strings_serde::*;
+    pub use crate::field_serde::*;
 }
 
 mod strings;

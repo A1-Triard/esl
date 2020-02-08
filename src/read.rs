@@ -16,6 +16,7 @@ use flate2::Compression;
 use either::{Either, Left, Right};
 
 use crate::strings::*;
+use crate::field::*;
 use crate::record::*;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
