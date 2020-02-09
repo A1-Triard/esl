@@ -344,4 +344,49 @@ mod tests {
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
         assert_eq!(Err(()), RecordFlags::from_str(" "));
     }
+
+    #[test]
+    fn record_yaml() {
+        let record = Record {
+            tag: SCPT,
+            flags: RecordFlags::PERSISTENT,
+            fields: vec![
+                (SCHD, Field::ScriptMetadata(ScriptMetadata {
+                    name: "Scr1".into(),
+                    shorts: 1, longs: 2, floats: 3,
+                    data_size: 800, var_table_size: 35
+                })),
+                (TEXT, Field::StringList(vec![
+                    "Begin Scr1\\".into(),
+                    "    short\u{7} i".into(),
+                    "End Scr1".into(),
+                ]))
+            ]
+        };
+        let yaml = serde_yaml::to_string(&record).unwrap();
+        let res: Record = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(res.tag, record.tag);
+        assert_eq!(res.flags, record.flags);
+        assert_eq!(res.fields.len(), 2);
+        assert_eq!(res.fields[0].0, SCHD);
+        assert_eq!(res.fields[1].0, TEXT);
+        if let Field::ScriptMetadata(res) = &res.fields[0].1 {
+            assert_eq!(res.name, "Scr1");
+            assert_eq!(res.shorts, 1);
+            assert_eq!(res.longs, 2);
+            assert_eq!(res.floats, 3);
+            assert_eq!(res.data_size, 800);
+            assert_eq!(res.var_table_size, 35);
+        } else {
+            panic!()
+        }
+        if let Field::StringList(res) = &res.fields[1].1 {
+            assert_eq!(res.len(), 3);
+            assert_eq!(res[0], "Begin Scr1\\");
+            assert_eq!(res[1], "    short\u{7} i");
+            assert_eq!(res[2], "End Scr1");
+        } else {
+            panic!()
+        }
+    }
 }

@@ -1570,26 +1570,4 @@ mod tests {
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);
     }
-
-    #[test]
-    fn serialize_record_to_yaml() {
-        let record = Record {
-            tag: SCPT,
-            flags: RecordFlags::PERSISTENT,
-            fields: vec![
-                (SCHD, Field::ScriptMetadata(ScriptMetadata {
-                    name: "Scr1".into(),
-                    shorts: 1, longs: 2, floats: 3,
-                    data_size: 800, var_table_size: 35
-                })),
-                (TEXT, Field::StringList(vec![
-                    "Begin Scr1\\".into(),
-                    "    short\u{7} i".into(),
-                    "End Scr1".into(),
-                ]))
-            ]
-        };
-        let yaml = serde_yaml::to_string(&record).unwrap();
-        println!("{}", yaml);
-    }
 }
