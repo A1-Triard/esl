@@ -1,6 +1,7 @@
 use either::{Either, Left, Right};
 use std::fmt::{self, Display, Debug};
 use std::str::{FromStr};
+use std::cell::Cell;
 use ::nom::IResult;
 use ::nom::branch::alt;
 use ::nom::combinator::{value as nom_value, map, opt};
@@ -8,13 +9,11 @@ use ::nom::bytes::complete::tag as nom_tag;
 use ::nom::multi::{fold_many0};
 use ::nom::sequence::{preceded, terminated, pair};
 use ::nom::bytes::complete::take_while;
-//use serde::{Serialize, Serializer, Deserialize, Deserializer};
-//use serde::ser::Error as ser_Error;
-//use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
-//use serde::de::{self};
-use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
+use serde::de::{self};
+use serde::de::Error as de_Error;
 
 use crate::field::*;
 use crate::field_serde::*;
@@ -182,41 +181,140 @@ impl Serialize for Record {
     }
 }
 
-/*
+struct FieldBodyHRSurrogate(Either<RecordFlags, (Tag, Field)>);
+
+impl<'de> Deserialize<'de> for FieldBodyHRSurrogate {
+    fn deserialize<D>(deserializer: D) -> Result<FieldBodyHRSurrogate, D::Error> where
+        D: Deserializer<'de> {
+
+        let field_tag = FIELD_TAG.with(|x| x.get());
+        if field_tag == META {
+            RecordFlags::deserialize(deserializer).map(Left)
+        } else {
+            let record_tag = RECORD_TAG.with(|x| x.get());
+            deserializer.deserialize_field(record_tag, field_tag, None)
+                .map(move |x| Right((field_tag, x)))
+        }.map(FieldBodyHRSurrogate)
+    }
+}
+
+thread_local!(static FIELD_TAG: Cell<Tag> = Cell::new(META));
+
+struct FieldHRDeserializer;
+
+impl<'de> de::Visitor<'de> for FieldHRDeserializer {
+    type Value = Either<RecordFlags, (Tag, Field)>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "record flags or field")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where
+        A: de::MapAccess<'de> {
+
+        let field_tag: Tag = map.next_key()?
+            .ok_or_else(|| A::Error::custom("missed field tag"))?;
+        FIELD_TAG.with(|x| x.set(field_tag));
+        let body: FieldBodyHRSurrogate = map.next_value()?;
+        if map.next_key::<Tag>()?.is_some() {
+            return Err(A::Error::custom("duplicated field tag"));
+        }
+        Ok(body.0)
+    }
+}
+
+struct FieldHRSurrogate(Either<RecordFlags, (Tag, Field)>);
+
+impl<'de> Deserialize<'de> for FieldHRSurrogate {
+    fn deserialize<D>(deserializer: D) -> Result<FieldHRSurrogate, D::Error> where
+        D: Deserializer<'de> {
+
+        deserializer.deserialize_map(FieldHRDeserializer).map(FieldHRSurrogate)
+    }
+}
+
+struct RecordBodyHRDeserializer;
+
+impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
+    type Value = Record;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "field list")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
+        A: de::SeqAccess<'de> {
+
+        let mut record_flags = None;
+        let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(field) = seq.next_element::<FieldHRSurrogate>()? {
+            match field.0 {
+                Left(flags) => {
+                    if record_flags.replace(flags).is_some() {
+                        return Err(A::Error::custom("duplicated record flags"));
+                    }
+                },
+                Right(field) => fields.push(field)
+            }
+        }
+        let record_tag = RECORD_TAG.with(|x| x.get());
+        Ok(Record { tag: record_tag, flags: record_flags.unwrap_or(RecordFlags::empty()), fields })
+    }
+}
+
+struct RecordBodyHRSurrogate(Record);
+
+impl<'de> Deserialize<'de> for RecordBodyHRSurrogate {
+    fn deserialize<D>(deserializer: D) -> Result<RecordBodyHRSurrogate, D::Error> where
+        D: Deserializer<'de> {
+
+        deserializer.deserialize_seq(RecordBodyHRDeserializer).map(RecordBodyHRSurrogate)
+    }
+}
+
+thread_local!(static RECORD_TAG: Cell<Tag> = Cell::new(META));
+
 struct RecordHRDeserializer;
 
 impl<'de> de::Visitor<'de> for RecordHRDeserializer {
     type Value = Record;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "record")
     }
 
-    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where
         A: de::MapAccess<'de> {
         
-        let record: (Tag, ) = map.next_entry()?;
+        let record_tag: Tag = map.next_key()?
+            .ok_or_else(|| A::Error::custom("missed record tag"))?;
+        RECORD_TAG.with(|x| x.set(record_tag));
+        let body: RecordBodyHRSurrogate = map.next_value()?;
+        if map.next_key::<Tag>()?.is_some() {
+            return Err(A::Error::custom("duplicated record tag"));
+        }
+        Ok(body.0)
     }
 }
 
-
 impl<'de> Deserialize<'de> for Record {
     fn deserialize<D>(deserializer: D) -> Result<Record, D::Error> where
-        D: Deserializer {
+        D: Deserializer<'de> {
 
         if deserializer.is_human_readable() {
             deserializer.deserialize_map(RecordHRDeserializer)
         } else {
-            let bytes = bincode::serialize(&RecordBodyNHRSerializer(self)).map_err(S::Error::custom)?;
-            let mut serializer = serializer.serialize_tuple(4)?;
-            serializer.serialize_element(&self.tag)?;
-            serializer.serialize_element(&(bytes.len() as u32))?;
-            serializer.serialize_element(&self.flags)?;
-            serializer.serialize_element(&BytesSerializer(&bytes))?;
-            serializer.end()
+            panic!()
+//            let bytes = bincode::serialize(&RecordBodyNHRSerializer(self)).map_err(S::Error::custom)?;
+//            let mut serializer = serializer.serialize_tuple(4)?;
+//            serializer.serialize_element(&self.tag)?;
+//            serializer.serialize_element(&(bytes.len() as u32))?;
+//            serializer.serialize_element(&self.flags)?;
+//            serializer.serialize_element(&BytesSerializer(&bytes))?;
+//            serializer.end()
         }
     }
-}*/
+}
 
 #[cfg(test)]
 mod tests {

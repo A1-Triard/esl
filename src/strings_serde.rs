@@ -4,6 +4,7 @@ use serde::de::{self, Error as de_Error};
 use encoding::{DecoderTrap, EncoderTrap};
 use serde::ser::{SerializeTuple, SerializeSeq, Error as ser_Error};
 use std::iter::{self};
+use std::fmt::{self};
 
 use crate::strings::*;
 
@@ -153,7 +154,7 @@ struct StringHRDeserializer;
 impl<'de> de::Visitor<'de> for StringHRDeserializer {
     type Value = String;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "string")
     }
 
@@ -178,19 +179,24 @@ fn trim_end_nulls(mut bytes: &[u8]) -> &[u8] {
 impl<'de> de::Visitor<'de> for StringDeserializer {
     type Value = String;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "array of {} bytes", self.len)
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
         A: de::SeqAccess<'de> {
 
+        if let Some(n) = seq.size_hint() {
+            if n != self.len {
+                return Err(A::Error::invalid_length(n, &self));
+            }
+        }
         let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
         while let Some(byte) = seq.next_element()? {
             bytes.push(byte);
         }
         if bytes.len() != self.len {
-            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            Err(A::Error::invalid_length(bytes.len(), &self))
         } else {
             let bytes = if self.trim_tail_zeros {
                 trim_end_nulls(&bytes[..])
@@ -207,7 +213,7 @@ struct StringZHRDeserializer;
 impl<'de> de::Visitor<'de> for StringZHRDeserializer {
     type Value = StringZ;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "string")
     }
 
@@ -227,19 +233,24 @@ struct StringZDeserializer {
 impl<'de> de::Visitor<'de> for StringZDeserializer {
     type Value = StringZ;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "array of {} bytes", self.len)
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
         A: de::SeqAccess<'de> {
 
+        if let Some(n) = seq.size_hint() {
+            if n != self.len {
+                return Err(A::Error::invalid_length(n, &self));
+            }
+        }
         let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
         while let Some(byte) = seq.next_element()? {
             bytes.push(byte);
         }
         if bytes.len() != self.len {
-            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            Err(A::Error::invalid_length(bytes.len(), &self))
         } else {
             let has_tail_zero = bytes.last().map_or(false, |&x| x == 0);
             let bytes = if has_tail_zero { &bytes[.. bytes.len() - 1] } else { &bytes };
@@ -254,7 +265,7 @@ struct StringListHRDeserializer;
 impl<'de> de::Visitor<'de> for StringListHRDeserializer {
     type Value = Vec<String>;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "string sequence")
     }
 
@@ -262,7 +273,7 @@ impl<'de> de::Visitor<'de> for StringListHRDeserializer {
         A: de::SeqAccess<'de> {
 
         let mut list: Vec<String> =
-            seq.size_hint().map_or_else(|| Vec::new(), |x| Vec::with_capacity(x));
+            seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
         while let Some(line) = seq.next_element()? {
             list.push(line);
         }
@@ -280,19 +291,24 @@ struct StringListDeserializer<'a> {
 impl<'de, 'a> de::Visitor<'de> for StringListDeserializer<'a> {
     type Value = Vec<String>;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "array of {} bytes", self.len)
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
         A: de::SeqAccess<'de> {
 
+        if let Some(n) = seq.size_hint() {
+            if n != self.len {
+                return Err(A::Error::invalid_length(n, &self));
+            }
+        }
         let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
         while let Some(byte) = seq.next_element()? {
             bytes.push(byte);
         }
         if bytes.len() != self.len {
-            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            Err(A::Error::invalid_length(bytes.len(), &self))
         } else {
             let bytes = if self.trim_tail_zeros {
                 trim_end_nulls(&bytes[..])
@@ -310,7 +326,7 @@ struct StringZListHRDeserializer;
 impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
     type Value = StringZList;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "string sequence")
     }
 
@@ -318,7 +334,7 @@ impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
         A: de::SeqAccess<'de> {
 
         let mut vec: Vec<String> =
-            seq.size_hint().map_or_else(|| Vec::new(), |x| Vec::with_capacity(x));
+            seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
         while let Some(line) = seq.next_element()? {
             vec.push(line);
         }
@@ -337,19 +353,24 @@ struct StringZListDeserializer {
 impl<'de> de::Visitor<'de> for StringZListDeserializer {
     type Value = StringZList;
 
-    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "array of {} bytes", self.len)
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
         A: de::SeqAccess<'de> {
 
+        if let Some(n) = seq.size_hint() {
+            if n != self.len {
+                return Err(A::Error::invalid_length(n, &self));
+            }
+        }
         let mut bytes: Vec<u8> = Vec::with_capacity(self.len);
         while let Some(byte) = seq.next_element()? {
             bytes.push(byte);
         }
         if bytes.len() != self.len {
-            Err(A::Error::invalid_value(de::Unexpected::Bytes(&bytes[..]), &self))
+            Err(A::Error::invalid_length(bytes.len(), &self))
         } else {
             let has_tail_zero = bytes.last().map_or(false, |&x| x == 0);
             let bytes = if has_tail_zero { &bytes[.. bytes.len() - 1] } else { &bytes };
