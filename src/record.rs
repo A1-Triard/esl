@@ -187,18 +187,25 @@ impl<'de> Deserialize<'de> for FieldBodyHRSurrogate {
     fn deserialize<D>(deserializer: D) -> Result<FieldBodyHRSurrogate, D::Error> where
         D: Deserializer<'de> {
 
-        let field_tag = FIELD_TAG.with(|x| x.get());
+        let field_tag = FIELD_TAG.with(|x| x.get().unwrap());
         if field_tag == META {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
-            let record_tag = RECORD_TAG.with(|x| x.get());
+            let record_tag = RECORD_TAG.with(|x| x.get().unwrap());
             deserializer.deserialize_field(record_tag, field_tag, None)
                 .map(move |x| Right((field_tag, x)))
         }.map(FieldBodyHRSurrogate)
     }
 }
 
-thread_local!(static FIELD_TAG: Cell<Tag> = Cell::new(META));
+thread_local!(static FIELD_TAG: Cell<Option<Tag>> = Cell::new(None));
+
+fn with_field_tag<T>(tag: Tag, f: impl FnOnce() -> T) -> T {
+    FIELD_TAG.with(|x| assert!(x.replace(Some(tag)).is_none()));
+    let res = f();
+    FIELD_TAG.with(|x| assert!(x.replace(None) == Some(tag)));
+    res
+}
 
 struct FieldHRDeserializer;
 
@@ -214,8 +221,7 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
 
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
-        FIELD_TAG.with(|x| x.set(field_tag));
-        let body: FieldBodyHRSurrogate = map.next_value()?;
+        let body: FieldBodyHRSurrogate = with_field_tag(field_tag, || map.next_value())?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
         }
@@ -257,7 +263,7 @@ impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
                 Right(field) => fields.push(field)
             }
         }
-        let record_tag = RECORD_TAG.with(|x| x.get());
+        let record_tag = RECORD_TAG.with(|x| x.get().unwrap());
         Ok(Record { tag: record_tag, flags: record_flags.unwrap_or(RecordFlags::empty()), fields })
     }
 }
@@ -272,7 +278,14 @@ impl<'de> Deserialize<'de> for RecordBodyHRSurrogate {
     }
 }
 
-thread_local!(static RECORD_TAG: Cell<Tag> = Cell::new(META));
+thread_local!(static RECORD_TAG: Cell<Option<Tag>> = Cell::new(None));
+
+fn with_record_tag<T>(tag: Tag, f: impl FnOnce() -> T) -> T {
+    RECORD_TAG.with(|x| assert!(x.replace(Some(tag)).is_none()));
+    let res = f();
+    RECORD_TAG.with(|x| assert!(x.replace(None) == Some(tag)));
+    res
+}
 
 struct RecordHRDeserializer;
 
@@ -288,8 +301,7 @@ impl<'de> de::Visitor<'de> for RecordHRDeserializer {
         
         let record_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed record tag"))?;
-        RECORD_TAG.with(|x| x.set(record_tag));
-        let body: RecordBodyHRSurrogate = map.next_value()?;
+        let body: RecordBodyHRSurrogate = with_record_tag(record_tag, || map.next_value())?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
