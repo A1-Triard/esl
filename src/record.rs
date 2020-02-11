@@ -1,7 +1,6 @@
 use either::{Either, Left, Right};
 use std::fmt::{self, Display, Debug};
 use std::str::{FromStr};
-use std::cell::Cell;
 use ::nom::IResult;
 use ::nom::branch::alt;
 use ::nom::combinator::{value as nom_value, map, opt};
@@ -12,7 +11,7 @@ use ::nom::bytes::complete::take_while;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq, SerializeTuple};
-use serde::de::{self};
+use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
 
 use crate::field::*;
@@ -181,33 +180,29 @@ impl Serialize for Record {
     }
 }
 
-struct FieldBodyHRSurrogate(Either<RecordFlags, (Tag, Field)>);
+struct FieldBodyHRSurrogate {
+    record_tag: Tag,
+    field_tag: Tag
+}
 
-impl<'de> Deserialize<'de> for FieldBodyHRSurrogate {
-    fn deserialize<D>(deserializer: D) -> Result<FieldBodyHRSurrogate, D::Error> where
+impl<'de> DeserializeSeed<'de> for FieldBodyHRSurrogate {
+    type Value = Either<RecordFlags, (Tag, Field)>;
+    
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        let field_tag = FIELD_TAG.with(|x| x.get().unwrap());
-        if field_tag == META {
+        if self.field_tag == META {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
-            let record_tag = RECORD_TAG.with(|x| x.get().unwrap());
-            deserializer.deserialize_field(record_tag, field_tag, None)
-                .map(move |x| Right((field_tag, x)))
-        }.map(FieldBodyHRSurrogate)
+            deserializer.deserialize_field(self.record_tag, self.field_tag, None)
+                .map(|x| Right((self.field_tag, x)))
+        }
     }
 }
 
-thread_local!(static FIELD_TAG: Cell<Option<Tag>> = Cell::new(None));
-
-fn with_field_tag<T>(tag: Tag, f: impl FnOnce() -> T) -> T {
-    FIELD_TAG.with(|x| assert!(x.replace(Some(tag)).is_none()));
-    let res = f();
-    FIELD_TAG.with(|x| assert!(x.replace(None) == Some(tag)));
-    res
+struct FieldHRDeserializer {
+    record_tag: Tag
 }
-
-struct FieldHRDeserializer;
 
 impl<'de> de::Visitor<'de> for FieldHRDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
@@ -221,25 +216,31 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
 
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
-        let body: FieldBodyHRSurrogate = with_field_tag(field_tag, || map.next_value())?;
+        let body = map.next_value_seed(FieldBodyHRSurrogate { record_tag: self.record_tag, field_tag })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
         }
-        Ok(body.0)
+        Ok(body)
     }
 }
 
-struct FieldHRSurrogate(Either<RecordFlags, (Tag, Field)>);
+struct FieldHRSurrogate {
+    record_tag: Tag
+}
 
-impl<'de> Deserialize<'de> for FieldHRSurrogate {
-    fn deserialize<D>(deserializer: D) -> Result<FieldHRSurrogate, D::Error> where
+impl<'de> DeserializeSeed<'de> for FieldHRSurrogate {
+    type Value = Either<RecordFlags, (Tag, Field)>;
+    
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        deserializer.deserialize_map(FieldHRDeserializer).map(FieldHRSurrogate)
+        deserializer.deserialize_map(FieldHRDeserializer { record_tag: self.record_tag })
     }
 }
 
-struct RecordBodyHRDeserializer;
+struct RecordBodyHRDeserializer {
+    record_tag: Tag
+}
 
 impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
     type Value = Record;
@@ -253,8 +254,8 @@ impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
 
         let mut record_flags = None;
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        while let Some(field) = seq.next_element::<FieldHRSurrogate>()? {
-            match field.0 {
+        while let Some(field) = seq.next_element_seed(FieldHRSurrogate { record_tag: self.record_tag })? {
+            match field {
                 Left(flags) => {
                     if record_flags.replace(flags).is_some() {
                         return Err(A::Error::custom("duplicated record flags"));
@@ -263,28 +264,22 @@ impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
                 Right(field) => fields.push(field)
             }
         }
-        let record_tag = RECORD_TAG.with(|x| x.get().unwrap());
-        Ok(Record { tag: record_tag, flags: record_flags.unwrap_or(RecordFlags::empty()), fields })
+        Ok(Record { tag: self.record_tag, flags: record_flags.unwrap_or(RecordFlags::empty()), fields })
     }
 }
 
-struct RecordBodyHRSurrogate(Record);
+struct RecordBodyHRSurrogate {
+    record_tag: Tag
+}
 
-impl<'de> Deserialize<'de> for RecordBodyHRSurrogate {
-    fn deserialize<D>(deserializer: D) -> Result<RecordBodyHRSurrogate, D::Error> where
+impl<'de> DeserializeSeed<'de> for RecordBodyHRSurrogate {
+    type Value = Record;
+    
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        deserializer.deserialize_seq(RecordBodyHRDeserializer).map(RecordBodyHRSurrogate)
+        deserializer.deserialize_seq(RecordBodyHRDeserializer { record_tag: self.record_tag })
     }
-}
-
-thread_local!(static RECORD_TAG: Cell<Option<Tag>> = Cell::new(None));
-
-fn with_record_tag<T>(tag: Tag, f: impl FnOnce() -> T) -> T {
-    RECORD_TAG.with(|x| assert!(x.replace(Some(tag)).is_none()));
-    let res = f();
-    RECORD_TAG.with(|x| assert!(x.replace(None) == Some(tag)));
-    res
 }
 
 struct RecordHRDeserializer;
@@ -301,11 +296,11 @@ impl<'de> de::Visitor<'de> for RecordHRDeserializer {
         
         let record_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed record tag"))?;
-        let body: RecordBodyHRSurrogate = with_record_tag(record_tag, || map.next_value())?;
+        let body = map.next_value_seed(RecordBodyHRSurrogate { record_tag })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
-        Ok(body.0)
+        Ok(body)
     }
 }
 
