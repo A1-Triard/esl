@@ -180,12 +180,12 @@ impl Serialize for Record {
     }
 }
 
-struct FieldBodyHRSurrogate {
+struct FieldBodyHRDeserializer {
     record_tag: Tag,
     field_tag: Tag
 }
 
-impl<'de> DeserializeSeed<'de> for FieldBodyHRSurrogate {
+impl<'de> DeserializeSeed<'de> for FieldBodyHRDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
@@ -216,7 +216,7 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
 
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
-        let body = map.next_value_seed(FieldBodyHRSurrogate { record_tag: self.record_tag, field_tag })?;
+        let body = map.next_value_seed(FieldBodyHRDeserializer { record_tag: self.record_tag, field_tag })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
         }
@@ -224,17 +224,13 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
     }
 }
 
-struct FieldHRSurrogate {
-    record_tag: Tag
-}
-
-impl<'de> DeserializeSeed<'de> for FieldHRSurrogate {
+impl<'de> DeserializeSeed<'de> for FieldHRDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        deserializer.deserialize_map(FieldHRDeserializer { record_tag: self.record_tag })
+        deserializer.deserialize_map(self)
     }
 }
 
@@ -254,7 +250,7 @@ impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
 
         let mut record_flags = None;
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        while let Some(field) = seq.next_element_seed(FieldHRSurrogate { record_tag: self.record_tag })? {
+        while let Some(field) = seq.next_element_seed(FieldHRDeserializer { record_tag: self.record_tag })? {
             match field {
                 Left(flags) => {
                     if record_flags.replace(flags).is_some() {
@@ -268,17 +264,13 @@ impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
     }
 }
 
-struct RecordBodyHRSurrogate {
-    record_tag: Tag
-}
-
-impl<'de> DeserializeSeed<'de> for RecordBodyHRSurrogate {
+impl<'de> DeserializeSeed<'de> for RecordBodyHRDeserializer {
     type Value = Record;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        deserializer.deserialize_seq(RecordBodyHRDeserializer { record_tag: self.record_tag })
+        deserializer.deserialize_seq(self)
     }
 }
 
@@ -296,7 +288,7 @@ impl<'de> de::Visitor<'de> for RecordHRDeserializer {
         
         let record_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed record tag"))?;
-        let body = map.next_value_seed(RecordBodyHRSurrogate { record_tag })?;
+        let body = map.next_value_seed(RecordBodyHRDeserializer { record_tag })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
