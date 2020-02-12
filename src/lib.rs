@@ -14,6 +14,8 @@ extern crate bitflags;
 extern crate debug_panic;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate serde;
 
 #[macro_use]
 mod tag;
@@ -33,7 +35,7 @@ pub mod read;
 mod strings_serde;
 mod field_serde;
 
-pub mod serde {
+pub mod serde_ {
     pub use crate::strings_serde::*;
     pub use crate::field_serde::*;
 }
