@@ -903,6 +903,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
 mod tests {
     use crate::code::*;
     use encoding::{DecoderTrap, EncoderTrap};
+    use serde::Serialize;
 
     #[test]
     fn all_code_pages_are_single_byte_encodings() {
@@ -920,5 +921,37 @@ mod tests {
                 assert_eq!(byte as u32, c.as_bytes()[0] as u32);
             }
         }
+    }
+    
+    #[derive(Serialize)]
+    struct Abcd {
+        a: i16,
+        b: char,
+        c: u32,
+        d: String
+    }
+    
+    #[test]
+    fn serialize_struct() {
+        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let mut v = Vec::new();
+        s.serialize(TesSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, [5, 0, 1, 0, 0, 0, 219, 90, 0, 0, 0, 83]);
+    }
+
+    #[test]
+    fn serialize_struct_not_isolated() {
+        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let mut v = Vec::new();
+        s.serialize(TesSerializer {
+            isolated: false,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, [5, 0, 1, 0, 0, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 }
