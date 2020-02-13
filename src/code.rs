@@ -95,7 +95,8 @@ struct StructSerializer<'a, W: Write + ?Sized> {
 struct StructVariantSerializer<'a, W: Write + ?Sized> {
     code_page: CodePage,
     writer: &'a mut W,
-    len: Option<usize>
+    len: Option<usize>,
+    variant_index: u32
 }
 
 #[derive(Debug)]
@@ -511,6 +512,18 @@ serde_if_integer128! {
     }
 }
 
+fn char_bytes(code_page: CodePage, v: char) -> Result<Vec<u8>, Error> {
+    code_page.encoding()
+        .encode(&v.to_string(), EncoderTrap::Strict)
+        .map_err(|_| Error::UnrepresentableChar(v, code_page))
+}
+
+fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, Error> {
+    code_page.encoding()
+        .encode(v, EncoderTrap::Strict)
+        .map_err(|s| Error::UnrepresentableChar(s.chars().nth(0).unwrap(), code_page))
+}
+
 impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     type Ok = bool;
     type Error = Error;
@@ -590,35 +603,31 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let v = self.code_page.encoding()
-            .encode(&v.to_string(), EncoderTrap::Strict)
-            .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?;
-        self.serialize_bytes(&v)
+        let bytes = char_bytes(self.code_page, v)?;
+        self.serialize_bytes(&bytes)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let v = self.code_page.encoding()
-            .encode(v, EncoderTrap::Strict)
-            .map_err(|s| Error::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
-        self.serialize_bytes(&v)
+        let bytes = str_bytes(self.code_page, v)?;
+        self.serialize_bytes(&bytes)
     }
     
-    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(0)
-    }
-    
-    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
-        serialize_u8(self.writer, 1)?;
-        value.serialize(self)?;
-        Ok(true)
-    }
-
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
         Ok(false)
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
         Ok(false)
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        self.serialize_u8(0)
+    }
+
+    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
+        serialize_u8(self.writer, 1)?;
+        value.serialize(self)?;
+        Ok(true)
     }
 
     fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str) 
@@ -660,8 +669,11 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        serialize_u32(self.writer, variant_index)?;
+        if !self.isolated {
+            serialize_u32(self.writer, variant_index)?;
+        }
         Ok(StructVariantSerializer {
+            variant_index,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
         })
@@ -678,8 +690,11 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
         -> Result<Self::SerializeStructVariant, Self::Error> {
 
-        serialize_u32(self.writer, variant_index)?;
+        if !self.isolated {
+            serialize_u32(self.writer, variant_index)?;
+        }
         Ok(StructVariantSerializer {
+            variant_index,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
         })
@@ -783,17 +798,13 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let v = self.code_page.encoding()
-            .encode(&v.to_string(), EncoderTrap::Strict)
-            .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?;
-        self.serialize_bytes(&v)
+        let bytes = char_bytes(self.code_page, v)?;
+        self.serialize_bytes(&bytes)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let v = self.code_page.encoding()
-            .encode(v, EncoderTrap::Strict)
-            .map_err(|s| Error::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
-        self.serialize_bytes(&v)
+        let bytes = str_bytes(self.code_page, v)?;
+        self.serialize_bytes(&bytes)
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
