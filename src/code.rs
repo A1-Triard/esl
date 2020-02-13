@@ -468,7 +468,7 @@ impl<'a, W: Write + ?Sized> SerializeStructVariant for KeyStructVariantSerialize
     }
 }
 
-fn byte(v: bool) -> u8 {
+fn bool_byte(v: bool) -> u8 {
     if v { 1 } else { 0 }
 }
 
@@ -512,10 +512,12 @@ serde_if_integer128! {
     }
 }
 
-fn char_bytes(code_page: CodePage, v: char) -> Result<Vec<u8>, Error> {
-    code_page.encoding()
+fn char_byte(code_page: CodePage, v: char) -> Result<u8, Error> {
+    let v = code_page.encoding()
         .encode(&v.to_string(), EncoderTrap::Strict)
-        .map_err(|_| Error::UnrepresentableChar(v, code_page))
+        .map_err(|_| Error::UnrepresentableChar(v, code_page))?;
+    debug_assert_eq!(v.len(), 1);
+    Ok(v[0])
 }
 
 fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, Error> {
@@ -536,7 +538,7 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     type SerializeMap = MapSerializer<'a, W>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(byte(v))
+        self.serialize_u8(bool_byte(v))
     }
     
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
@@ -603,8 +605,8 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let bytes = char_bytes(self.code_page, v)?;
-        self.serialize_bytes(&bytes)
+        let byte = char_byte(self.code_page, v)?;
+        self.serialize_u8(byte)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -733,7 +735,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
     type SerializeMap = KeyMapSerializer<'a, W>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(byte(v))
+        self.serialize_u8(bool_byte(v))
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
@@ -798,8 +800,8 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let bytes = char_bytes(self.code_page, v)?;
-        self.serialize_bytes(&bytes)
+        let byte = char_byte(self.code_page, v)?;
+        self.serialize_u8(byte)
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -940,7 +942,7 @@ mod tests {
             code_page: CodePage::Russian,
             writer: &mut v
         }).unwrap();
-        assert_eq!(v, [5, 0, 1, 0, 0, 0, 219, 90, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
     }
 
     #[test]
@@ -952,6 +954,6 @@ mod tests {
             code_page: CodePage::Russian,
             writer: &mut v
         }).unwrap();
-        assert_eq!(v, [5, 0, 1, 0, 0, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 }
