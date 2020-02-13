@@ -622,6 +622,18 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
         Ok(false)
     }
 
+    fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
+        -> Result<Self::Ok, Self::Error> {
+
+        self.serialize_u32(variant_index)
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        v.serialize(self)
+    }
+
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         self.serialize_u8(0)
     }
@@ -632,24 +644,38 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
         Ok(true)
     }
 
-    fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str) 
-        -> Result<Self::Ok, Self::Error> {
-
-        self.serialize_u32(variant_index)
-    }
-
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T) 
-        -> Result<Self::Ok, Self::Error> {
-
-        v.serialize(self)
-    }
-
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T) 
         -> Result<Self::Ok, Self::Error> {
 
         serialize_u32(self.writer, variant_index)?;
         v.serialize(self)?;
         Ok(true)
+    }
+
+    fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
+        -> Result<Self::SerializeTupleVariant, Self::Error> {
+
+        if !self.isolated {
+            serialize_u32(self.writer, variant_index)?;
+        }
+        Ok(StructVariantSerializer {
+            variant_index,
+            len: if self.isolated { Some(len) } else { None },
+            writer: self.writer, code_page: self.code_page,
+        })
+    }
+
+    fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
+        -> Result<Self::SerializeStructVariant, Self::Error> {
+
+        if !self.isolated {
+            serialize_u32(self.writer, variant_index)?;
+        }
+        Ok(StructVariantSerializer {
+            variant_index,
+            len: if self.isolated { Some(len) } else { None },
+            writer: self.writer, code_page: self.code_page,
+        })
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -668,37 +694,11 @@ impl<'a, W: Write + ?Sized> Serializer for TesSerializer<'a, W> {
         })
     }
 
-    fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
-        -> Result<Self::SerializeTupleVariant, Self::Error> {
-
-        if !self.isolated {
-            serialize_u32(self.writer, variant_index)?;
-        }
-        Ok(StructVariantSerializer {
-            variant_index,
-            len: if self.isolated { Some(len) } else { None },
-            writer: self.writer, code_page: self.code_page,
-        })
-    }
-
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             result: false
-        })
-    }
-
-    fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
-        -> Result<Self::SerializeStructVariant, Self::Error> {
-
-        if !self.isolated {
-            serialize_u32(self.writer, variant_index)?;
-        }
-        Ok(StructVariantSerializer {
-            variant_index,
-            len: if self.isolated { Some(len) } else { None },
-            writer: self.writer, code_page: self.code_page,
         })
     }
 
@@ -809,6 +809,31 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
         self.serialize_bytes(&bytes)
     }
 
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Ok(Vec::new())
+    }
+
+    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
+        Ok(Vec::new())
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        v.serialize(TesSerializer {
+            code_page: self.code_page,
+            writer: self.writer,
+            isolated: false
+        })?;
+        Ok(Vec::new())
+    }
+
+    fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
+        -> Result<Self::Ok, Self::Error> {
+
+        self.serialize_u32(variant_index)
+    }
+
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         self.serialize_u8(0)
     }
@@ -819,32 +844,30 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
         Ok(Vec::new())
     }
 
-    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(Vec::new())
-    }
-
-    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(Vec::new())
-    }
-
-    fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
-        -> Result<Self::Ok, Self::Error> {
-
-        self.serialize_u32(variant_index)
-    }
-
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
-        -> Result<Self::Ok, Self::Error> {
-
-        v.serialize(self)
-    }
-
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
         -> Result<Self::Ok, Self::Error> {
 
         serialize_u32(self.writer, variant_index)?;
         v.serialize(self)?;
         Ok(Vec::new())
+    }
+
+    fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeTupleVariant, Self::Error> {
+
+        serialize_u32(self.writer, variant_index)?;
+        Ok(KeyStructVariantSerializer {
+            writer: self.writer, code_page: self.code_page,
+        })
+    }
+
+    fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeStructVariant, Self::Error> {
+
+        serialize_u32(self.writer, variant_index)?;
+        Ok(KeyStructVariantSerializer {
+            writer: self.writer, code_page: self.code_page,
+        })
     }
 
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -860,26 +883,8 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
         })
     }
 
-    fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
-        -> Result<Self::SerializeTupleVariant, Self::Error> {
-
-        serialize_u32(self.writer, variant_index)?;
-        Ok(KeyStructVariantSerializer {
-            writer: self.writer, code_page: self.code_page,
-        })
-    }
-
     fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(KeyStructSerializer {
-            writer: self.writer, code_page: self.code_page,
-        })
-    }
-
-    fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
-        -> Result<Self::SerializeStructVariant, Self::Error> {
-
-        serialize_u32(self.writer, variant_index)?;
-        Ok(KeyStructVariantSerializer {
             writer: self.writer, code_page: self.code_page,
         })
     }
@@ -906,6 +911,7 @@ mod tests {
     use crate::code::*;
     use encoding::{DecoderTrap, EncoderTrap};
     use serde::Serialize;
+    use std::collections::HashMap;
 
     #[test]
     fn all_code_pages_are_single_byte_encodings() {
@@ -955,5 +961,87 @@ mod tests {
             writer: &mut v
         }).unwrap();
         assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+    }
+
+    #[derive(Serialize, Hash, Eq, PartialEq)]
+    enum Variant { Variant1, Variant2 }
+
+    #[derive(Serialize, Hash, Eq, PartialEq)]
+    struct Key {
+        variant: Variant,
+        s: String
+    }    
+    
+    #[derive(Serialize)]
+    struct Map {
+        map: HashMap<Key, String>,
+        unit: (),
+        i: i8
+    }
+    
+    #[test]
+    fn serialize_map() {
+        let mut s = Map {
+            map: HashMap::new(),
+            unit: (),
+            i: -3
+        };
+        s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
+        let mut v = Vec::new();
+        s.serialize(TesSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            1, 0, 0, 0, 3, 0, 0, 0, 115, 116, 114,
+            5, 0, 0, 0, 118, 97, 108, 117, 101,
+            253
+        ]);
+    }
+
+    #[test]
+    fn serialize_tuple_key() {
+        let mut s: HashMap<(Key, Key), u64> = HashMap::new();
+        s.insert((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        ), 22);
+        let mut v = Vec::new();
+        s.serialize(TesSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            1, 0, 0, 0, 3, 0, 0, 0, 115, 116, 114,
+            8, 0, 0, 0,
+            0, 0, 0, 0, 3, 0, 0, 0, 241, 242, 240,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }
+
+    #[derive(Serialize, Hash, Eq, PartialEq)]
+    struct Key2((Key, Key));
+    
+    #[test]
+    fn serialize_newtype_key() {
+        let mut s: HashMap<Key2, u64> = HashMap::new();
+        s.insert(Key2((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        )), 22);
+        let mut v = Vec::new();
+        s.serialize(TesSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            1, 0, 0, 0, 3, 0, 0, 0, 115, 116, 114,
+            0, 0, 0, 0, 3, 0, 0, 0, 241, 242, 240,
+            8, 0, 0, 0,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
     }
 }
