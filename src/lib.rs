@@ -45,4 +45,3 @@ mod strings;
 pub use crate::strings::*;
 
 pub mod code;
-pub mod code_vec;
