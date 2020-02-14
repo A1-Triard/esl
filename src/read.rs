@@ -18,7 +18,7 @@ use either::{Either, Left, Right};
 use crate::strings::*;
 use crate::field::*;
 use crate::record::*;
-use crate::code::CodePage;
+use crate::code_vec::CodePage;
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
 enum Void { }

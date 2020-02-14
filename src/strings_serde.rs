@@ -7,7 +7,7 @@ use std::iter::{self};
 use std::fmt::{self};
 
 use crate::strings::*;
-use crate::code::CodePage;
+use crate::code_vec::CodePage;
 
 thread_local!(pub static CODE_PAGE: Cell<CodePage> = Cell::new(CodePage::English));
 

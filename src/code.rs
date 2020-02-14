@@ -2,67 +2,42 @@ use serde::{Serializer, Serialize};
 use std::io::{self, Write};
 use std::mem::{transmute};
 use std::fmt::{self, Display};
-use encoding::{Encoding, EncoderTrap};
-use encoding::all::{WINDOWS_1251, WINDOWS_1252};
+use encoding::{EncoderTrap};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct, SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
 use either::{Either, Left, Right};
 
-macro_attr! {
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-    #[derive(IterVariants!(CodePageVariants))]
-    pub enum CodePage {
-        English,
-        Russian,
-    }
-}
-
-impl CodePage {
-    pub fn encoding(self) -> &'static dyn Encoding {
-        match self {
-            CodePage::English => WINDOWS_1252,
-            CodePage::Russian => WINDOWS_1251,
-        }
-    }
-}
+use crate::code_vec::*;
 
 #[derive(Debug)]
 pub enum SerOrIoError {
-    Custom(String),
-    IoError(io::Error),
-    LargeObject(usize),
-    UnrepresentableChar(char, CodePage),
-    ZeroSizedLastSequenceElement,
-    VariantIndexMismatch { variant_index: u32, variant_size: u32 },
-    ZeroSizedOptional,
+    Io(io::Error),
+    Ser(SerError),
 }
 
 impl Display for SerOrIoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SerOrIoError::Custom(s) => Display::fmt(s, f),
-            SerOrIoError::IoError(e) => Display::fmt(e, f),
-            SerOrIoError::LargeObject(size) => write!(f, "object has too large size ({} B)", size),
-            SerOrIoError::UnrepresentableChar(c, p) => write!(f, "the '{}' char is not representable in {:?} code page", c, p),
-            SerOrIoError::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
-            SerOrIoError::VariantIndexMismatch { variant_index, variant_size } => 
-                write!(f, "variant index ({}) should be equal to variant size ({})", variant_index, variant_size),
-            SerOrIoError::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
+            SerOrIoError::Io(e) => Display::fmt(e, f),
+            SerOrIoError::Ser(e) => Display::fmt(e, f),
         }
     }
 }
 
 impl std::error::Error for SerOrIoError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        if let SerOrIoError::IoError(e) = self {
-            Some(e)
-        } else {
-            None
+        match self {
+            SerOrIoError::Io(e) => Some(e),
+            SerOrIoError::Ser(e) => Some(e),
         }
     }
 }
 
 impl ser::Error for SerOrIoError {
-    fn custom<T: Display>(msg: T) -> Self { SerOrIoError::Custom(format!("{}", msg)) }
+    fn custom<T: Display>(msg: T) -> Self { SerOrIoError::Ser(SerError::custom(msg)) }
+}
+
+impl From<SerError> for SerOrIoError {
+    fn from(e: SerError) -> SerOrIoError { SerOrIoError::Ser(e) }
 }
 
 #[derive(Debug)]
@@ -149,7 +124,7 @@ struct KeySerializer<'a, W: Write + ?Sized> {
 }
 
 fn serialize_u8(writer: &mut (impl Write + ?Sized), v: u8) -> Result<(), SerOrIoError> {
-    writer.write_all(&[v]).map_err(SerOrIoError::IoError)
+    writer.write_all(&[v]).map_err(SerOrIoError::Io)
 }
 
 fn serialize_u32(writer: &mut (impl Write + ?Sized), v: u32) -> Result<(), SerOrIoError> {
@@ -158,16 +133,16 @@ fn serialize_u32(writer: &mut (impl Write + ?Sized), v: u32) -> Result<(), SerOr
         ((v >> 8) & 0xFF) as u8,
         ((v >> 16) & 0xFF) as u8,
         (v >> 24) as u8
-    ]).map_err(SerOrIoError::IoError)
+    ]).map_err(SerOrIoError::Io)
 }
 
 fn serialize_bytes(writer: &mut (impl Write + ?Sized), v: &[u8]) -> Result<(), SerOrIoError> {
-    writer.write_all(v).map_err(SerOrIoError::IoError)
+    writer.write_all(v).map_err(SerOrIoError::Io)
 }
 
-fn size(len: usize) -> Result<u32, SerOrIoError> {
+fn size(len: usize) -> Result<u32, SerError> {
     if len > u32::max_value() as usize {
-        Err(SerOrIoError::LargeObject(len))
+        Err(SerError::LargeObject(len))
     } else {
         Ok(len as u32)
     }
@@ -201,7 +176,7 @@ impl<'a, W: Write + ?Sized> SerializeSeq for SeqSerializer<'a, W> {
     
     fn end(self) -> Result<Self::Ok, Self::Error> {
         if self.last_element_has_zero_size {
-            return Err(SerOrIoError::ZeroSizedLastSequenceElement);
+            return Err(SerError::ZeroSizedLastSequenceElement.into());
         }
         match self.buf.as_ref() {
             Left(&size) => Ok(size),
@@ -229,7 +204,7 @@ impl<'a, W: Write + ?Sized> SerializeSeq for KeySeqSerializer<'a, W> {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         if self.last_element_has_zero_size {
-            return Err(SerOrIoError::ZeroSizedLastSequenceElement);
+            return Err(SerError::ZeroSizedLastSequenceElement.into());
         }
         serialize_u32(self.writer, size(self.buf.len())?)?;
         serialize_bytes(self.writer, &self.buf)?;
@@ -414,7 +389,7 @@ impl<'a, W: Write + ?Sized> BaseStructVariantSerializer<'a, W> {
     fn end(self) -> Result<usize, SerOrIoError> {
         let variant_size = size(self.size)?;
         if self.variant_index != variant_size {
-            return Err(SerOrIoError::VariantIndexMismatch { variant_index: self.variant_index, variant_size });
+            return Err(SerError::VariantIndexMismatch { variant_index: self.variant_index, variant_size }.into());
         }
         Ok(self.size)
     }
@@ -481,7 +456,7 @@ fn bool_byte(v: bool) -> u8 {
 }
 
 fn serialize_u16(writer: &mut (impl Write + ?Sized), v: u16) -> Result<(), SerOrIoError> {
-    writer.write_all(&[(v & 0xFF) as u8, (v >> 8) as u8]).map_err(SerOrIoError::IoError)
+    writer.write_all(&[(v & 0xFF) as u8, (v >> 8) as u8]).map_err(SerOrIoError::Io)
 }
 
 fn serialize_u64(writer: &mut (impl Write + ?Sized), v: u64) -> Result<(), SerOrIoError> {
@@ -494,7 +469,7 @@ fn serialize_u64(writer: &mut (impl Write + ?Sized), v: u64) -> Result<(), SerOr
         ((v >> 40) & 0xFF) as u8,
         ((v >> 48) & 0xFF) as u8,
         (v >> 56) as u8
-    ]).map_err(SerOrIoError::IoError)
+    ]).map_err(SerOrIoError::Io)
 }
 
 serde_if_integer128! {
@@ -516,22 +491,22 @@ serde_if_integer128! {
             ((v >> 104) & 0xFF) as u8,
             ((v >> 112) & 0xFF) as u8,
             (v >> 120) as u8
-        ]).map_err(SerOrIoError::IoError)
+        ]).map_err(SerOrIoError::Io)
     }
 }
 
-fn char_byte(code_page: CodePage, v: char) -> Result<u8, SerOrIoError> {
+fn char_byte(code_page: CodePage, v: char) -> Result<u8, SerError> {
     let v = code_page.encoding()
         .encode(&v.to_string(), EncoderTrap::Strict)
-        .map_err(|_| SerOrIoError::UnrepresentableChar(v, code_page))?;
+        .map_err(|_| SerError::UnrepresentableChar(v, code_page))?;
     debug_assert_eq!(v.len(), 1);
     Ok(v[0])
 }
 
-fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, SerOrIoError> {
+fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, SerError> {
     code_page.encoding()
         .encode(v, EncoderTrap::Strict)
-        .map_err(|s| SerOrIoError::UnrepresentableChar(s.chars().nth(0).unwrap(), code_page))
+        .map_err(|s| SerError::UnrepresentableChar(s.chars().nth(0).unwrap(), code_page))
 }
 
 impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
@@ -634,7 +609,7 @@ impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
         -> Result<Self::Ok, Self::Error> {
 
         if variant_index != 0 { 
-            return Err(SerOrIoError::VariantIndexMismatch { variant_index, variant_size: 0 });
+            return Err(SerError::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
         }
         if !self.isolated {
             self.serialize_u32(0)
@@ -663,7 +638,7 @@ impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
             writer: &mut bytes,
             code_page: self.code_page
         })? == 0 {
-            return Err(SerOrIoError::ZeroSizedOptional);
+            return Err(SerError::ZeroSizedOptional.into());
         }
         self.serialize_bytes(&bytes)
     }
@@ -681,7 +656,7 @@ impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
         })?;
         let variant_size = size(v_size)?;
         if variant_index != variant_size {
-            return Err(SerOrIoError::VariantIndexMismatch { variant_index, variant_size });
+            return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
         }
         Ok(if self.isolated { 0 } else { 4 } + v_size)
     }
@@ -867,7 +842,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
         -> Result<Self::Ok, Self::Error> {
 
         if variant_index != 0 {
-            return Err(SerOrIoError::VariantIndexMismatch { variant_index, variant_size: 0 });
+            return Err(SerError::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
         }
         self.serialize_u32(0)
     }
@@ -883,7 +858,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
             writer: &mut bytes,
             code_page: self.code_page
         })? == 0 {
-            return Err(SerOrIoError::ZeroSizedOptional);
+            return Err(SerError::ZeroSizedOptional.into());
         }
         self.serialize_bytes(&bytes)
     }
@@ -899,7 +874,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
         })?;
         let variant_size = size(v_size)?;
         if variant_index != variant_size {
-            return Err(SerOrIoError::VariantIndexMismatch { variant_index, variant_size });
+            return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
         }
         Ok((None, 4 + v_size))
     }
