@@ -1121,7 +1121,7 @@ impl<'a, W: Write + ?Sized> SerializeSeq for SeqSerializer<'a, W> {
                 size
             },
             Right(buf) => {
-                v.serialize(EslSerializer {
+                v.serialize(VecEslSerializer {
                     isolated: false,
                     writer: buf,
                     code_page: self.code_page
@@ -1152,7 +1152,7 @@ impl<'a, W: Write + ?Sized> SerializeSeq for KeySeqSerializer<'a, W> {
     type Error = SerOrIoError;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.last_element_has_zero_size = v.serialize(EslSerializer {
+        self.last_element_has_zero_size = v.serialize(VecEslSerializer {
             isolated: false,
             writer: &mut self.buf,
             code_page: self.code_page
@@ -1183,7 +1183,7 @@ impl<'a, W: Write + ?Sized> BaseMapSerializer<'a, W> {
 
     fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), SerOrIoError> {
         let mut value = Vec::new();
-        v.serialize(EslSerializer {
+        v.serialize(VecEslSerializer {
             isolated: true,
             writer: &mut value,
             code_page: self.code_page
@@ -1302,11 +1302,11 @@ impl<'a, W: Write + ?Sized> SerializeTuple for KeyTupleSerializer<'a, W> {
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         self.size += if let Some(tail) = self.tail.as_mut() {
-            serialize_key_field(tail, self.code_page, v)
+            vec_serialize_key_field(tail, self.code_page, v)?
         } else {
             self.tail = Some(Vec::new());
-            serialize_key_field(self.writer, self.code_page, v)
-        }?;
+            serialize_key_field(self.writer, self.code_page, v)?
+        };
         Ok(())
     }
 
@@ -1573,7 +1573,7 @@ impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
         let mut bytes = Vec::new(); 
-        if value.serialize(EslSerializer {
+        if value.serialize(VecEslSerializer {
             isolated: true,
             writer: &mut bytes,
             code_page: self.code_page
@@ -1793,7 +1793,7 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
         let mut bytes = Vec::new();
-        if value.serialize(EslSerializer {
+        if value.serialize(VecEslSerializer {
             isolated: true,
             writer: &mut bytes,
             code_page: self.code_page
