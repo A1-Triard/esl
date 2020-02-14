@@ -94,7 +94,7 @@ struct VecKeySeqSerializer<'a> {
 struct VecBaseMapSerializer<'a> {
     code_page: CodePage,
     writer: &'a mut Vec<u8>,
-    key_tail: Option<Vec<u8>>,
+    value_size_stub_offset: usize,
     size: usize
 }
 
@@ -115,7 +115,7 @@ struct VecKeyStructSerializer<'a> {
 struct VecKeyTupleSerializer<'a> {
     code_page: CodePage,
     writer: &'a mut Vec<u8>,
-    tail: Option<Vec<u8>>,
+    value_size_stub_offset: Option<usize>,
     size: usize
 }
 
@@ -147,6 +147,13 @@ fn serialize_u32(writer: &mut Vec<u8>, v: u32) {
     writer.push(((v >> 8) & 0xFF) as u8);
     writer.push(((v >> 16) & 0xFF) as u8);
     writer.push((v >> 24) as u8);
+}
+
+fn write_u32(writer: &mut [u8], v: u32) {
+    writer[0] = (v & 0xFF) as u8;
+    writer[1] = ((v >> 8) & 0xFF) as u8;
+    writer[2] = ((v >> 16) & 0xFF) as u8;
+    writer[3] = (v >> 24) as u8;
 }
 
 fn size(len: usize) -> Result<u32, Error> {
@@ -199,7 +206,7 @@ impl<'a> SerializeSeq for VecSeqSerializer<'a> {
 }
 
 impl<'a> SerializeSeq for VecKeySeqSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -221,30 +228,34 @@ impl<'a> SerializeSeq for VecKeySeqSerializer<'a> {
     }
 }
 
+const SIZE_STUB: u32 = 0x1375F17B;
+
 impl<'a> VecBaseMapSerializer<'a> {
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Error> {
-        let (buf, size) = key.serialize(VecKeySerializer { 
+        let (value_size_stub_offset, size) = key.serialize(VecKeySerializer { 
             writer: self.writer,
             code_page: self.code_page
         })?;
         self.size += size;
-        self.key_tail = buf;
+        self.value_size_stub_offset = if let Some(value_size_stub_offset) = value_size_stub_offset {
+            value_size_stub_offset
+        } else {
+            let value_size_stub_offset = self.writer.len();
+            serialize_u32(self.writer, SIZE_STUB);
+            self.size += 4;
+            value_size_stub_offset
+        };
         Ok(())
     }
 
     fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Error> {
-        let mut value = Vec::new();
-        v.serialize(VecEslSerializer {
+        let value_size = v.serialize(VecEslSerializer {
             isolated: true,
-            writer: &mut value,
+            writer: self.writer,
             code_page: self.code_page
         })?;
-        serialize_u32(self.writer, size(value.len())?);
-        if let Some(key_tail) = &self.key_tail {
-            self.writer.extend_from_slice(key_tail);
-        }
-        self.writer.extend_from_slice(&value);
-        self.size += 4 + value.len();
+        write_u32(&mut self.writer[self.value_size_stub_offset .. self.value_size_stub_offset + 4], size(value_size)?);
+        self.size += value_size;
         Ok(())
     }
 }
@@ -267,7 +278,7 @@ impl<'a> SerializeMap for VecMapSerializer<'a> {
 }
 
 impl<'a> SerializeMap for VecKeyMapSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
@@ -348,26 +359,28 @@ impl<'a> SerializeStruct for VecStructSerializer<'a> {
 }
 
 impl<'a> SerializeTuple for VecKeyTupleSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.size += if let Some(tail) = self.tail.as_mut() {
-            serialize_key_field(tail, self.code_page, v)
+        self.size += if self.value_size_stub_offset.is_some() {
+            serialize_key_field(self.writer, self.code_page, v)?
         } else {
-            self.tail = Some(Vec::new());
-            serialize_key_field(self.writer, self.code_page, v)
-        }?;
+            let key_size = serialize_key_field(self.writer, self.code_page, v)?;
+            self.value_size_stub_offset = Some(self.writer.len());
+            serialize_u32(self.writer, SIZE_STUB);
+            key_size + 4
+        };
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((self.tail, self.size))
+        Ok((self.value_size_stub_offset, self.size))
     }
 }
 
 impl<'a> SerializeStruct for VecKeyStructSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
@@ -381,7 +394,7 @@ impl<'a> SerializeStruct for VecKeyStructSerializer<'a> {
 }
 
 impl<'a> SerializeTupleStruct for VecKeyStructSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -433,7 +446,7 @@ impl<'a> SerializeStructVariant for VecStructVariantSerializer<'a> {
 }
 
 impl<'a> SerializeTupleVariant for VecKeyStructVariantSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -447,7 +460,7 @@ impl<'a> SerializeTupleVariant for VecKeyStructVariantSerializer<'a> {
 }
 
 impl<'a> SerializeStructVariant for VecKeyStructVariantSerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
@@ -735,7 +748,7 @@ impl<'a> Serializer for VecEslSerializer<'a> {
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         Ok(VecMapSerializer(VecBaseMapSerializer {
-            key_tail: None,
+            value_size_stub_offset: usize::max_value(),
             writer: self.writer, code_page: self.code_page,
             size: 0
         }))
@@ -743,7 +756,7 @@ impl<'a> Serializer for VecEslSerializer<'a> {
 }
 
 impl<'a> Serializer for VecKeySerializer<'a> {
-    type Ok = (Option<Vec<u8>>, usize);
+    type Ok = (Option<usize>, usize);
     type Error = Error;
     type SerializeSeq = VecKeySeqSerializer<'a>;
     type SerializeTuple = VecKeyTupleSerializer<'a>;
@@ -906,7 +919,7 @@ impl<'a> Serializer for VecKeySerializer<'a> {
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(VecKeyTupleSerializer {
             writer: self.writer, code_page: self.code_page,
-            tail: None,
+            value_size_stub_offset: None,
             size: 0
         })
     }
@@ -935,7 +948,7 @@ impl<'a> Serializer for VecKeySerializer<'a> {
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         Ok(VecKeyMapSerializer(VecBaseMapSerializer {
-            key_tail: None,
+            value_size_stub_offset: usize::max_value(),
             writer: self.writer, code_page: self.code_page,
             size: 0
         }))
