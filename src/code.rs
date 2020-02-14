@@ -5,8 +5,7 @@ use std::fmt::{self, Display};
 use encoding::{Encoding, EncoderTrap};
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct, SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
-use either::Either;
-use either::Either::{Left, Right};
+use either::{Either, Left, Right};
 
 macro_attr! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]

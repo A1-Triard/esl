@@ -4,8 +4,6 @@ use std::fmt::{self, Display};
 use encoding::{Encoding, EncoderTrap};
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct, SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
-use either::Either;
-use either::Either::{Left, Right};
 
 macro_attr! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -67,11 +65,17 @@ struct VecEslSerializer<'a> {
 }
 
 #[derive(Debug)]
-struct VecSeqSerializer<'a> {
+struct VecBaseSeqSerializer<'a> {
     code_page: CodePage,
     writer: &'a mut Vec<u8>,
     last_element_has_zero_size: bool,
-    buf: Either<usize, Vec<u8>>,
+    size: usize,
+}
+
+#[derive(Debug)]
+struct VecSeqSerializer<'a> {
+    base: VecBaseSeqSerializer<'a>,
+    size_stub_offset: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -84,10 +88,8 @@ struct VecStructSerializer<'a> {
 
 #[derive(Debug)]
 struct VecKeySeqSerializer<'a> {
-    code_page: CodePage,
-    writer: &'a mut Vec<u8>,
-    last_element_has_zero_size: bool,
-    buf: Vec<u8>,
+    base: VecBaseSeqSerializer<'a>,
+    size_stub_offset: usize,
 }
 
 #[derive(Debug)]
@@ -164,43 +166,40 @@ fn size(len: usize) -> Result<u32, Error> {
     }
 }
 
+impl<'a> VecBaseSeqSerializer<'a> {
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Error> {
+        let size = v.serialize(VecEslSerializer {
+            isolated: false,
+            writer: self.writer, code_page: self.code_page,
+        })?;
+        self.last_element_has_zero_size = size == 0;
+        self.size += size;
+        Ok(())
+    }
+
+    fn end(&self) -> Result<(), Error> {
+        if self.last_element_has_zero_size {
+            return Err(Error::ZeroSizedLastSequenceElement);
+        }
+        Ok(())
+    }
+}
+
 impl<'a> SerializeSeq for VecSeqSerializer<'a> {
     type Ok = usize;
     type Error = Error;
     
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        let size = match self.buf.as_mut() {
-            Left(self_size) => {
-                let size = v.serialize(VecEslSerializer {
-                    isolated: false,
-                    writer: self.writer, code_page: self.code_page,
-                })?;
-                *self_size += size;
-                size
-            },
-            Right(buf) => {
-                v.serialize(VecEslSerializer {
-                    isolated: false,
-                    writer: buf,
-                    code_page: self.code_page
-                })?
-            }
-        };
-        self.last_element_has_zero_size = size == 0;
-        Ok(())
+        self.base.serialize_element(v)
     }
     
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        if self.last_element_has_zero_size {
-            return Err(Error::ZeroSizedLastSequenceElement);
-        }
-        match self.buf.as_ref() {
-            Left(&size) => Ok(size),
-            Right(buf) => {
-                serialize_u32(self.writer, size(buf.len())?);
-                self.writer.extend_from_slice(&buf);
-                Ok(4 + buf.len())
-            }
+        self.base.end()?;
+        if let Some(size_stub_offset) = self.size_stub_offset {
+            write_u32(&mut self.base.writer[size_stub_offset .. size_stub_offset + 4], size(self.base.size)?);
+            Ok(4 + self.base.size)
+        } else {
+            Ok(self.base.size)
         }
     }
 }
@@ -210,21 +209,13 @@ impl<'a> SerializeSeq for VecKeySeqSerializer<'a> {
     type Error = Error;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.last_element_has_zero_size = v.serialize(VecEslSerializer {
-            isolated: false,
-            writer: &mut self.buf,
-            code_page: self.code_page
-        })? == 0;
-        Ok(())
+        self.base.serialize_element(v)
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        if self.last_element_has_zero_size {
-            return Err(Error::ZeroSizedLastSequenceElement);
-        }
-        serialize_u32(self.writer, size(self.buf.len())?);
-        self.writer.extend_from_slice(&self.buf);
-        Ok((None, 4 + self.buf.len()))
+        self.base.end()?;
+        write_u32(&mut self.base.writer[self.size_stub_offset .. self.size_stub_offset + 4], size(self.base.size)?);
+        Ok((None, 4 + self.base.size))
     }
 }
 
@@ -749,10 +740,20 @@ impl<'a> Serializer for VecEslSerializer<'a> {
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        Ok(VecSeqSerializer { 
-            last_element_has_zero_size: false,
-            buf: if self.isolated { Left(0) } else { Right(Vec::new()) },
-            writer: self.writer, code_page: self.code_page,
+        let size_stub_offset = if !self.isolated {
+            let size_stub_offset = self.writer.len();
+            serialize_u32(self.writer, SIZE_STUB);
+            Some(size_stub_offset)
+        } else {
+            None
+        };
+        Ok(VecSeqSerializer {
+            base: VecBaseSeqSerializer {
+                writer: self.writer, code_page: self.code_page,
+                last_element_has_zero_size: false,
+                size: 0
+            },
+            size_stub_offset
         })
     }
 
@@ -950,10 +951,15 @@ impl<'a> Serializer for VecKeySerializer<'a> {
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        let size_stub_offset = self.writer.len();
+        serialize_u32(self.writer, SIZE_STUB);
         Ok(VecKeySeqSerializer {
-            last_element_has_zero_size: false,
-            buf: Vec::new(),
-            writer: self.writer, code_page: self.code_page,
+            base: VecBaseSeqSerializer {
+                last_element_has_zero_size: false,
+                writer: self.writer, code_page: self.code_page,
+                size: 0
+            },
+            size_stub_offset
         })
     }
 
