@@ -672,21 +672,19 @@ impl<'a, W: Write + ?Sized> Serializer for EslSerializer<'a, W> {
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T) 
         -> Result<Self::Ok, Self::Error> {
 
-        let mut bytes = Vec::new();
-        v.serialize(EslSerializer {
-            isolated: true,
-            writer: &mut bytes,
-            code_page: self.code_page
-        })?;
-        let variant_size = size(bytes.len())?;
-        if variant_index != variant_size {
-            return Err(Error::VariantIndexMismatch { variant_index, variant_size });
-        }
         if !self.isolated {
             serialize_u32(self.writer, variant_index)?;
         }
-        serialize_bytes(self.writer, &bytes)?;
-        Ok(if self.isolated { 0 } else { 4 } + bytes.len())
+        let v_size = v.serialize(EslSerializer {
+            isolated: true,
+            writer: self.writer,
+            code_page: self.code_page
+        })?;
+        let variant_size = size(v_size)?;
+        if variant_index != variant_size {
+            return Err(Error::VariantIndexMismatch { variant_index, variant_size });
+        }
+        Ok(if self.isolated { 0 } else { 4 } + v_size)
     }
 
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
@@ -894,19 +892,17 @@ impl<'a, W: Write + ?Sized> Serializer for KeySerializer<'a, W> {
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        let mut bytes = Vec::new();
-        v.serialize(EslSerializer {
+        serialize_u32(self.writer, variant_index)?;
+        let v_size = v.serialize(EslSerializer {
             isolated: true,
-            writer: &mut bytes,
+            writer: self.writer,
             code_page: self.code_page
         })?;
-        let variant_size = size(bytes.len())?;
+        let variant_size = size(v_size)?;
         if variant_index != variant_size {
             return Err(Error::VariantIndexMismatch { variant_index, variant_size });
         }
-        serialize_u32(self.writer, variant_index)?;
-        serialize_bytes(self.writer, &bytes)?;
-        Ok((None, 4 + bytes.len()))
+        Ok((None, 4 + v_size))
     }
 
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)

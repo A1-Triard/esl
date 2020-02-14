@@ -651,35 +651,45 @@ impl<'a> Serializer for VecEslSerializer<'a> {
     }
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
-        let mut bytes = Vec::new(); 
-        if value.serialize(VecEslSerializer {
+        let value_size_stub_offset = if !self.isolated {
+            let value_size_stub_offset = self.writer.len();
+            serialize_u32(self.writer, SIZE_STUB);
+            Some(value_size_stub_offset)
+        } else {
+            None
+        };
+        let value_size = value.serialize(VecEslSerializer {
             isolated: true,
-            writer: &mut bytes,
+            writer: self.writer,
             code_page: self.code_page
-        })? == 0 {
+        })?;
+        if value_size == 0 {
             return Err(Error::ZeroSizedOptional);
         }
-        self.serialize_bytes(&bytes)
+        if let Some(value_size_stub_offset) = value_size_stub_offset {
+            write_u32(&mut self.writer[value_size_stub_offset..value_size_stub_offset + 4], size(value_size)?);
+            Ok(4 + value_size)
+        } else {
+            Ok(value_size)
+        }
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T) 
         -> Result<Self::Ok, Self::Error> {
 
-        let mut bytes = Vec::new();
-        v.serialize(VecEslSerializer {
-            isolated: true,
-            writer: &mut bytes,
-            code_page: self.code_page
-        })?;
-        let variant_size = size(bytes.len())?;
-        if variant_index != variant_size {
-            return Err(Error::VariantIndexMismatch { variant_index, variant_size });
-        }
         if !self.isolated {
             serialize_u32(self.writer, variant_index);
         }
-        self.writer.extend_from_slice(&bytes);
-        Ok(if self.isolated { 0 } else { 4 } + bytes.len())
+        let v_size = v.serialize(VecEslSerializer {
+            isolated: true,
+            writer: self.writer,
+            code_page: self.code_page
+        })?;
+        let variant_size = size(v_size)?;
+        if variant_index != variant_size {
+            return Err(Error::VariantIndexMismatch { variant_index, variant_size });
+        }
+        Ok(if self.isolated { 0 } else { 4 } + v_size)
     }
 
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize) 
@@ -873,33 +883,34 @@ impl<'a> Serializer for VecKeySerializer<'a> {
     }
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
-        let mut bytes = Vec::new();
-        if value.serialize(VecEslSerializer {
+        let value_size_stub_offset = self.writer.len();
+        serialize_u32(self.writer, SIZE_STUB);
+        let value_size = value.serialize(VecEslSerializer {
             isolated: true,
-            writer: &mut bytes,
+            writer: self.writer,
             code_page: self.code_page
-        })? == 0 {
+        })?;
+        if value_size == 0 {
             return Err(Error::ZeroSizedOptional);
         }
-        self.serialize_bytes(&bytes)
+        write_u32(&mut self.writer[value_size_stub_offset.. value_size_stub_offset + 4], size(value_size)?);
+        Ok((None, 4 + value_size))
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        let mut bytes = Vec::new();
-        v.serialize(VecEslSerializer {
+        serialize_u32(self.writer, variant_index);
+        let v_size = v.serialize(VecEslSerializer {
             isolated: true,
-            writer: &mut bytes,
+            writer: self.writer,
             code_page: self.code_page
         })?;
-        let variant_size = size(bytes.len())?;
+        let variant_size = size(v_size)?;
         if variant_index != variant_size {
             return Err(Error::VariantIndexMismatch { variant_index, variant_size });
         }
-        serialize_u32(self.writer, variant_index);
-        self.writer.extend_from_slice(&bytes);
-        Ok((None, 4 + bytes.len()))
+        Ok((None, 4 + v_size))
     }
 
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
