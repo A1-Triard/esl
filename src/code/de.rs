@@ -505,19 +505,20 @@ mod tests {
         assert_eq!(d, Abcd { a: 5, b: '\u{DB}', c: 90, d: "S".into() });
     }
 
-/*    #[test]
+    #[test]
     fn vec_serialize_struct_not_isolated() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
-        let mut v = Vec::new();
-        s.serialize(VecEslSerializer {
-            isolated: false,
+        let data = [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83];
+        let d = Abcd::deserialize(EslDeserializer {
+            reader: &mut (&data[..]),
+            map_entry_value_size: None,
+            isolated: None,
             code_page: CodePage::Russian,
-            writer: &mut v
+            phantom: PhantomData
         }).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+        assert_eq!(d, Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() });
     }
 
-    #[derive(Hash, Eq, PartialEq)]
+/*    #[derive(Hash, Eq, PartialEq)]
     enum Variant { Variant1, Variant2 }
 
     impl Serialize for Variant {
