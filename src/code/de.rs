@@ -6,7 +6,6 @@ use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;
 use std::marker::PhantomData;
-use inplace::Inplace;
 
 use crate::code::code_page::*;
 
@@ -75,46 +74,36 @@ impl From<io::Error> for DeOrIoError {
     fn from(e: io::Error) -> DeOrIoError { DeOrIoError::Io(e) }
 }
 
-trait Reader<'de>: Read + Sized {
-    type PosWrap: ReaderPosWrap<'de, Self>;
+trait Reader<'de>: Read {
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>>;
-    fn with_pos(self) -> Self::PosWrap;
-}
-
-trait ReaderPos<'de>: Reader<'de> {
     fn pos(&self) -> isize;
 }
 
-trait ReaderWrap<'de, R: Reader<'de>> {
-    fn without_pos(self) -> R;
+struct GenericReader<'de, R: Read + ?Sized> {
+    reader: &'de mut R,
+    pos: isize,
 }
 
-trait ReaderPosWrap<'de, R: Reader<'de>>: ReaderWrap<'de, R> + ReaderPos<'de> { }
-
-impl<'de, R: Reader<'de>, T: ReaderPos<'de> + ReaderWrap<'de, R>> ReaderPosWrap<'de, R> for T { }
-
-struct GenericReader<'de, R: Read + ?Sized>(&'de mut R);
-
 impl<'de, R: Read + ?Sized> Read for GenericReader<'de, R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> { self.0.read(buf) }
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.reader.read(buf)?;
+        self.pos += read as isize;
+        Ok(read)
+    }
 }
 
 impl<'de, R: Read + ?Sized> Reader<'de> for GenericReader<'de, R> {
-    type PosWrap = GenericReaderPos<'de, GenericReader<'de, R>>;
-    
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>> {
         let mut buf = Vec::with_capacity(len);
         buf.resize(len, 0);
-        self.0.read_exact(&mut buf[..])?;
+        self.read_exact(&mut buf[..])?;
         Ok(Cow::Owned(buf))
     }
-    
-    fn with_pos(self) -> Self::PosWrap { GenericReaderPos { pos: 0, reader: self, phantom: PhantomData } }
+
+    fn pos(&self) -> isize { self.pos }
 }
 
 impl<'de> Reader<'de> for &'de [u8] {
-    type PosWrap = &'de [u8];
-    
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>> {
         if self.len() < len {
             Err(io::ErrorKind::UnexpectedEof.into())
@@ -125,68 +114,26 @@ impl<'de> Reader<'de> for &'de [u8] {
         }
     }
 
-    fn with_pos(self) -> Self::PosWrap { self }
-}
-
-impl<'de> ReaderPos<'de> for &'de [u8] {
     fn pos(&self) -> isize { -(self.len() as isize) }
 }
 
-impl<'de> ReaderWrap<'de, &'de [u8]> for &'de [u8] {
-    fn without_pos(self) -> &'de [u8] { self }
-}
-
-struct GenericReaderPos<'de, R: Reader<'de>> {
-    reader: R,
-    pos: isize,
-    phantom: PhantomData<&'de ()>
-}
-
-impl<'de, R: Reader<'de>> Read for GenericReaderPos<'de, R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let read = self.reader.read(buf)?;
-        self.pos += read as isize;
-        Ok(read)
-    }
-}
-
-impl<'de, R: Reader<'de>> Reader<'de> for GenericReaderPos<'de, R> {
-    type PosWrap = GenericReaderPos<'de, R>;
-    
-    fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>> { self.reader.read_bytes(len) }
-
-    fn with_pos(self) -> Self::PosWrap { self }
-}
-
-impl<'de, R: Reader<'de>> ReaderPos<'de> for GenericReaderPos<'de, R> {
-    fn pos(&self) -> isize { self.pos }
-}
-
-impl<'de, R: Reader<'de>> ReaderWrap<'de, R> for GenericReaderPos<'de, R> {
-    fn without_pos(self) -> R { self.reader }
-}
-
-impl<'de, R: Reader<'de>> ReaderWrap<'de, GenericReaderPos<'de, R>> for GenericReaderPos<'de, R> {
-    fn without_pos(self) -> GenericReaderPos<'de, R> { self }
-}
-
 #[derive(Debug)]
-struct SeqDeserializer<'a, 'de, R: ReaderPos<'de>> {
+struct SeqDeserializer<'a, 'de, R: Reader<'de>> {
     start_pos: isize,
     size: u32,
     code_page: CodePage,
-    reader: &'a mut Inplace<R>,
+    reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
 
-impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
+impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
     type Error = DeOrIoError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
         let element = seed.deserialize(EslDeserializer { 
-            isolated: None, code_page: self.code_page, reader: &mut self.reader,
-            phanton: PhantomData
+            isolated: None, code_page: self.code_page, reader: self.reader,
+            phantom: PhantomData
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
             return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
@@ -196,16 +143,16 @@ impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R>
 }
 
 #[derive(Debug)]
-struct IsolatedStructDeserializer<'a, 'de, R: ReaderPos<'de>> {
+struct IsolatedStructDeserializer<'a, 'de, R: Reader<'de>> {
     len: usize,
     size: u32,
     start_pos: isize,
     code_page: CodePage,
-    reader: &'a mut Inplace<R>,
+    reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
 
-impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for IsolatedStructDeserializer<'a, 'de, R> {
+impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for IsolatedStructDeserializer<'a, 'de, R> {
     type Error = DeOrIoError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
@@ -213,8 +160,8 @@ impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for IsolatedStructDeserializer<
         self.len -= 1;
         let isolated = if self.len == 0 { Some((self.reader.pos() - self.start_pos) as u32) } else { None };
         let element = seed.deserialize(EslDeserializer {
-            isolated, code_page: self.code_page, reader: &mut self.reader,
-            phanton: PhantomData
+            isolated, code_page: self.code_page, reader: self.reader,
+            phantom: PhantomData
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
             return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
@@ -227,7 +174,7 @@ impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for IsolatedStructDeserializer<
 struct StructDeserializer<'a, 'de, R: Reader<'de>> {
     len: usize,
     code_page: CodePage,
-    reader: &'a mut Inplace<R>,
+    reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
 
@@ -238,8 +185,8 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'a, 'de, R>
         if self.len == 0 { return Ok(None); }
         self.len -= 1;
         let element = seed.deserialize(EslDeserializer {
-            isolated: None, code_page: self.code_page, reader: &mut self.reader,
-            phanton: PhantomData
+            isolated: None, code_page: self.code_page, reader: self.reader,
+            phantom: PhantomData
         })?;
         Ok(Some(element))
     }
@@ -259,8 +206,8 @@ impl<'a, 'de, R: Reader<'de>> EslDeserializer<'a, 'de, R> {
 struct EslDeserializer<'a, 'de, R: Reader<'de>> {
     isolated: Option<u32>,
     code_page: CodePage,
-    reader: &'a mut Inplace<R>,
-    phanton: PhantomData<&'de ()>
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>
 }
 
 impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> {
@@ -383,35 +330,26 @@ impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> 
 
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         let size = self.deserialize_size()?;
-        let code_page = self.code_page;
-        self.reader.inplace(|reader| {
-            let mut reader = Inplace::from(reader.with_pos());
-            let res = visitor.visit_seq(SeqDeserializer {
-                size, start_pos: reader.pos(), reader: &mut reader,
-                code_page, phantom: PhantomData
-            });
-            (res, reader.deref_move().without_pos())
+        visitor.visit_seq(SeqDeserializer {
+            size, start_pos: self.reader.pos(),
+            code_page: self.code_page,
+            reader: self.reader, phantom: PhantomData
         })
     }
 
-    fn deserialize_tuple<V>(mut self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let code_page = self.code_page;
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         if let Some(size) = self.isolated {
-            self.reader.inplace(|reader| {
-                let mut reader = Inplace::from(reader.with_pos());
-                let res = visitor.visit_seq(IsolatedStructDeserializer {
-                    len, size,
-                    start_pos: reader.pos(),
-                    reader: &mut reader,
-                    code_page,
-                    phantom: PhantomData,
-                });
-                (res, reader.deref_move().without_pos())
+            visitor.visit_seq(IsolatedStructDeserializer {
+                len, size,
+                start_pos: self.reader.pos(),
+                code_page: self.code_page,
+                reader: self.reader,
+                phantom: PhantomData,
             })
         } else {
             visitor.visit_seq(StructDeserializer {
-                len, reader: &mut self.reader,
-                code_page,
+                code_page: self.code_page,
+                len, reader: self.reader,
                 phantom: PhantomData,
             })
         }
