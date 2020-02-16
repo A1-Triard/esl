@@ -1,7 +1,7 @@
 use serde::{Deserializer};
 use std::fmt::{self, Display};
 use encoding::{DecoderTrap};
-use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess};
+use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;
@@ -22,7 +22,7 @@ impl Display for DeError {
         match self {
             DeError::Custom(s) => Display::fmt(s, f),
             DeError::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({})", b),
-            DeError::DeserializeAnyNotSupported => write!(f, "deserialize_any not supported"),
+            DeError::DeserializeAnyNotSupported => write!(f, "deserialize_any and deserialize_ignored_any not supported"),
             DeError::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {}, expected = {})", actual, expected),
         }
     }
@@ -158,8 +158,8 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.len == 0 { return Ok(None); }
         self.len -= 1;
-        let isolated = self.isolated.and_then(|(start_pos, _)| {
-            if self.len == 0 { Some((self.reader.pos() - start_pos) as u32) } else { None }
+        let isolated = self.isolated.and_then(|(start_pos, size)| {
+            if self.len == 0 { Some(size - (self.reader.pos() - start_pos) as u32) } else { None }
         });
         let element = seed.deserialize(EslDeserializer {
             isolated, code_page: self.code_page, reader: self.reader,
@@ -209,6 +209,52 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
             return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
         }
         Ok(value)
+    }
+}
+
+#[derive(Debug)]
+struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
+    size: u32,
+    code_page: CodePage,
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>
+}
+
+impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R> {
+    type Error = DeOrIoError;
+
+    fn unit_variant(self) -> Result<(), Self::Error> { Ok(()) }
+    
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error> where T: DeserializeSeed<'de> {
+        seed.deserialize(EslDeserializer {
+            map_entry_value_size: None,
+            isolated: Some(self.size),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData
+        })
+    }
+
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_seq(StructDeserializer {
+            len,
+            map_entry_value_size: None,
+            isolated: Some((self.reader.pos(), self.size)),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        })
+    }
+
+    fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_seq(StructDeserializer {
+            len: fields.len(),
+            map_entry_value_size: None,
+            isolated: Some((self.reader.pos(), self.size)),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        })
     }
 }
 
@@ -402,15 +448,250 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         })
     }
 
-    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_enum(self)
     }
 
     fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+        panic!("deserialize_identifier");
+    }
+    
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        self.deserialize_any(visitor)
+    }
+}
+
+impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, 'de, R> {
+    type Error = DeOrIoError;
+    type Variant = EnumDeserializer<'a, 'de, R>;
+
+    fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> where V: DeserializeSeed<'de> {
+        let variant_index = self.deserialize_size()?;
+        let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
+        Ok((res?, EnumDeserializer {
+            size: variant_index,
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::code::de::*;
+    use serde::{Deserialize};
+    //use std::collections::HashMap;
+    use std::marker::PhantomData;
+
+    #[derive(Deserialize, Eq, PartialEq, Debug)]
+    struct Abcd {
+        a: i16,
+        b: char,
+        c: u32,
+        d: String
     }
 
-    fn deserialize_ignored_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+    #[test]
+    fn vec_deserialize_struct() {
+        let data = [5, 0, 219, 90, 0, 0, 0, 83];
+        let d = Abcd::deserialize(EslDeserializer {
+            reader: &mut (&data[..]),
+            map_entry_value_size: None,
+            isolated: Some(data.len() as u32),
+            code_page: CodePage::English,
+            phantom: PhantomData
+        }).unwrap();
+        assert_eq!(d, Abcd { a: 5, b: '\u{DB}', c: 90, d: "S".into() });
     }
+
+/*    #[test]
+    fn vec_serialize_struct_not_isolated() {
+        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let mut v = Vec::new();
+        s.serialize(VecEslSerializer {
+            isolated: false,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+    }
+
+    #[derive(Hash, Eq, PartialEq)]
+    enum Variant { Variant1, Variant2 }
+
+    impl Serialize for Variant {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+            serializer.serialize_u8(match self {
+                Variant::Variant1 => 1,
+                Variant::Variant2 => 2
+            })
+        }
+    }
+
+    #[derive(Serialize, Hash, Eq, PartialEq)]
+    struct Key {
+        variant: Variant,
+        s: String
+    }
+
+    #[derive(Serialize)]
+    struct Map {
+        map: HashMap<Key, String>,
+        unit: (),
+        i: i8
+    }
+
+    #[test]
+    fn vec_serialize_map() {
+        let mut s = Map {
+            map: HashMap::new(),
+            unit: (),
+            i: -3
+        };
+        s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
+        let mut v = Vec::new();
+        s.serialize(VecEslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            5, 0, 0, 0, 118, 97, 108, 117, 101,
+            253
+        ]);
+    }
+
+    #[test]
+    fn vec_serialize_tuple_key() {
+        let mut s: HashMap<(Key, Key), u64> = HashMap::new();
+        s.insert((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        ), 22);
+        let mut v = Vec::new();
+        s.serialize(VecEslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            8, 0, 0, 0,
+            1, 3, 0, 0, 0, 241, 242, 240,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }
+
+    #[derive(Serialize, Hash, Eq, PartialEq)]
+    struct Key2((Key, Key));
+
+    #[test]
+    fn vec_serialize_newtype_key() {
+        let mut s: HashMap<Key2, u64> = HashMap::new();
+        s.insert(Key2((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        )), 22);
+        let mut v = Vec::new();
+        s.serialize(VecEslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            1, 3, 0, 0, 0, 241, 242, 240,
+            8, 0, 0, 0,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }
+
+    #[test]
+    fn serialize_struct() {
+        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let mut v = Vec::new();
+        s.serialize(EslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
+    }
+
+    #[test]
+    fn serialize_struct_not_isolated() {
+        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let mut v = Vec::new();
+        s.serialize(EslSerializer {
+            isolated: false,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+    }
+
+    #[test]
+    fn serialize_map() {
+        let mut s = Map {
+            map: HashMap::new(),
+            unit: (),
+            i: -3
+        };
+        s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
+        let mut v = Vec::new();
+        s.serialize(EslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            5, 0, 0, 0, 118, 97, 108, 117, 101,
+            253
+        ]);
+    }
+
+    #[test]
+    fn serialize_tuple_key() {
+        let mut s: HashMap<(Key, Key), u64> = HashMap::new();
+        s.insert((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        ), 22);
+        let mut v = Vec::new();
+        s.serialize(EslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            8, 0, 0, 0,
+            1, 3, 0, 0, 0, 241, 242, 240,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }
+
+    #[test]
+    fn serialize_newtype_key() {
+        let mut s: HashMap<Key2, u64> = HashMap::new();
+        s.insert(Key2((
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        )), 22);
+        let mut v = Vec::new();
+        s.serialize(EslSerializer {
+            isolated: true,
+            code_page: CodePage::Russian,
+            writer: &mut v
+        }).unwrap();
+        assert_eq!(v, vec![
+            2, 3, 0, 0, 0, 115, 116, 114,
+            1, 3, 0, 0, 0, 241, 242, 240,
+            8, 0, 0, 0,
+            22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }*/
 }
