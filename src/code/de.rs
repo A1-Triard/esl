@@ -391,8 +391,15 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         })
     }
 
-    fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+    fn deserialize_struct<V>(self, _: &'static str, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_seq(StructDeserializer {
+            len: fields.len(),
+            map_entry_value_size: None,
+            isolated: self.isolated.map(|size| (self.reader.pos(), size)),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        })
     }
 
     fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
