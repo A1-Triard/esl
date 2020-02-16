@@ -328,8 +328,14 @@ impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> 
         })
     }
 
-    fn deserialize_tuple_struct<V>(self, _: &'static str, _len: usize, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+    fn deserialize_tuple_struct<V>(self, _: &'static str, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_seq(StructDeserializer {
+            len,
+            isolated: self.isolated.map(|size| (self.reader.pos(), size)),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        })
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
