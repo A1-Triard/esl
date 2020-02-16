@@ -1,7 +1,7 @@
 use serde::{Deserializer};
 use std::fmt::{self, Display};
 use encoding::{DecoderTrap};
-use serde::de::{self, Visitor, SeqAccess, DeserializeSeed};
+use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess};
 use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;
@@ -133,7 +133,7 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
         if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
         let element = seed.deserialize(EslDeserializer { 
             isolated: None, code_page: self.code_page, reader: self.reader,
-            phantom: PhantomData
+            phantom: PhantomData, map_entry_value_size: None
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
             return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
@@ -143,15 +143,16 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
 }
 
 #[derive(Debug)]
-struct StructDeserializer<'a, 'de, R: Reader<'de>> {
+struct StructDeserializer<'r, 'a, 'de, R: Reader<'de>> {
     len: usize,
     isolated: Option<(isize, u32)>,
     code_page: CodePage,
     reader: &'a mut R,
+    map_entry_value_size: Option<&'r mut Option<u32>>,
     phantom: PhantomData<&'de ()>
 }
 
-impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'a, 'de, R> {
+impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a, 'de, R> {
     type Error = DeOrIoError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
@@ -162,18 +163,65 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'a, 'de, R>
         });
         let element = seed.deserialize(EslDeserializer {
             isolated, code_page: self.code_page, reader: self.reader,
-            phantom: PhantomData
+            phantom: PhantomData, map_entry_value_size: None
         })?;
         if let Some((start_pos, size)) = self.isolated {
             if self.reader.pos() > start_pos + size as isize {
                 return Err(DeError::InvalidSize { expected: size, actual: (self.reader.pos() - start_pos) as usize }.into());
             }
         }
+        if let Some(map_entry_value_size) = self.map_entry_value_size.take() {
+            *map_entry_value_size = Some(self.reader.read_u32::<LittleEndian>()?)
+        }
         Ok(Some(element))
     }
 }
 
-impl<'a, 'de, R: Reader<'de>> EslDeserializer<'a, 'de, R> {
+#[derive(Debug)]
+struct MapDeserializer<'a, 'de, R: Reader<'de>> {
+    start_pos: isize,
+    size: u32,
+    code_page: CodePage,
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>,
+    value_size: u32
+}
+
+impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
+    type Error = DeOrIoError;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> where K: DeserializeSeed<'de> {
+        if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
+        let mut value_size = None;
+        let key = seed.deserialize(EslDeserializer {
+            isolated: None, code_page: self.code_page, reader: self.reader,
+            phantom: PhantomData, map_entry_value_size: Some(&mut value_size)
+        })?;
+        self.value_size = value_size.map_or_else(|| self.reader.read_u32::<LittleEndian>(), Ok)?;
+        Ok(Some(key))
+    }
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error> where V: DeserializeSeed<'de> {
+        let value = seed.deserialize(EslDeserializer {
+            isolated: Some(self.value_size), code_page: self.code_page, reader: self.reader,
+            phantom: PhantomData, map_entry_value_size: None
+        })?;
+        if self.reader.pos() > self.start_pos + self.size as isize {
+            return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
+        }
+        Ok(value)
+    }
+}
+
+#[derive(Debug)]
+struct EslDeserializer<'r, 'a, 'de, R: Reader<'de>> {
+    map_entry_value_size: Option<&'r mut Option<u32>>,
+    isolated: Option<u32>,
+    code_page: CodePage,
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>
+}
+
+impl<'r, 'a, 'de, R: Reader<'de>> EslDeserializer<'r, 'a, 'de, R> {
     fn deserialize_size(&mut self) -> Result<u32, io::Error> {
         if let Some(size) = self.isolated {
             Ok(size)
@@ -183,15 +231,7 @@ impl<'a, 'de, R: Reader<'de>> EslDeserializer<'a, 'de, R> {
     }
 }
 
-#[derive(Debug)]
-struct EslDeserializer<'a, 'de, R: Reader<'de>> {
-    isolated: Option<u32>,
-    code_page: CodePage,
-    reader: &'a mut R,
-    phantom: PhantomData<&'de ()>
-}
-
-impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> {
+impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 'de, R> {
     type Error = DeOrIoError;
 
     fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
@@ -318,9 +358,21 @@ impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> 
         })
     }
 
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        let size = self.deserialize_size()?;
+        visitor.visit_map(MapDeserializer {
+            size, start_pos: self.reader.pos(),
+            code_page: self.code_page,
+            reader: self.reader, phantom: PhantomData,
+            value_size: 0
+        })
+    }
+
+    fn deserialize_tuple<V>(mut self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        let map_entry_value_size = self.map_entry_value_size.take();
         visitor.visit_seq(StructDeserializer {
             len,
+            map_entry_value_size,
             isolated: self.isolated.map(|size| (self.reader.pos(), size)),
             code_page: self.code_page,
             reader: self.reader,
@@ -331,15 +383,12 @@ impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> 
     fn deserialize_tuple_struct<V>(self, _: &'static str, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         visitor.visit_seq(StructDeserializer {
             len,
+            map_entry_value_size: None,
             isolated: self.isolated.map(|size| (self.reader.pos(), size)),
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
-    }
-
-    fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
     }
 
     fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
