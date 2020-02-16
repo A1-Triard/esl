@@ -195,6 +195,56 @@ impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R>
     }
 }
 
+#[derive(Debug)]
+struct IsolatedStructDeserializer<'a, 'de, R: ReaderPos<'de>> {
+    len: usize,
+    size: u32,
+    start_pos: isize,
+    code_page: CodePage,
+    reader: &'a mut Inplace<R>,
+    phantom: PhantomData<&'de ()>
+}
+
+impl <'a, 'de, R: ReaderPos<'de>> SeqAccess<'de> for IsolatedStructDeserializer<'a, 'de, R> {
+    type Error = DeOrIoError;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
+        if self.len == 0 { return Ok(None); }
+        self.len -= 1;
+        let isolated = if self.len == 0 { Some((self.reader.pos() - self.start_pos) as u32) } else { None };
+        let element = seed.deserialize(EslDeserializer {
+            isolated, code_page: self.code_page, reader: &mut self.reader,
+            phanton: PhantomData
+        })?;
+        if self.reader.pos() > self.start_pos + self.size as isize {
+            return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
+        }
+        Ok(Some(element))
+    }
+}
+
+#[derive(Debug)]
+struct StructDeserializer<'a, 'de, R: Reader<'de>> {
+    len: usize,
+    code_page: CodePage,
+    reader: &'a mut Inplace<R>,
+    phantom: PhantomData<&'de ()>
+}
+
+impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'a, 'de, R> {
+    type Error = DeOrIoError;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
+        if self.len == 0 { return Ok(None); }
+        self.len -= 1;
+        let element = seed.deserialize(EslDeserializer {
+            isolated: None, code_page: self.code_page, reader: &mut self.reader,
+            phanton: PhantomData
+        })?;
+        Ok(Some(element))
+    }
+}
+
 impl<'a, 'de, R: Reader<'de>> EslDeserializer<'a, 'de, R> {
     fn deserialize_size(&mut self) -> Result<u32, io::Error> {
         if let Some(size) = self.isolated {
@@ -344,8 +394,27 @@ impl<'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'a, 'de, R> 
         })
     }
 
-    fn deserialize_tuple<V>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        unimplemented!()
+    fn deserialize_tuple<V>(mut self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        let code_page = self.code_page;
+        if let Some(size) = self.isolated {
+            self.reader.inplace(|reader| {
+                let mut reader = Inplace::from(reader.with_pos());
+                let res = visitor.visit_seq(IsolatedStructDeserializer {
+                    len, size,
+                    start_pos: reader.pos(),
+                    reader: &mut reader,
+                    code_page,
+                    phantom: PhantomData,
+                });
+                (res, reader.deref_move().without_pos())
+            })
+        } else {
+            visitor.visit_seq(StructDeserializer {
+                len, reader: &mut self.reader,
+                code_page,
+                phantom: PhantomData,
+            })
+        }
     }
 
     fn deserialize_tuple_struct<V>(self, _: &'static str, _len: usize, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
