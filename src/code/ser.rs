@@ -43,6 +43,46 @@ impl ser::Error for SerError {
 }
 
 #[derive(Debug)]
+pub enum SerOrIoError {
+    Io(io::Error),
+    Ser(SerError),
+}
+
+impl Display for SerOrIoError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SerOrIoError::Io(e) => Display::fmt(e, f),
+            SerOrIoError::Ser(e) => Display::fmt(e, f),
+        }
+    }
+}
+
+impl std::error::Error for SerOrIoError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SerOrIoError::Io(e) => Some(e),
+            SerOrIoError::Ser(e) => Some(e),
+        }
+    }
+}
+
+impl ser::Error for SerOrIoError {
+    fn custom<T: Display>(msg: T) -> Self { SerOrIoError::Ser(SerError::custom(msg)) }
+}
+
+impl From<SerError> for SerOrIoError {
+    fn from(e: SerError) -> SerOrIoError { SerOrIoError::Ser(e) }
+}
+
+pub trait Writer: Write {
+    
+}
+
+impl Writer for Vec<u8> {
+    
+}
+
+#[derive(Debug)]
 struct VecEslSerializer<'a> {
     isolated: bool,
     code_page: CodePage,
@@ -955,38 +995,6 @@ impl<'a> Serializer for VecKeySerializer<'a> {
             size: 0
         }))
     }
-}
-
-#[derive(Debug)]
-pub enum SerOrIoError {
-    Io(io::Error),
-    Ser(SerError),
-}
-
-impl Display for SerOrIoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SerOrIoError::Io(e) => Display::fmt(e, f),
-            SerOrIoError::Ser(e) => Display::fmt(e, f),
-        }
-    }
-}
-
-impl std::error::Error for SerOrIoError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            SerOrIoError::Io(e) => Some(e),
-            SerOrIoError::Ser(e) => Some(e),
-        }
-    }
-}
-
-impl ser::Error for SerOrIoError {
-    fn custom<T: Display>(msg: T) -> Self { SerOrIoError::Ser(SerError::custom(msg)) }
-}
-
-impl From<SerError> for SerOrIoError {
-    fn from(e: SerError) -> SerOrIoError { SerOrIoError::Ser(e) }
 }
 
 #[derive(Debug)]
