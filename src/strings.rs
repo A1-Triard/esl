@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
 use std::iter::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use crate::serde::ser::SerializeSeq;
 use crate::serde::ser::Error as ser_Error;
 use crate::serde::de::{self};
 
@@ -83,7 +84,6 @@ impl<'de> Deserialize<'de> for StringZ {
 }
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
-#[derive(Serialize,Deserialize)]
 pub struct StringZList {
     pub vec: Vec<String>,
     pub has_tail_zero: bool
@@ -95,6 +95,90 @@ impl Default for StringZList {
 
 impl<T: Into<Vec<String>>> From<T> for StringZList {
     fn from(t: T) -> StringZList { StringZList { vec: t.into(), has_tail_zero: true } }
+}
+
+impl Serialize for StringZList {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            let mut carets = self.vec.len() - self.vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+            if !self.has_tail_zero {
+                carets += 1;
+            }
+            let mut serializer = serializer.serialize_seq(Some(self.vec.len() + carets))?;
+            for s in &self.vec {
+                serializer.serialize_element(s)?;
+            }
+            for _ in 0..carets {
+                serializer.serialize_element("^")?;
+            }
+            serializer.end()
+        } else {
+            let mut capacity = 0;
+            for s in &self.vec {
+                if s.contains('\0') {
+                    return Err(S::Error::custom("zero-terminated string list item contains zero byte"));
+                }
+                capacity += s.len() + 1;
+            }
+            let mut text = String::with_capacity(capacity);
+            for s in &self.vec {
+                text.push_str(s);
+                text.push('\0');
+            }
+            if !self.has_tail_zero {
+                text.truncate(text.len() - 1);
+            }
+            serializer.serialize_str(&text)
+        }
+    }
+}
+
+struct StringZListHRDeserializer;
+
+impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
+    type Value = StringZList;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "string sequence")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let mut vec: Vec<String> = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(line) = seq.next_element()? {
+            vec.push(line);
+        }
+        let carets = vec.len() - vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+        let has_tail_zero = carets % 2 == 1;
+        let carets = (carets + 1) / 2;
+        vec.truncate(vec.len() - carets);
+        Ok(StringZList { vec, has_tail_zero })
+    }
+}
+
+struct StringZListNHRDeserializer;
+
+impl<'de> de::Visitor<'de> for StringZListNHRDeserializer {
+    type Value = StringZList;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "string")
+    }
+
+    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+        let has_tail_zero = v.as_bytes().last().map_or(false, |&x| x == 0);
+        let v = if has_tail_zero { &v[.. v.len() - 1] } else { v };
+        Ok(StringZList { vec: v.split('\0').map(|x| x.into()).collect(), has_tail_zero })
+    }
+}
+
+impl<'de> Deserialize<'de> for StringZList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_seq(StringZListHRDeserializer)
+        } else {
+            deserializer.deserialize_str(StringZListNHRDeserializer)
+        }
+    }
 }
 
 #[cfg(test)]
