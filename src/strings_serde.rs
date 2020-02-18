@@ -39,12 +39,12 @@ pub trait SerializerTes3Ext: Serializer {
     }
 
     fn serialize_hr_string_z(self, s: &StringZ) -> Result<Self::Ok, Self::Error> {
-        let mut carets = s.str.len() - s.str.rfind(|x| x != '^').map_or(0, |i| 1 + i);
+        let mut carets = s.string.len() - s.string.rfind(|x| x != '^').map_or(0, |i| 1 + i);
         if !s.has_tail_zero {
             carets += 1;
         }
-        let mut e = String::with_capacity(s.str.len() + carets);
-        e.push_str(&s.str);
+        let mut e = String::with_capacity(s.string.len() + carets);
+        e.push_str(&s.string);
         e.extend(iter::repeat('^').take(carets));
         self.serialize_str(&e)
     }
@@ -53,10 +53,10 @@ pub trait SerializerTes3Ext: Serializer {
         if self.is_human_readable() {
             self.serialize_hr_string_z(s)
         } else {
-            if !s.has_tail_zero && s.str.as_bytes().last().map_or(false, |&x| x == 0) {
+            if !s.has_tail_zero && s.string.as_bytes().last().map_or(false, |&x| x == 0) {
                 return Err(Self::Error::custom("zero-terminated string value has tail zero"));
             }
-            let bytes = code_page.encoding().encode(&s.str, EncoderTrap::Strict)
+            let bytes = code_page.encoding().encode(&s.string, EncoderTrap::Strict)
                 .map_err(|x| Self::Error::custom(&format!("unencodable char: {}", x)))?;
             let len = bytes.len() + if s.has_tail_zero { 1 } else { 0 };
             let mut serializer = self.serialize_tuple(len)?;
@@ -222,7 +222,7 @@ impl<'de> de::Visitor<'de> for StringZHRDeserializer {
         let carets = v.len() - v.rfind(|x| x != '^').map_or(0, |i| 1 + i);
         let has_tail_zero = carets % 2 == 1;
         let carets = (carets + 1) / 2;
-        Ok(StringZ { str: v[.. v.len() - carets].into(), has_tail_zero })
+        Ok(StringZ { string: v[.. v.len() - carets].into(), has_tail_zero })
     }
 }
 
@@ -256,7 +256,7 @@ impl<'de> de::Visitor<'de> for StringZDeserializer {
             let has_tail_zero = bytes.last().map_or(false, |&x| x == 0);
             let bytes = if has_tail_zero { &bytes[.. bytes.len() - 1] } else { &bytes };
             let str = self.code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap();
-            Ok(StringZ { str, has_tail_zero })
+            Ok(StringZ { string: str, has_tail_zero })
         }
     }
 }

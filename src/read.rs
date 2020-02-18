@@ -184,7 +184,7 @@ fn string_z_field<E>(code_page: CodePage, allow_coerce: bool) -> impl Fn(&[u8]) 
             } else {
                 (input, false)
             };
-            StringZ { str: decode_string(code_page, input), has_tail_zero }
+            StringZ { string: decode_string(code_page, input), has_tail_zero }
         }))
     }
 }
@@ -195,7 +195,7 @@ fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8])
     no_err(
         map(
             string_z_field(code_page, false),
-            |s| StringZList { vec: s.str.split("\0").map(String::from).collect(), has_tail_zero: s.has_tail_zero }
+            |s| StringZList { vec: s.string.split("\0").map(String::from).collect(), has_tail_zero: s.has_tail_zero }
         )
     )
 }
