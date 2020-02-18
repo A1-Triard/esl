@@ -9,7 +9,7 @@ use byteorder::{WriteBytesExt, LittleEndian};
 use crate::code::code_page::*;
 
 #[derive(Debug)]
-pub enum SerError {
+pub enum Error {
     Custom(String),
     LargeObject(usize),
     UnrepresentableChar(char, CodePage),
@@ -18,82 +18,82 @@ pub enum SerError {
     ZeroSizedOptional,
 }
 
-impl Display for SerError {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SerError::Custom(s) => Display::fmt(s, f),
-            SerError::LargeObject(size) => write!(f, "object has too large size ({} B)", size),
-            SerError::UnrepresentableChar(c, p) => write!(f, "the '{}' char is not representable in {:?} code page", c, p),
-            SerError::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
-            SerError::VariantIndexMismatch { variant_index, variant_size } =>
+            Error::Custom(s) => Display::fmt(s, f),
+            Error::LargeObject(size) => write!(f, "object has too large size ({} B)", size),
+            Error::UnrepresentableChar(c, p) => write!(f, "the '{}' char is not representable in {:?} code page", c, p),
+            Error::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
+            Error::VariantIndexMismatch { variant_index, variant_size } =>
                 write!(f, "variant index ({}) should be equal to variant size ({})", variant_index, variant_size),
-            SerError::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
+            Error::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
         }
     }
 }
 
-impl std::error::Error for SerError {
+impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         None
     }
 }
 
-impl ser::Error for SerError {
-    fn custom<T: Display>(msg: T) -> Self { SerError::Custom(format!("{}", msg)) }
+impl ser::Error for Error {
+    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{}", msg)) }
 }
 
 #[derive(Debug)]
-pub enum SerOrIoError {
+pub enum IoError {
     Io(io::Error),
-    Ser(SerError),
+    Other(Error),
 }
 
-impl Display for SerOrIoError {
+impl Display for IoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SerOrIoError::Io(e) => Display::fmt(e, f),
-            SerOrIoError::Ser(e) => Display::fmt(e, f),
+            IoError::Io(e) => Display::fmt(e, f),
+            IoError::Other(e) => Display::fmt(e, f),
         }
     }
 }
 
-impl std::error::Error for SerOrIoError {
+impl std::error::Error for IoError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            SerOrIoError::Io(e) => Some(e),
-            SerOrIoError::Ser(e) => Some(e),
+            IoError::Io(e) => Some(e),
+            IoError::Other(e) => Some(e),
         }
     }
 }
 
-impl ser::Error for SerOrIoError {
-    fn custom<T: Display>(msg: T) -> Self { SerOrIoError::Ser(SerError::custom(msg)) }
+impl ser::Error for IoError {
+    fn custom<T: Display>(msg: T) -> Self { IoError::Other(Error::custom(msg)) }
 }
 
-impl From<SerError> for SerOrIoError {
-    fn from(e: SerError) -> SerOrIoError { SerOrIoError::Ser(e) }
+impl From<Error> for IoError {
+    fn from(e: Error) -> IoError { IoError::Other(e) }
 }
 
-impl From<io::Error> for SerOrIoError {
-    fn from(e: io::Error) -> SerOrIoError { SerOrIoError::Io(e) }
+impl From<io::Error> for IoError {
+    fn from(e: io::Error) -> IoError { IoError::Io(e) }
 }
 
 const SIZE_STUB: u32 = 0x1375F17B;
 
-fn size(len: usize) -> Result<u32, SerError> {
+fn size(len: usize) -> Result<u32, Error> {
     if len > u32::max_value() as usize {
-        Err(SerError::LargeObject(len))
+        Err(Error::LargeObject(len))
     } else {
         Ok(len as u32)
     }
 }
 
-pub trait Writer: Write {
+pub(crate) trait Writer: Write {
     type Buf: Debug;
     
     fn pos(&self) -> usize;
     fn begin_isolate(&mut self) -> Self::Buf;
-    fn end_isolate(&mut self, buf: Self::Buf, variadic_part_pos: usize) -> Result<(), SerOrIoError>;
+    fn end_isolate(&mut self, buf: Self::Buf, variadic_part_pos: usize) -> Result<(), IoError>;
 }
 
 impl Writer for Vec<u8> {
@@ -107,14 +107,14 @@ impl Writer for Vec<u8> {
         value_size_stub_offset
     }
 
-    fn end_isolate(&mut self, value_size_stub_offset: usize, value_offset: usize) -> Result<(), SerOrIoError> {
+    fn end_isolate(&mut self, value_size_stub_offset: usize, value_offset: usize) -> Result<(), IoError> {
         let value_size = size(self.len() - value_offset)?;
         (&mut self[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
         Ok(())
     }
 }
 
-pub struct GenericWriter<'a, W: Write + ?Sized> {
+pub(crate) struct GenericWriter<'a, W: Write + ?Sized> {
     writer: &'a mut W,
     write_buf: Option<Vec<u8>>,
     pos: usize,
@@ -167,7 +167,7 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
          }
     }
 
-    fn end_isolate(&mut self, value_size_stub_offset: Option<usize>, value_pos: usize) -> Result<(), SerOrIoError> {
+    fn end_isolate(&mut self, value_size_stub_offset: Option<usize>, value_pos: usize) -> Result<(), IoError> {
         let value_size = size(self.pos - value_pos)?;
         if let Some(value_size_stub_offset) = value_size_stub_offset {
             let write_buf = self.write_buf.as_mut().unwrap();
@@ -182,7 +182,7 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
 }
     
 #[derive(Debug)]
-pub struct EslSerializer<'r, 'a, W: Writer> {
+pub(crate) struct EslSerializer<'r, 'a, W: Writer> {
     isolated: bool,
     code_page: CodePage,
     writer: &'a mut W,
@@ -196,7 +196,7 @@ impl<'r, 'a, W: Writer> EslSerializer<'r, 'a, W> {
 }
 
 #[derive(Debug)]
-pub struct SeqSerializer<'a, W: Writer> {
+pub(crate) struct SeqSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     last_element_has_zero_size: bool,
@@ -204,7 +204,7 @@ pub struct SeqSerializer<'a, W: Writer> {
 }
 
 #[derive(Debug)]
-pub struct MapSerializer<'a, W: Writer> {
+pub(crate) struct MapSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     value_buf_and_pos: Option<(W::Buf, usize)>,
@@ -212,7 +212,7 @@ pub struct MapSerializer<'a, W: Writer> {
 }
 
 #[derive(Debug)]
-pub struct StructSerializer<'r, 'a, W: Writer> {
+pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
@@ -222,7 +222,7 @@ pub struct StructSerializer<'r, 'a, W: Writer> {
 
 impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         let element_pos = self.writer.pos();
@@ -237,7 +237,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         if self.last_element_has_zero_size {
-            return Err(SerError::ZeroSizedLastSequenceElement.into());
+            return Err(Error::ZeroSizedLastSequenceElement.into());
         }
         if let Some((buf, start_pos)) = self.buf_and_start_pos {
             self.writer.end_isolate(buf, start_pos)?;
@@ -248,7 +248,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
 
 impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
         let mut value_buf = None;
@@ -288,7 +288,7 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
 }
 
 impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), SerOrIoError> {
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), IoError> {
         if let Some(len) = self.len.as_mut() {
             if *len == 0 { panic!() }
             *len -= 1;
@@ -306,11 +306,11 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
         Ok(())
     }
 
-    fn end(self) -> Result<(), SerOrIoError> {
+    fn end(self) -> Result<(), IoError> {
         if let Some((start_pos, variant_index)) = self.start_pos_and_variant_index {
             let variant_size = size(self.writer.pos() - start_pos)?;
             if variant_index != variant_size {
-                return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
+                return Err(Error::VariantIndexMismatch { variant_index, variant_size }.into());
             }
         }
         Ok(())
@@ -319,7 +319,7 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> SerializeTuple for StructSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         self.serialize_element(v)
@@ -332,7 +332,7 @@ impl<'r, 'a, W: Writer> SerializeTuple for StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> SerializeTupleStruct for StructSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         self.serialize_element(v)
@@ -345,7 +345,7 @@ impl<'r, 'a, W: Writer> SerializeTupleStruct for StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> SerializeStruct for StructSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
         self.serialize_element(v)
@@ -358,7 +358,7 @@ impl<'r, 'a, W: Writer> SerializeStruct for StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> SerializeTupleVariant for StructSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         self.serialize_element(v)
@@ -371,7 +371,7 @@ impl<'r, 'a, W: Writer> SerializeTupleVariant for StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> SerializeStructVariant for StructSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
         self.serialize_element(v)
@@ -384,7 +384,7 @@ impl<'r, 'a, W: Writer> SerializeStructVariant for StructSerializer<'r, 'a, W> {
 
 impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     type Ok = ();
-    type Error = SerOrIoError;
+    type Error = IoError;
     type SerializeSeq = SeqSerializer<'a, W>;
     type SerializeTuple = StructSerializer<'r, 'a, W>;
     type SerializeTupleStruct = StructSerializer<'r, 'a, W>;
@@ -470,7 +470,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
         let v = self.code_page.encoding()
             .encode(&v.to_string(), EncoderTrap::Strict)
-            .map_err(|_| SerError::UnrepresentableChar(v, self.code_page))?;
+            .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?;
         debug_assert_eq!(v.len(), 1);
         self.serialize_u8(v[0])
     }
@@ -478,7 +478,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
         let bytes = self.code_page.encoding()
             .encode(v, EncoderTrap::Strict)
-            .map_err(|s| SerError::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
+            .map_err(|s| Error::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
         self.serialize_bytes(&bytes)
     }
 
@@ -494,7 +494,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         -> Result<Self::Ok, Self::Error> {
 
         if variant_index != 0 {
-            return Err(SerError::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
+            return Err(Error::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
         }
         if !self.isolated {
             self.serialize_u32(0)
@@ -530,7 +530,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             map_entry_value_buf: None
         })?;
         if self.writer.pos() == value_pos {
-            return Err(SerError::ZeroSizedOptional.into());
+            return Err(Error::ZeroSizedOptional.into());
         }
         if let Some(buf) = buf {
             self.writer.end_isolate(buf, value_pos)?;
@@ -553,7 +553,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         })?;
         let variant_size = size(self.writer.pos() - value_pos)?;
         if variant_index != variant_size {
-            return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
+            return Err(Error::VariantIndexMismatch { variant_index, variant_size }.into());
         }
         Ok(())
     }

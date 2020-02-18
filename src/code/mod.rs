@@ -1,4 +1,4 @@
-mod ser;
+pub mod ser;
 pub mod de;
 
 mod code_page;
@@ -8,8 +8,7 @@ use serde::de::DeserializeSeed;
 use crate::code::de::*;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-pub use crate::code::ser::{SerOrIoError, SerError};
-use crate::code::ser::{GenericWriter, EslSerializer};
+use crate::code::ser::*;
 
 pub fn deserialize_from<'de, T: Deserialize<'de>>(reader: &'de mut (impl Read + ?Sized), code_page: CodePage, isolated: Option<u32>)
     -> Result<T, de::Error> {
@@ -46,18 +45,18 @@ fn bytes_deserializer<'a, 'de>(bytes: &'a mut (&'de [u8]), code_page: CodePage, 
     EslDeserializer::new(if isolated { Some(bytes.len() as u32) } else { None }, code_page, bytes)
 }
 
-pub fn serialize_to<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?Sized), code_page: CodePage, isolated: bool) -> Result<(), SerOrIoError> {
+pub fn serialize_to<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?Sized), code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
     let mut writer = GenericWriter::new(writer);
     let serializer = EslSerializer::new(isolated, code_page, &mut writer);
     v.serialize(serializer)
 }
 
-pub fn serialize<T: Serialize + ?Sized>(v: &T, bytes: &mut Vec<u8>, code_page: CodePage, isolated: bool) -> Result<(), SerError> {
+pub fn serialize<T: Serialize + ?Sized>(v: &T, bytes: &mut Vec<u8>, code_page: CodePage, isolated: bool) -> Result<(), ser::Error> {
     let serializer = EslSerializer::new(isolated, code_page, bytes);
     v.serialize(serializer).map_err(|e| {
         match e {
-            SerOrIoError::Ser(e) => e,
-            SerOrIoError::Io(_) => unreachable!()
+            ser::IoError::Other(e) => e,
+            ser::IoError::Io(_) => unreachable!()
         }
     })
 }
