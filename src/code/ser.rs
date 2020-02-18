@@ -325,6 +325,28 @@ impl<'a, W: Writer> StructSerializer<'a, W> {
     }
 }
 
+impl<'r, 'a, W: Writer> SerializeTuple for KeyTupleSerializer<'r, 'a, W> {
+    type Ok = usize;
+    type Error = SerOrIoError;
+
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
+        let key_size = vec_serialize_key_field(self.writer, self.code_page, v)?;
+        self.size += if self.value_buf.is_some() {
+            key_size
+        } else {
+            *self.value_buf = Some((self.writer.begin_isolate(), usize::max_value()));
+            key_size + 4
+        };
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        let writer = self.writer;
+        self.value_buf.as_mut().map(|x| x.1 = writer.pos());
+        Ok(self.size)
+    }
+}
+
 impl<'a, W: Writer> SerializeTuple for StructSerializer<'a, W> {
     type Ok = usize;
     type Error = SerOrIoError;
@@ -387,29 +409,6 @@ impl<'a, W: Writer> SerializeStructVariant for StructSerializer<'a, W> {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         self.end()
-    }
-}
-
-impl<'r, 'a, W: Writer> SerializeTuple for KeyTupleSerializer<'r, 'a, W> {
-    type Ok = usize;
-    type Error = SerOrIoError;
-
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.size += if self.value_buf.is_some() {
-            vec_serialize_key_field(self.writer, self.code_page, v)?
-        } else {
-            let key_size = vec_serialize_key_field(self.writer, self.code_page, v)?;
-            *self.value_buf = Some((self.writer.begin_isolate(), usize::max_value()));
-            key_size + 4
-        };
-        Ok(())
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        let size = self.size;
-        let writer = self.writer;
-        self.value_buf.as_mut().map(|x| x.1 = writer.pos());
-        Ok(size)
     }
 }
 
