@@ -1,5 +1,5 @@
 use serde::{Serializer, Serialize};
-use std::mem::{transmute, replace};
+use std::mem::{replace};
 use std::fmt::{self, Display, Debug};
 use encoding::{EncoderTrap};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct, SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
@@ -109,7 +109,7 @@ impl Writer for Vec<u8> {
 
     fn end_isolate(&mut self, value_size_stub_offset: usize, value_offset: usize) -> Result<(), SerOrIoError> {
         let value_size = size(self.len() - value_offset)?;
-        write_u32(&mut self[value_size_stub_offset..value_size_stub_offset + 4], value_size);
+        (&mut self[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
         Ok(())
     }
 }
@@ -171,7 +171,7 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
         let value_size = size(self.pos - value_pos)?;
         if let Some(value_size_stub_offset) = value_size_stub_offset {
             let write_buf = self.write_buf.as_mut().unwrap();
-            write_u32(&mut write_buf[value_size_stub_offset..value_size_stub_offset + 4], value_size);
+            (&mut write_buf[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
         } else {
             let write_buf = self.write_buf.take().unwrap();
             self.writer.write_u32::<LittleEndian>(value_size).unwrap();
@@ -218,13 +218,6 @@ pub struct StructSerializer<'r, 'a, W: Writer> {
     len: Option<usize>,
     start_pos_and_variant_index: Option<(usize, u32)>,
     value_buf: Option<&'r mut Option<W::Buf>>,
-}
-
-fn write_u32(writer: &mut [u8], v: u32) {
-    writer[0] = (v & 0xFF) as u8;
-    writer[1] = ((v >> 8) & 0xFF) as u8;
-    writer[2] = ((v >> 16) & 0xFF) as u8;
-    writer[3] = (v >> 24) as u8;
 }
 
 impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
@@ -436,7 +429,8 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(unsafe { transmute(v) })
+        self.writer.write_i8(v)?;
+        Ok(())
     }
 
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
@@ -445,7 +439,8 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u16(unsafe { transmute(v) })
+        self.writer.write_i16::<LittleEndian>(v)?;
+        Ok(())
     }
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
@@ -454,11 +449,13 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(unsafe { transmute(v) })
+        self.writer.write_i32::<LittleEndian>(v)?;
+        Ok(())
     }
 
     fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(unsafe { transmute(v) })
+        self.writer.write_f32::<LittleEndian>(v)?;
+        Ok(())
     }
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
@@ -467,11 +464,13 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u64(unsafe { transmute(v) })
+        self.writer.write_i64::<LittleEndian>(v)?;
+        Ok(())
     }
 
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u64(unsafe { transmute(v) })
+        self.writer.write_f64::<LittleEndian>(v)?;
+        Ok(())
     }
 
     serde_if_integer128! {
@@ -481,7 +480,8 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         }
 
         fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-            self.serialize_u128(unsafe { transmute(v) })
+            self.writer.write_i128::<LittleEndian>(v)?;
+            Ok(())
         }
     }
 
