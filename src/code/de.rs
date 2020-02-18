@@ -10,74 +10,48 @@ use std::marker::PhantomData;
 use crate::code::code_page::*;
 
 #[derive(Debug)]
-pub enum DeError {
+pub enum Error {
     Custom(String),
+    Io(io::Error),
     InvalidBoolEncoding(u8),
     InvalidSize { actual: usize, expected: u32 },
 }
 
-impl Display for DeError {
+impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DeError::Custom(s) => Display::fmt(s, f),
-            DeError::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({})", b),
-            DeError::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {}, expected = {})", actual, expected),
+            Error::Custom(s) => Display::fmt(s, f),
+            Error::Io(e) => Display::fmt(e, f),
+            Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({})", b),
+            Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {}, expected = {})", actual, expected),
         }
     }
 }
 
-impl std::error::Error for DeError {
+impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
-impl de::Error for DeError {
-    fn custom<T: Display>(msg: T) -> Self { DeError::Custom(format!("{}", msg)) }
-}
-
-#[derive(Debug)]
-pub enum DeOrIoError {
-    Io(io::Error),
-    De(DeError),
-}
-
-impl Display for DeOrIoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DeOrIoError::Io(e) => Display::fmt(e, f),
-            DeOrIoError::De(e) => Display::fmt(e, f),
+        if let Error::Io(e) = self {
+            Some(e)
+        } else {
+            None
         }
     }
 }
 
-impl std::error::Error for DeOrIoError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            DeOrIoError::Io(e) => Some(e),
-            DeOrIoError::De(e) => Some(e),
-        }
-    }
+impl de::Error for Error {
+    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{}", msg)) }
 }
 
-impl de::Error for DeOrIoError {
-    fn custom<T: Display>(msg: T) -> Self { DeOrIoError::De(DeError::custom(msg)) }
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Error { Error::Io(e) }
 }
 
-impl From<DeError> for DeOrIoError {
-    fn from(e: DeError) -> DeOrIoError { DeOrIoError::De(e) }
-}
-
-impl From<io::Error> for DeOrIoError {
-    fn from(e: io::Error) -> DeOrIoError { DeOrIoError::Io(e) }
-}
-
-pub trait Reader<'de>: Read {
+pub(crate) trait Reader<'de>: Read {
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>>;
     fn pos(&self) -> isize;
 }
 
-pub struct GenericReader<'de, R: Read + ?Sized> {
+pub(crate) struct GenericReader<'de, R: Read + ?Sized> {
     reader: &'de mut R,
     pos: isize,
 }
@@ -129,7 +103,7 @@ struct SeqDeserializer<'a, 'de, R: Reader<'de>> {
 }
 
 impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
@@ -138,7 +112,7 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
             phantom: PhantomData, map_entry_value_size: None
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
-            return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
+            return Err(Error::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
         }
         Ok(Some(element))
     }
@@ -155,7 +129,7 @@ struct StructDeserializer<'r, 'a, 'de, R: Reader<'de>> {
 }
 
 impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.len == 0 { return Ok(None); }
@@ -169,7 +143,7 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
         })?;
         if let Some((start_pos, size)) = self.isolated {
             if self.reader.pos() > start_pos + size as isize {
-                return Err(DeError::InvalidSize { expected: size, actual: (self.reader.pos() - start_pos) as usize }.into());
+                return Err(Error::InvalidSize { expected: size, actual: (self.reader.pos() - start_pos) as usize }.into());
             }
         }
         if let Some(map_entry_value_size) = self.map_entry_value_size.take() {
@@ -190,7 +164,7 @@ struct MapDeserializer<'a, 'de, R: Reader<'de>> {
 }
 
 impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> where K: DeserializeSeed<'de> {
         if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
@@ -208,14 +182,14 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
             phantom: PhantomData, map_entry_value_size: None
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
-            return Err(DeError::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
+            return Err(Error::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
         }
         Ok(value)
     }
 }
 
 #[derive(Debug)]
-pub struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
+pub(crate) struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
     size: u32,
     code_page: CodePage,
     reader: &'a mut R,
@@ -223,7 +197,7 @@ pub struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
 }
 
 impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
 
     fn unit_variant(self) -> Result<(), Self::Error> { Ok(()) }
     
@@ -261,7 +235,7 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
 }
 
 #[derive(Debug)]
-pub struct EslDeserializer<'r, 'a, 'de, R: Reader<'de>> {
+pub(crate) struct EslDeserializer<'r, 'a, 'de, R: Reader<'de>> {
     map_entry_value_size: Option<&'r mut Option<u32>>,
     isolated: Option<u32>,
     code_page: CodePage,
@@ -288,7 +262,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> EslDeserializer<'r, 'a, 'de, R> {
 }
 
 impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
 
     fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         panic!("deserialize_any not supported")
@@ -299,7 +273,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         let v = match b {
             0 => false,
             1 => true,
-            b => return Err(DeError::InvalidBoolEncoding(b).into())
+            b => return Err(Error::InvalidBoolEncoding(b).into())
         };
         visitor.visit_bool(v)
     }
@@ -472,7 +446,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
 }
 
 impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, 'de, R> {
-    type Error = DeOrIoError;
+    type Error = Error;
     type Variant = EnumDeserializer<'a, 'de, R>;
 
     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> where V: DeserializeSeed<'de> {
