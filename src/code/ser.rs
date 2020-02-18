@@ -382,24 +382,6 @@ impl<'r, 'a, W: Writer> SerializeStructVariant for StructSerializer<'r, 'a, W> {
     }
 }
 
-fn bool_byte(v: bool) -> u8 {
-    if v { 1 } else { 0 }
-}
-
-fn char_byte(code_page: CodePage, v: char) -> Result<u8, SerError> {
-    let v = code_page.encoding()
-        .encode(&v.to_string(), EncoderTrap::Strict)
-        .map_err(|_| SerError::UnrepresentableChar(v, code_page))?;
-    debug_assert_eq!(v.len(), 1);
-    Ok(v[0])
-}
-
-fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, SerError> {
-    code_page.encoding()
-        .encode(v, EncoderTrap::Strict)
-        .map_err(|s| SerError::UnrepresentableChar(s.chars().nth(0).unwrap(), code_page))
-}
-
 impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
@@ -412,7 +394,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     type SerializeMap = MapSerializer<'a, W>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(bool_byte(v))
+        self.serialize_u8(if v { 1 } else { 0 })
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
@@ -486,12 +468,17 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let byte = char_byte(self.code_page, v)?;
-        self.serialize_u8(byte)
+        let v = self.code_page.encoding()
+            .encode(&v.to_string(), EncoderTrap::Strict)
+            .map_err(|_| SerError::UnrepresentableChar(v, self.code_page))?;
+        debug_assert_eq!(v.len(), 1);
+        self.serialize_u8(v[0])
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let bytes = str_bytes(self.code_page, v)?;
+        let bytes = self.code_page.encoding()
+            .encode(v, EncoderTrap::Strict)
+            .map_err(|s| SerError::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
         self.serialize_bytes(&bytes)
     }
 
