@@ -80,6 +80,14 @@ impl From<io::Error> for SerOrIoError {
 
 const SIZE_STUB: u32 = 0x1375F17B;
 
+fn size(len: usize) -> Result<u32, SerError> {
+    if len > u32::max_value() as usize {
+        Err(SerError::LargeObject(len))
+    } else {
+        Ok(len as u32)
+    }
+}
+
 pub trait Writer: Write {
     type Buf: Debug;
     
@@ -110,6 +118,16 @@ pub struct GenericWriter<'a, W: Write + ?Sized> {
     writer: &'a mut W,
     write_buf: Option<Vec<u8>>,
     pos: usize,
+}
+
+impl<'a, W: Write + ?Sized> GenericWriter<'a, W> {
+    pub fn new(writer: &'a mut W) -> Self {
+        GenericWriter {
+            writer,
+            write_buf: None,
+            pos: 0
+        }
+    }
 }
 
 impl<'a, W: Write + ?Sized> Write for GenericWriter<'a, W> {
@@ -164,48 +182,42 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
 }
     
 #[derive(Debug)]
-struct EslSerializer<'a, W: Writer> {
+pub struct EslSerializer<'r, 'a, W: Writer> {
     isolated: bool,
     code_page: CodePage,
-    writer: &'a mut W
+    writer: &'a mut W,
+    map_entry_value_buf: Option<&'r mut Option<W::Buf>>
+}
+
+impl<'r, 'a, W: Writer> EslSerializer<'r, 'a, W> {
+    pub fn new(isolated: bool, code_page: CodePage, writer: &'a mut W) -> Self {
+        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None }
+    }
 }
 
 #[derive(Debug)]
-struct SeqSerializer<'a, W: Writer> {
+pub struct SeqSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     last_element_has_zero_size: bool,
-    buf: Option<(W::Buf, usize)>,
+    buf_and_start_pos: Option<(W::Buf, usize)>,
 }
 
 #[derive(Debug)]
-struct StructSerializer<'a, W: Writer> {
+pub struct MapSerializer<'a, W: Writer> {
+    code_page: CodePage,
+    writer: &'a mut W,
+    value_buf_and_pos: Option<(W::Buf, usize)>,
+    buf_and_start_pos: Option<(W::Buf, usize)>,
+}
+
+#[derive(Debug)]
+pub struct StructSerializer<'r, 'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
     start_pos_and_variant_index: Option<(usize, u32)>,
-}
-
-#[derive(Debug)]
-struct MapSerializer<'a, W: Writer> {
-    code_page: CodePage,
-    writer: &'a mut W,
-    value_buf: Option<(W::Buf, usize)>,
-    buf: Option<(W::Buf, usize)>,
-}
-
-#[derive(Debug)]
-struct KeyTupleSerializer<'r, 'a, W: Writer> {
-    code_page: CodePage,
-    writer: &'a mut W,
-    value_buf: &'r mut Option<(W::Buf, usize)>,
-}
-
-#[derive(Debug)]
-struct KeySerializer<'r, 'a, W: Writer> {
-    code_page: CodePage,
-    writer: &'a mut W,
-    map_value_buf: &'r mut Option<(W::Buf, usize)>
+    value_buf: Option<&'r mut Option<W::Buf>>,
 }
 
 fn write_u32(writer: &mut [u8], v: u32) {
@@ -213,14 +225,6 @@ fn write_u32(writer: &mut [u8], v: u32) {
     writer[1] = ((v >> 8) & 0xFF) as u8;
     writer[2] = ((v >> 16) & 0xFF) as u8;
     writer[3] = (v >> 24) as u8;
-}
-
-fn size(len: usize) -> Result<u32, SerError> {
-    if len > u32::max_value() as usize {
-        Err(SerError::LargeObject(len))
-    } else {
-        Ok(len as u32)
-    }
 }
 
 impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
@@ -232,6 +236,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
         v.serialize(EslSerializer {
             isolated: false,
             writer: self.writer, code_page: self.code_page,
+            map_entry_value_buf: None
         })?;
         self.last_element_has_zero_size = self.writer.pos() == element_pos;
         Ok(())
@@ -241,7 +246,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
         if self.last_element_has_zero_size {
             return Err(SerError::ZeroSizedLastSequenceElement.into());
         }
-        if let Some((buf, start_pos)) = self.buf {
+        if let Some((buf, start_pos)) = self.buf_and_start_pos {
             self.writer.end_isolate(buf, start_pos)?;
         }
         Ok(())
@@ -254,17 +259,18 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
         let mut value_buf = None;
-        key.serialize(KeySerializer {
+        key.serialize(EslSerializer {
             writer: self.writer,
             code_page: self.code_page,
-            map_value_buf: &mut value_buf
+            map_entry_value_buf: Some(&mut value_buf),
+            isolated: false
         })?;
-        let value_buf = replace(&mut self.value_buf, Some(if let Some(value_buf) = value_buf {
+        let b = replace(&mut self.value_buf_and_pos, Some((if let Some(value_buf) = value_buf {
             value_buf
         } else {
-            (self.writer.begin_isolate(), self.writer.pos())
-        }));
-        assert!(value_buf.is_none());
+            self.writer.begin_isolate()
+        }, self.writer.pos())));
+        assert!(b.is_none());
         Ok(())
     }
 
@@ -272,31 +278,23 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
         v.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page
+            code_page: self.code_page,
+            map_entry_value_buf: None
         })?;
-        let (value_buf, value_pos) = self.value_buf.take().unwrap();
+        let (value_buf, value_pos) = self.value_buf_and_pos.take().unwrap();
         self.writer.end_isolate(value_buf, value_pos)?;
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        if let Some((buf, start_pos)) = self.buf {
+        if let Some((buf, start_pos)) = self.buf_and_start_pos {
             self.writer.end_isolate(buf, start_pos)?;
         }
         Ok(())
     }
 }
 
-fn vec_serialize_key_field<T: Serialize + ?Sized>(writer: &mut impl Writer, code_page: CodePage, v: &T)
-    -> Result<(), SerOrIoError> {
-
-    v.serialize(EslSerializer {
-        isolated: false,
-        writer, code_page
-    })
-}
-
-impl<'a, W: Writer> StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), SerOrIoError> {
         if let Some(len) = self.len.as_mut() {
             if *len == 0 { panic!() }
@@ -304,8 +302,14 @@ impl<'a, W: Writer> StructSerializer<'a, W> {
         }
         v.serialize(EslSerializer {
             isolated: self.len.map_or(false, |len| len == 0),
-            writer: self.writer, code_page: self.code_page
+            writer: self.writer, code_page: self.code_page,
+            map_entry_value_buf: None
         })?;
+        if let &mut Some(ref mut value_buf) = &mut self.value_buf {
+            if value_buf.is_none() {
+                **value_buf = Some(self.writer.begin_isolate());
+            }
+        }
         Ok(())
     }
 
@@ -320,26 +324,7 @@ impl<'a, W: Writer> StructSerializer<'a, W> {
     }
 }
 
-impl<'r, 'a, W: Writer> SerializeTuple for KeyTupleSerializer<'r, 'a, W> {
-    type Ok = ();
-    type Error = SerOrIoError;
-
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        vec_serialize_key_field(self.writer, self.code_page, v)?;
-        if self.value_buf.is_none() {
-            *self.value_buf = Some((self.writer.begin_isolate(), usize::max_value()));
-        }
-        Ok(())
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        let writer = self.writer;
-        self.value_buf.as_mut().map(|x| x.1 = writer.pos());
-        Ok(())
-    }
-}
-
-impl<'a, W: Writer> SerializeTuple for StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> SerializeTuple for StructSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
 
@@ -352,7 +337,7 @@ impl<'a, W: Writer> SerializeTuple for StructSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeTupleStruct for StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> SerializeTupleStruct for StructSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
 
@@ -365,7 +350,7 @@ impl<'a, W: Writer> SerializeTupleStruct for StructSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeStruct for StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> SerializeStruct for StructSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
 
@@ -378,7 +363,7 @@ impl<'a, W: Writer> SerializeStruct for StructSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeTupleVariant for StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> SerializeTupleVariant for StructSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
 
@@ -391,7 +376,7 @@ impl<'a, W: Writer> SerializeTupleVariant for StructSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeStructVariant for StructSerializer<'a, W> {
+impl<'r, 'a, W: Writer> SerializeStructVariant for StructSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
 
@@ -422,15 +407,15 @@ fn str_bytes(code_page: CodePage, v: &str) -> Result<Vec<u8>, SerError> {
         .map_err(|s| SerError::UnrepresentableChar(s.chars().nth(0).unwrap(), code_page))
 }
 
-impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
+impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     type Ok = ();
     type Error = SerOrIoError;
     type SerializeSeq = SeqSerializer<'a, W>;
-    type SerializeTuple = StructSerializer<'a, W>;
-    type SerializeTupleStruct = StructSerializer<'a, W>;
-    type SerializeTupleVariant = StructSerializer<'a, W>;
-    type SerializeStruct = StructSerializer<'a, W>;
-    type SerializeStructVariant = StructSerializer<'a, W>;
+    type SerializeTuple = StructSerializer<'r, 'a, W>;
+    type SerializeTupleStruct = StructSerializer<'r, 'a, W>;
+    type SerializeTupleVariant = StructSerializer<'r, 'a, W>;
+    type SerializeStruct = StructSerializer<'r, 'a, W>;
+    type SerializeStructVariant = StructSerializer<'r, 'a, W>;
     type SerializeMap = MapSerializer<'a, W>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
@@ -534,7 +519,7 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        v.serialize(self)
+        v.serialize(EslSerializer { map_entry_value_buf: None, ..self })
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
@@ -546,7 +531,7 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
         let buf = if !self.isolated {
-            Some((self.writer.begin_isolate(), self.writer.pos()))
+            Some(self.writer.begin_isolate())
         } else {
             None
         };
@@ -554,12 +539,15 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
         value.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page
+            code_page: self.code_page,
+            map_entry_value_buf: None
         })?;
         if self.writer.pos() == value_pos {
             return Err(SerError::ZeroSizedOptional.into());
         }
-        buf.map_or(Ok(()), |(buf, pos)| self.writer.end_isolate(buf, pos))?;
+        if let Some(buf) = buf {
+            self.writer.end_isolate(buf, value_pos)?;
+        }
         Ok(())
     }
 
@@ -573,7 +561,8 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
         v.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page
+            code_page: self.code_page,
+            map_entry_value_buf: None
         })?;
         let variant_size = size(self.writer.pos() - value_pos)?;
         if variant_index != variant_size {
@@ -589,9 +578,10 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
-            len: if self.isolated { Some(len) } else { None },
+            len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
             writer: self.writer, code_page: self.code_page,
+            value_buf: None
         })
     }
 
@@ -602,9 +592,10 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
-            len: if self.isolated { Some(len) } else { None },
+            len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
             writer: self.writer, code_page: self.code_page,
+            value_buf: None
         })
     }
 
@@ -612,7 +603,8 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
-            start_pos_and_variant_index: None
+            start_pos_and_variant_index: None,
+            value_buf: self.map_entry_value_buf
         })
     }
 
@@ -620,7 +612,8 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
-            start_pos_and_variant_index: None
+            start_pos_and_variant_index: None,
+            value_buf: None
         })
     }
 
@@ -628,7 +621,8 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
-            start_pos_and_variant_index: None
+            start_pos_and_variant_index: None,
+            value_buf: None
         })
     }
 
@@ -638,218 +632,16 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
             writer: self.writer,
             code_page: self.code_page,
             last_element_has_zero_size: false,
-            buf
+            buf_and_start_pos: buf
         })
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         let buf = if !self.isolated { Some((self.writer.begin_isolate(), self.writer.pos())) } else { None };
         Ok(MapSerializer {
-            value_buf: None,
+            value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
-            buf
-        })
-    }
-}
-
-impl<'r, 'a, W: Writer> Serializer for KeySerializer<'r, 'a, W> {
-    type Ok = ();
-    type Error = SerOrIoError;
-    type SerializeSeq = SeqSerializer<'a, W>;
-    type SerializeTuple = KeyTupleSerializer<'r, 'a, W>;
-    type SerializeTupleStruct = StructSerializer<'a, W>;
-    type SerializeTupleVariant = StructSerializer<'a, W>;
-    type SerializeStruct = StructSerializer<'a, W>;
-    type SerializeStructVariant = StructSerializer<'a, W>;
-    type SerializeMap = MapSerializer<'a, W>;
-
-    fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(bool_byte(v))
-    }
-
-    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u32::<LittleEndian>(size(v.len())?)?;
-        self.writer.write(v)?;
-        Ok(())
-    }
-
-    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u8(v)?;
-        Ok(())
-    }
-
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(unsafe { transmute(v) })
-    }
-
-    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u16::<LittleEndian>(v)?;
-        Ok(())
-    }
-
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u16(unsafe { transmute(v) })
-    }
-
-    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u32::<LittleEndian>(v)?;
-        Ok(())
-    }
-
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(unsafe { transmute(v) })
-    }
-
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(unsafe { transmute(v) })
-    }
-
-    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-        self.writer.write_u64::<LittleEndian>(v)?;
-        Ok(())
-    }
-
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u64(unsafe { transmute(v) })
-    }
-
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u64(unsafe { transmute(v) })
-    }
-
-    serde_if_integer128! {
-        fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
-            self.writer.write_u128::<LittleEndian>(v)?;
-            Ok(())
-        }
-
-        fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-            self.serialize_u128(unsafe { transmute(v) })
-        }
-    }
-
-    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let byte = char_byte(self.code_page, v)?;
-        self.serialize_u8(byte)
-    }
-
-    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let bytes = str_bytes(self.code_page, v)?;
-        self.serialize_bytes(&bytes)
-    }
-
-    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok(())
-    }
-
-    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
-        -> Result<Self::Ok, Self::Error> {
-
-        v.serialize(EslSerializer {
-            isolated: false,
-            writer: self.writer, code_page: self.code_page
-        })
-    }
-
-    fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
-        -> Result<Self::Ok, Self::Error> {
-
-        if variant_index != 0 {
-            return Err(SerError::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
-        }
-        self.serialize_u32(0)
-    }
-
-    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u32(0)
-    }
-
-    fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
-        let (value_buf, value_pos) = (self.writer.begin_isolate(), self.writer.pos());
-        value.serialize(EslSerializer {
-            isolated: true,
-            writer: self.writer,
-            code_page: self.code_page
-        })?;
-        if self.writer.pos() == value_pos {
-            return Err(SerError::ZeroSizedOptional.into());
-        }
-        self.writer.end_isolate(value_buf, value_pos)
-    }
-
-    fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
-        -> Result<Self::Ok, Self::Error> {
-
-        self.writer.write_u32::<LittleEndian>(variant_index)?;
-        let value_pos = self.writer.pos();
-        v.serialize(EslSerializer {
-            isolated: true,
-            writer: self.writer,
-            code_page: self.code_page
-        })?;
-        let variant_size = size(self.writer.pos() - value_pos)?;
-        if variant_index != variant_size {
-            return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
-        }
-        Ok(())
-    }
-
-    fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
-        -> Result<Self::SerializeTupleVariant, Self::Error> {
-
-        self.writer.write_u32::<LittleEndian>(variant_index)?;
-        let start_pos = self.writer.pos();
-        Ok(StructSerializer { writer: self.writer, code_page: self.code_page, start_pos_and_variant_index: Some((start_pos, variant_index)), len: None })
-    }
-
-    fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
-        -> Result<Self::SerializeStructVariant, Self::Error> {
-
-        self.writer.write_u32::<LittleEndian>(variant_index)?;
-        let start_pos = self.writer.pos();
-        Ok(StructSerializer { writer: self.writer, code_page: self.code_page, start_pos_and_variant_index: Some((start_pos, variant_index)), len: None })
-    }
-
-    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        Ok(KeyTupleSerializer {
-            writer: self.writer, code_page: self.code_page,
-            value_buf: self.map_value_buf,
-        })
-    }
-
-    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        Ok(StructSerializer {
-            writer: self.writer, code_page: self.code_page,
-            start_pos_and_variant_index: None, len: None
-        })
-    }
-
-    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
-        Ok(StructSerializer {
-            writer: self.writer, code_page: self.code_page,
-            start_pos_and_variant_index: None, len: None
-        })
-    }
-
-    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        let buf = (self.writer.begin_isolate(), self.writer.pos());
-        Ok(SeqSerializer {
-            last_element_has_zero_size: false,
-            writer: self.writer, code_page: self.code_page,
-            buf: Some(buf)
-        })
-    }
-
-    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        let buf = (self.writer.begin_isolate(), self.writer.pos());
-        Ok(MapSerializer {
-            value_buf: None,
-            writer: self.writer, code_page: self.code_page,
-            buf: Some(buf)
+            buf_and_start_pos: buf
         })
     }
 }
@@ -872,11 +664,7 @@ mod tests {
     fn vec_serialize_struct() {
         let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
         let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
     }
 
@@ -884,11 +672,7 @@ mod tests {
     fn vec_serialize_struct_not_isolated() {
         let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
         let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: false,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
+        s.serialize(EslSerializer::new(false, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
@@ -926,13 +710,9 @@ mod tests {
         };
         s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
         let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
+            17, 0, 0, 0, 2, 3, 0, 0, 0, 115, 116, 114,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
             253
         ]);
@@ -946,11 +726,7 @@ mod tests {
             Key { variant: Variant::Variant1, s: "стр".into() }
         ), 22);
         let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
@@ -970,11 +746,7 @@ mod tests {
             Key { variant: Variant::Variant1, s: "стр".into() }
         )), 22);
         let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             1, 3, 0, 0, 0, 241, 242, 240,
@@ -988,11 +760,7 @@ mod tests {
         let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut w
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
     }
 
@@ -1001,11 +769,7 @@ mod tests {
         let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer {
-            isolated: false,
-            code_page: CodePage::Russian,
-            writer: &mut w
-        }).unwrap();
+        s.serialize(EslSerializer::new(false, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
@@ -1019,13 +783,9 @@ mod tests {
         s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut w
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
+            17, 0, 0, 0, 2, 3, 0, 0, 0, 115, 116, 114,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
             253
         ]);
@@ -1040,11 +800,7 @@ mod tests {
         ), 22);
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut w
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
@@ -1062,11 +818,7 @@ mod tests {
         )), 22);
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut w
-        }).unwrap();
+        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             1, 3, 0, 0, 0, 241, 242, 240,
