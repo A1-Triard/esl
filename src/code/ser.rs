@@ -105,6 +105,63 @@ impl Writer for Vec<u8> {
     }
 }
 
+pub struct GenericWriter<'a, W: Write + ?Sized> {
+    writer: &'a mut W,
+    write_buf: Option<Vec<u8>>,
+    pos: usize,
+}
+
+impl<'a, W: Write + ?Sized> Write for GenericWriter<'a, W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pos += buf.len();
+        if let Some(write_buf) = &mut self.write_buf {
+            write_buf.extend_from_slice(buf);
+            Ok(buf.len())
+        } else {
+            self.writer.write(buf)
+        }
+    }
+    
+    fn flush(&mut self) -> io::Result<()> {
+        if self.write_buf.is_none() {
+            self.writer.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
+    type Buf = Option<usize>;
+
+    fn pos(&self) -> usize { self.pos }
+
+    fn begin_isolate(&mut self) -> Self::Buf {
+         if let Some(write_buf) = &self.write_buf {
+             let value_size_stub_offset = write_buf.len();
+             self.write_u32::<LittleEndian>(SIZE_STUB).unwrap();
+             Some(value_size_stub_offset)
+         } else {
+             self.pos += 4;
+             self.write_buf = Some(Vec::new());
+             None
+         }
+    }
+
+    fn end_isolate(&mut self, value_size_stub_offset: Option<usize>, value_pos: usize) -> Result<(), SerOrIoError> {
+        let value_size = size(self.pos - value_pos)?;
+        if let Some(value_size_stub_offset) = value_size_stub_offset {
+            let write_buf = self.write_buf.as_mut().unwrap();
+            write_u32(&mut write_buf[value_size_stub_offset..value_size_stub_offset + 4], value_size);
+        } else {
+            let write_buf = self.write_buf.take().unwrap();
+            self.writer.write_u32::<LittleEndian>(value_size).unwrap();
+            self.writer.write_all(&write_buf[..])?;
+        }
+        Ok(())
+    }
+}
+    
 #[derive(Debug)]
 struct VecEslSerializer<'a, W: Writer> {
     isolated: bool,
