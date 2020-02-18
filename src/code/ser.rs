@@ -78,6 +78,8 @@ impl From<io::Error> for SerOrIoError {
     fn from(e: io::Error) -> SerOrIoError { SerOrIoError::Io(e) }
 }
 
+const SIZE_STUB: u32 = 0x1375F17B;
+
 pub trait Writer: Write {
     type Buf: Debug;
     
@@ -169,16 +171,13 @@ struct EslSerializer<'a, W: Writer> {
 }
 
 #[derive(Debug)]
-struct BaseSeqSerializer<'a, W: Writer> {
+struct SeqSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     last_element_has_zero_size: bool,
     size: usize,
     buf: Option<(W::Buf, usize)>,
 }
-
-#[derive(Debug)]
-struct SeqSerializer<'a, W: Writer>(BaseSeqSerializer<'a, W>);
 
 #[derive(Debug)]
 struct StructSerializer<'a, W: Writer> {
@@ -189,21 +188,12 @@ struct StructSerializer<'a, W: Writer> {
 }
 
 #[derive(Debug)]
-struct KeySeqSerializer<'a, W: Writer>(BaseSeqSerializer<'a, W>);
-
-#[derive(Debug)]
-struct BaseMapSerializer<'a, W: Writer> {
+struct MapSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     value_buf: Option<(W::Buf, usize)>,
     size: usize
 }
-
-#[derive(Debug)]
-struct MapSerializer<'a, W: Writer>(BaseMapSerializer<'a, W>);
-
-#[derive(Debug)]
-struct KeyMapSerializer<'a, W: Writer>(BaseMapSerializer<'a, W>);
 
 #[derive(Debug)]
 struct KeyStructSerializer<'a, W: Writer> {
@@ -213,10 +203,10 @@ struct KeyStructSerializer<'a, W: Writer> {
 }
 
 #[derive(Debug)]
-struct KeyTupleSerializer<'a, W: Writer> {
+struct KeyTupleSerializer<'r, 'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
-    value_buf: Option<W::Buf>,
+    value_buf: &'r mut Option<(W::Buf, usize)>,
     size: usize
 }
 
@@ -238,9 +228,10 @@ struct StructVariantSerializer<'a, W: Writer> {
 struct KeyStructVariantSerializer<'a, W: Writer>(BaseStructVariantSerializer<'a, W>);
 
 #[derive(Debug)]
-struct KeySerializer<'a, W: Writer> {
+struct KeySerializer<'r, 'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
+    map_value_buf: &'r mut Option<(W::Buf, usize)>
 }
 
 fn write_u32(writer: &mut [u8], v: u32) {
@@ -258,8 +249,11 @@ fn size(len: usize) -> Result<u32, SerError> {
     }
 }
 
-impl<'a, W: Writer> BaseSeqSerializer<'a, W> {
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), SerOrIoError> {
+impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
+    type Ok = usize;
+    type Error = SerOrIoError;
+
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         let size = v.serialize(EslSerializer {
             isolated: false,
             writer: self.writer, code_page: self.code_page,
@@ -269,7 +263,7 @@ impl<'a, W: Writer> BaseSeqSerializer<'a, W> {
         Ok(())
     }
 
-    fn end(self) -> Result<usize, SerOrIoError> {
+    fn end(self) -> Result<Self::Ok, Self::Error> {
         if self.last_element_has_zero_size {
             return Err(SerError::ZeroSizedLastSequenceElement.into());
         }
@@ -282,39 +276,16 @@ impl<'a, W: Writer> BaseSeqSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
+impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
     type Ok = usize;
     type Error = SerOrIoError;
 
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.0.serialize_element(v)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        self.0.end()
-    }
-}
-
-impl<'a, W: Writer> SerializeSeq for KeySeqSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
-    type Error = SerOrIoError;
-
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.0.serialize_element(v)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.0.end()?))
-    }
-}
-
-const SIZE_STUB: u32 = 0x1375F17B;
-
-impl<'a, W: Writer> BaseMapSerializer<'a, W> {
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), SerOrIoError> {
-        let (value_buf, size) = key.serialize(KeySerializer {
+    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
+        let mut value_buf = None;
+        let size = key.serialize(KeySerializer {
             writer: self.writer,
-            code_page: self.code_page
+            code_page: self.code_page,
+            map_value_buf: &mut value_buf
         })?;
         self.size += size;
         let value_buf = replace(&mut self.value_buf, Some(if let Some(value_buf) = value_buf {
@@ -327,7 +298,7 @@ impl<'a, W: Writer> BaseMapSerializer<'a, W> {
         Ok(())
     }
 
-    fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), SerOrIoError> {
+    fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
         let value_size = v.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
@@ -338,39 +309,9 @@ impl<'a, W: Writer> BaseMapSerializer<'a, W> {
         self.size += value_size;
         Ok(())
     }
-}
-
-impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
-    type Ok = usize;
-    type Error = SerOrIoError;
-
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
-        self.0.serialize_key(key)
-    }
-
-    fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.0.serialize_value(v)
-    }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(self.0.size)
-    }
-}
-
-impl<'a, W: Writer> SerializeMap for KeyMapSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
-    type Error = SerOrIoError;
-
-    fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
-        self.0.serialize_key(key)
-    }
-
-    fn serialize_value<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        self.0.serialize_value(v)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.0.size))
+        Ok(self.size)
     }
 }
 
@@ -438,8 +379,8 @@ impl<'a, W: Writer> SerializeStruct for StructSerializer<'a, W> {
     }
 }
 
-impl<'a, W: Writer> SerializeTuple for KeyTupleSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+impl<'r, 'a, W: Writer> SerializeTuple for KeyTupleSerializer<'r, 'a, W> {
+    type Ok = usize;
     type Error = SerOrIoError;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -447,7 +388,7 @@ impl<'a, W: Writer> SerializeTuple for KeyTupleSerializer<'a, W> {
             vec_serialize_key_field(self.writer, self.code_page, v)?
         } else {
             let key_size = vec_serialize_key_field(self.writer, self.code_page, v)?;
-            self.value_buf = Some(self.writer.begin_isolate());
+            *self.value_buf = Some((self.writer.begin_isolate(), usize::max_value()));
             key_size + 4
         };
         Ok(())
@@ -456,12 +397,13 @@ impl<'a, W: Writer> SerializeTuple for KeyTupleSerializer<'a, W> {
     fn end(self) -> Result<Self::Ok, Self::Error> {
         let size = self.size;
         let writer = self.writer;
-        Ok((self.value_buf.map(|x| (x, writer.pos())), size))
+        self.value_buf.as_mut().map(|x| x.1 = writer.pos());
+        Ok(size)
     }
 }
 
 impl<'a, W: Writer> SerializeStruct for KeyStructSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+    type Ok = usize;
     type Error = SerOrIoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
@@ -470,12 +412,12 @@ impl<'a, W: Writer> SerializeStruct for KeyStructSerializer<'a, W> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.size))
+        Ok(self.size)
     }
 }
 
 impl<'a, W: Writer> SerializeTupleStruct for KeyStructSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+    type Ok = usize;
     type Error = SerOrIoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -484,7 +426,7 @@ impl<'a, W: Writer> SerializeTupleStruct for KeyStructSerializer<'a, W> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.size))
+        Ok(self.size)
     }
 }
 
@@ -527,7 +469,7 @@ impl<'a, W: Writer> SerializeStructVariant for StructVariantSerializer<'a, W> {
 }
 
 impl<'a, W: Writer> SerializeTupleVariant for KeyStructVariantSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+    type Ok = usize;
     type Error = SerOrIoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
@@ -536,12 +478,12 @@ impl<'a, W: Writer> SerializeTupleVariant for KeyStructVariantSerializer<'a, W> 
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.0.end()?))
+        self.0.end()
     }
 }
 
 impl<'a, W: Writer> SerializeStructVariant for KeyStructVariantSerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+    type Ok = usize;
     type Error = SerOrIoError;
 
     fn serialize_field<T: Serialize + ?Sized>(&mut self, _: &'static str, v: &T) -> Result<(), Self::Error> {
@@ -550,7 +492,7 @@ impl<'a, W: Writer> SerializeStructVariant for KeyStructVariantSerializer<'a, W>
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, self.0.end()?))
+        self.0.end()
     }
 }
 
@@ -788,34 +730,34 @@ impl<'a, W: Writer> Serializer for EslSerializer<'a, W> {
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         let buf = if !self.isolated { Some((self.writer.begin_isolate(), self.writer.pos())) } else { None };
-        Ok(SeqSerializer(BaseSeqSerializer {
+        Ok(SeqSerializer {
             writer: self.writer,
             code_page: self.code_page,
             last_element_has_zero_size: false,
             size: 0,
             buf
-        }))
+        })
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Ok(MapSerializer(BaseMapSerializer {
+        Ok(MapSerializer {
             value_buf: None,
             writer: self.writer, code_page: self.code_page,
             size: 0
-        }))
+        })
     }
 }
 
-impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
-    type Ok = (Option<(W::Buf, usize)>, usize);
+impl<'r, 'a, W: Writer> Serializer for KeySerializer<'r, 'a, W> {
+    type Ok = usize;
     type Error = SerOrIoError;
-    type SerializeSeq = KeySeqSerializer<'a, W>;
-    type SerializeTuple = KeyTupleSerializer<'a, W>;
+    type SerializeSeq = SeqSerializer<'a, W>;
+    type SerializeTuple = KeyTupleSerializer<'r, 'a, W>;
     type SerializeTupleStruct = KeyStructSerializer<'a, W>;
     type SerializeTupleVariant = KeyStructVariantSerializer<'a, W>;
     type SerializeStruct = KeyStructSerializer<'a, W>;
     type SerializeStructVariant = KeyStructVariantSerializer<'a, W>;
-    type SerializeMap = KeyMapSerializer<'a, W>;
+    type SerializeMap = MapSerializer<'a, W>;
 
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
         self.serialize_u8(bool_byte(v))
@@ -824,12 +766,12 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
         self.writer.write_u32::<LittleEndian>(size(v.len())?)?;
         self.writer.write(v)?;
-        Ok((None, 4 + v.len()))
+        Ok(4 + v.len())
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
         self.writer.write_u8(v)?;
-        Ok((None, 1))
+        Ok(1)
     }
 
     fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
@@ -838,7 +780,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
 
     fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
         self.writer.write_u16::<LittleEndian>(v)?;
-        Ok((None, 2))
+        Ok(2)
     }
 
     fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
@@ -847,7 +789,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
 
     fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
         self.writer.write_u32::<LittleEndian>(v)?;
-        Ok((None, 4))
+        Ok(4)
     }
 
     fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
@@ -860,7 +802,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
         self.writer.write_u64::<LittleEndian>(v)?;
-        Ok((None, 8))
+        Ok(8)
     }
 
     fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
@@ -874,7 +816,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
     serde_if_integer128! {
         fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
             self.writer.write_u128::<LittleEndian>(v)?;
-            Ok((None, 16))
+            Ok(16)
         }
 
         fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
@@ -893,11 +835,11 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok((None, 0))
+        Ok(0)
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        Ok((None, 0))
+        Ok(0)
     }
 
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, v: &T)
@@ -907,7 +849,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
             isolated: false,
             writer: self.writer, code_page: self.code_page
         })?;
-        Ok((None, size))
+        Ok(size)
     }
 
     fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
@@ -934,7 +876,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
             return Err(SerError::ZeroSizedOptional.into());
         }
         self.writer.end_isolate(value_buf, value_pos)?;
-        Ok((None, 4 + value_size))
+        Ok(4 + value_size)
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
@@ -950,7 +892,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
         if variant_index != variant_size {
             return Err(SerError::VariantIndexMismatch { variant_index, variant_size }.into());
         }
-        Ok((None, 4 + v_size))
+        Ok(4 + v_size)
     }
 
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, _: usize)
@@ -970,7 +912,7 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(KeyTupleSerializer {
             writer: self.writer, code_page: self.code_page,
-            value_buf: None,
+            value_buf: self.map_value_buf,
             size: 0
         })
     }
@@ -991,20 +933,20 @@ impl<'a, W: Writer> Serializer for KeySerializer<'a, W> {
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
         let buf = (self.writer.begin_isolate(), self.writer.pos());
-        Ok(KeySeqSerializer(BaseSeqSerializer {
+        Ok(SeqSerializer {
             last_element_has_zero_size: false,
             writer: self.writer, code_page: self.code_page,
             size: 0,
             buf: Some(buf)
-        }))
+        })
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        Ok(KeyMapSerializer(BaseMapSerializer {
+        Ok(MapSerializer {
             value_buf: None,
             writer: self.writer, code_page: self.code_page,
             size: 0
-        }))
+        })
     }
 }
 
