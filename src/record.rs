@@ -138,9 +138,12 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 if serializer.is_human_readable() {
                     serializer.serialize_bytes(v)
                 } else {
-                    let mut decoder = ZlibDecoder::new(Vec::new());
-                    decoder.write_all(&v[..]).map_err(|_| S::Error::custom("invalid compressed data"))?;
-                    serializer.serialize_bytes(&decoder.finish().unwrap())
+                    let uncompressed = (|| {
+                        let mut decoder = ZlibDecoder::new(Vec::new());
+                        decoder.write_all(&v[..])?;
+                        decoder.finish()
+                    })().map_err(|_| S::Error::custom("invalid compressed data"))?;
+                    serializer.serialize_bytes(&uncompressed)
                 }
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have binary type", self.record_tag, self.field_tag)))
