@@ -1349,7 +1349,6 @@ mod tests {
         assert_eq!(res.attributes[3], ingredient.attributes[3]);
     }
 
-    /*
     #[test]
     fn serialize_script_metadata() {
         let script_metadata = ScriptMetadata {
@@ -1360,7 +1359,7 @@ mod tests {
             data_size: 65500,
             var_table_size: 100
         };
-        let bin: Vec<u8> = serialize(&script_metadata).unwrap();
+        let bin: Vec<u8> = serialize(&script_metadata, CodePage::English, false).unwrap();
         let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.name, script_metadata.name);
         assert_eq!(res.shorts, script_metadata.shorts);
@@ -1379,7 +1378,7 @@ mod tests {
             description: vec!["descr line1".into(), "descr line2".into()],
             records_count: 1333
         };
-        let bin: Vec<u8> = serialize(&file_metadata).unwrap();
+        let bin: Vec<u8> = serialize(&file_metadata, CodePage::English, false).unwrap();
         let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
@@ -1400,7 +1399,7 @@ mod tests {
             magnitude_min: 1,
             magnitude_max: 300
         };
-        let bin: Vec<u8> = serialize(&effect).unwrap();
+        let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
         assert_eq!(res.id, effect.id);
         assert_eq!(res.skill, effect.skill);
@@ -1419,7 +1418,7 @@ mod tests {
             reputation: -200,
             index: 129
         };
-        let bin: Vec<u8> = serialize(&saved_npc).unwrap();
+        let bin: Vec<u8> = serialize(&saved_npc, CodePage::English, false).unwrap();
         let res = saved_npc_field(&bin).unwrap().1;
         assert_eq!(res.disposition, saved_npc.disposition);
         assert_eq!(res.reputation, saved_npc.reputation);
@@ -1437,7 +1436,7 @@ mod tests {
             light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
             hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
-        let bin: Vec<u8> = serialize(&npc_char).unwrap();
+        let bin: Vec<u8> = serialize(&npc_char, CodePage::English, false).unwrap();
         let res = npc_characteristics(&bin).unwrap().1;
         assert_eq!(res.strength, npc_char.strength);
         assert_eq!(res.intelligence, npc_char.intelligence);
@@ -1482,6 +1481,15 @@ mod tests {
 
     #[test]
     fn serialize_npc_52() {
+        let npc_characteristics = NpcCharacteristics {
+            strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
+            personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+            blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
+            destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
+            restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
+            light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
+            hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
+        };
         let npc = Npc {
             level: 100,
             disposition: -100,
@@ -1489,17 +1497,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: NpcCharacteristicsOption::Some(NpcCharacteristics {
-                strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
-                personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
-                blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
-                destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
-                restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
-                light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
-                hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
-            })
+            characteristics: NpcCharacteristicsOption::Some(npc_characteristics.clone())
         };
-        let bin: Vec<u8> = serialize(&npc.to_12_or_52().right().unwrap()).unwrap();
+        let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1507,7 +1507,11 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        assert_eq!(res.characteristics.right().unwrap().enchant, npc.characteristics.right().unwrap().enchant);
+        if let NpcCharacteristicsOption::Some(characteristics) = res.characteristics {
+            assert_eq!(characteristics.enchant, npc_characteristics.enchant);
+        } else {
+            panic!()
+        }
     }
 
     #[test]
@@ -1521,7 +1525,7 @@ mod tests {
             padding: 17,
             characteristics: NpcCharacteristicsOption::None(30001)
         };
-        let bin: Vec<u8> = serialize(&npc.to_12_or_52().left().unwrap()).unwrap();
+        let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1529,7 +1533,11 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        assert_eq!(res.characteristics.left().unwrap(), npc.characteristics.left().unwrap());
+        if let NpcCharacteristicsOption::None(padding) = res.characteristics {
+            assert_eq!(padding, 30001);
+        } else {
+            panic!()
+        }
     }
 
     #[test]
@@ -1538,12 +1546,13 @@ mod tests {
             count: -3,
             item_id: "b_item_01 ".into()
         };
-        let bin: Vec<u8> = serialize(&item).unwrap();
+        let bin: Vec<u8> = serialize(&item, CodePage::English, false).unwrap();
         let res = item_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
     }
 
+    /*
     #[test]
     fn serialize_record() {
         let record = Record {
