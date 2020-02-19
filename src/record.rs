@@ -13,6 +13,8 @@ use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
+use flate2::write::ZlibDecoder;
+use std::io::Write;
 
 use crate::field::*;
 use crate::field_serde::*;
@@ -127,8 +129,19 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Binary | FieldType::Compressed => if let Field::Binary(v) = self.field {
+            FieldType::Binary => if let Field::Binary(v) = self.field {
                 serializer.serialize_bytes(v)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have binary type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Compressed => if let Field::Binary(v) = self.field {
+                if serializer.is_human_readable() {
+                    serializer.serialize_bytes(v)
+                } else {
+                    let mut decoder = ZlibDecoder::new(Vec::new());
+                    decoder.write_all(&v[..]).map_err(|_| S::Error::custom("invalid compressed data"))?;
+                    serializer.serialize_bytes(&decoder.finish().unwrap())
+                }
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have binary type", self.record_tag, self.field_tag)))
             },
