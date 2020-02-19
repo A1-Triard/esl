@@ -16,6 +16,7 @@ use serde::de::Error as de_Error;
 
 use crate::field::*;
 use crate::field_serde::*;
+use crate::serde_helpers::*;
 
 bitflags! {
     pub struct RecordFlags: u64 {
@@ -80,8 +81,12 @@ struct FieldBodySerializer<'a> {
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.field_tag) {
-            FieldType::String(_) => if let Field::String(s) = self.field {
-                serializer.serialize_str(&s)
+            FieldType::String(p) => if let Field::String(s) = self.field {
+                if let Right(len) = p {
+                    serialize_string_tuple(&s, len as usize, serializer)
+                } else {
+                    serializer.serialize_str(&s)
+                }
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string type", self.record_tag, self.field_tag)))
             },
