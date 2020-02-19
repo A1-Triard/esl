@@ -18,7 +18,7 @@ pub fn deserialize_from<'de, T: Deserialize<'de>>(reader: &'de mut (impl Read + 
     T::deserialize(deserializer)
 }
 
-pub fn deserialize_seed_from<'de, T: DeserializeSeed<'de>>(seed: T, reader: &'de mut (impl Read + ?Sized), code_page: CodePage, isolated: Option<u32>)
+pub fn deserialize_from_seed<'de, T: DeserializeSeed<'de>>(seed: T, reader: &'de mut (impl Read + ?Sized), code_page: CodePage, isolated: Option<u32>)
     -> Result<T::Value, de::Error> {
 
     let mut reader = GenericReader::new(reader);
@@ -45,18 +45,40 @@ fn bytes_deserializer<'a, 'de>(bytes: &'a mut (&'de [u8]), code_page: CodePage, 
     EslDeserializer::new(if isolated { Some(bytes.len() as u32) } else { None }, code_page, bytes)
 }
 
-pub fn serialize_to<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?Sized), code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
+pub fn serialized_size<T: Serialize + ?Sized>(v: &T, code_page: CodePage, isolated: bool) -> Result<usize, ser::IoError> {
+    let mut writer = Size(0);
+    let serializer = EslSerializer::new(isolated, code_page, &mut writer);
+    v.serialize(serializer)?;
+    Ok(writer.0)
+}
+
+pub fn serialize_into<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?Sized), code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
     let mut writer = GenericWriter::new(writer);
     let serializer = EslSerializer::new(isolated, code_page, &mut writer);
     v.serialize(serializer)
 }
 
-pub fn serialize<T: Serialize + ?Sized>(v: &T, bytes: &mut Vec<u8>, code_page: CodePage, isolated: bool) -> Result<(), ser::Error> {
+pub fn serialize_into_slice<T: Serialize + ?Sized>(v: &T, bytes: &mut [u8], code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
+    let mut writer = SliceWriter::new(bytes);
+    let serializer = EslSerializer::new(isolated, code_page, &mut writer);
+    v.serialize(serializer)
+}
+
+fn no_io_error(e: ser::IoError) -> ser::Error {
+    match e {
+        ser::IoError::Other(e) => e,
+        ser::IoError::Io(_) => unreachable!()
+    }
+}
+
+pub fn serialize_into_vec<T: Serialize + ?Sized>(v: &T, bytes: &mut Vec<u8>, code_page: CodePage, isolated: bool) -> Result<(), ser::Error> {
     let serializer = EslSerializer::new(isolated, code_page, bytes);
-    v.serialize(serializer).map_err(|e| {
-        match e {
-            ser::IoError::Other(e) => e,
-            ser::IoError::Io(_) => unreachable!()
-        }
-    })
+    v.serialize(serializer).map_err(no_io_error)
+}
+
+pub fn serialize<T: Serialize + ?Sized>(v: &T, code_page: CodePage, isolated: bool) -> Result<Vec<u8>, ser::Error> {
+    let mut bytes = Vec::new();
+    let serializer = EslSerializer::new(isolated, code_page, &mut bytes);
+    v.serialize(serializer).map_err(no_io_error)?;
+    Ok(bytes)
 }

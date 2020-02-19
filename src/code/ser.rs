@@ -92,7 +92,7 @@ pub(crate) trait Writer: Write {
     type Buf: Debug;
     
     fn pos(&self) -> usize;
-    fn begin_isolate(&mut self) -> Self::Buf;
+    fn begin_isolate(&mut self) -> io::Result<Self::Buf>;
     fn end_isolate(&mut self, buf: Self::Buf, variadic_part_pos: usize) -> Result<(), IoError>;
 }
 
@@ -101,15 +101,59 @@ impl Writer for Vec<u8> {
 
     fn pos(&self) -> usize { self.len() }
 
-    fn begin_isolate(&mut self) -> Self::Buf {
+    fn begin_isolate(&mut self) -> io::Result<Self::Buf> {
         let value_size_stub_offset = self.len();
         self.write_u32::<LittleEndian>(SIZE_STUB).unwrap();
-        value_size_stub_offset
+        Ok(value_size_stub_offset)
     }
 
     fn end_isolate(&mut self, value_size_stub_offset: usize, value_offset: usize) -> Result<(), IoError> {
         let value_size = size(self.len() - value_offset)?;
         (&mut self[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
+        Ok(())
+    }
+}
+
+pub(crate) struct SliceWriter<'a> {
+    slice: &'a mut [u8],
+    pos: usize
+}
+
+impl<'a> SliceWriter<'a> {
+    pub fn new(slice: &'a mut [u8]) -> Self {
+        SliceWriter {
+            slice,
+            pos: 0
+        }
+    }
+}
+
+impl<'a> Write for SliceWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = (&mut self.slice[self.pos..]).write(buf)?;
+        self.pos += written;
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> Writer for SliceWriter<'a> {
+    type Buf = usize;
+
+    fn pos(&self) -> usize { self.pos }
+
+    fn begin_isolate(&mut self) -> io::Result<Self::Buf> {
+        let value_size_stub_offset = self.pos;
+        self.write_u32::<LittleEndian>(SIZE_STUB)?;
+        Ok(value_size_stub_offset)
+    }
+
+    fn end_isolate(&mut self, value_size_stub_offset: usize, value_offset: usize) -> Result<(), IoError> {
+        let value_size = size(self.pos - value_offset)?;
+        (&mut self.slice[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
         Ok(())
     }
 }
@@ -132,12 +176,14 @@ impl<'a, W: Write + ?Sized> GenericWriter<'a, W> {
 
 impl<'a, W: Write + ?Sized> Write for GenericWriter<'a, W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.pos += buf.len();
         if let Some(write_buf) = &mut self.write_buf {
             write_buf.extend_from_slice(buf);
+            self.pos += buf.len();
             Ok(buf.len())
         } else {
-            self.writer.write(buf)
+            let written = self.writer.write(buf)?;
+            self.pos += written;
+            Ok(written)
         }
     }
     
@@ -155,15 +201,16 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
 
     fn pos(&self) -> usize { self.pos }
 
-    fn begin_isolate(&mut self) -> Self::Buf {
-         if let Some(write_buf) = &self.write_buf {
+    fn begin_isolate(&mut self) -> io::Result<Self::Buf> {
+         if let Some(write_buf) = &mut self.write_buf {
              let value_size_stub_offset = write_buf.len();
-             self.write_u32::<LittleEndian>(SIZE_STUB).unwrap();
-             Some(value_size_stub_offset)
+             write_buf.write_u32::<LittleEndian>(SIZE_STUB).unwrap();
+             self.pos += 4;
+             Ok(Some(value_size_stub_offset))
          } else {
              self.pos += 4;
              self.write_buf = Some(Vec::new());
-             None
+             Ok(None)
          }
     }
 
@@ -174,13 +221,38 @@ impl<'a, W: Write + ?Sized> Writer for GenericWriter<'a, W> {
             (&mut write_buf[value_size_stub_offset..value_size_stub_offset + 4]).write_u32::<LittleEndian>(value_size).unwrap();
         } else {
             let write_buf = self.write_buf.take().unwrap();
-            self.writer.write_u32::<LittleEndian>(value_size).unwrap();
+            self.writer.write_u32::<LittleEndian>(value_size)?;
             self.writer.write_all(&write_buf[..])?;
         }
         Ok(())
     }
 }
-    
+
+pub(crate) struct Size(pub usize);
+
+impl Write for Size {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0 += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Writer for Size {
+    type Buf = ();
+
+    fn pos(&self) -> usize { self.0 }
+
+    fn begin_isolate(&mut self) -> io::Result<Self::Buf> { Ok(()) }
+
+    fn end_isolate(&mut self, _: (), _: usize) -> Result<(), IoError> {
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct EslSerializer<'r, 'a, W: Writer> {
     isolated: bool,
@@ -261,7 +333,7 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
         let b = replace(&mut self.value_buf_and_pos, Some((if let Some(value_buf) = value_buf {
             value_buf
         } else {
-            self.writer.begin_isolate()
+            self.writer.begin_isolate()?
         }, self.writer.pos())));
         assert!(b.is_none());
         Ok(())
@@ -300,7 +372,7 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
         })?;
         if let &mut Some(ref mut value_buf) = &mut self.value_buf {
             if value_buf.is_none() {
-                **value_buf = Some(self.writer.begin_isolate());
+                **value_buf = Some(self.writer.begin_isolate()?);
             }
         }
         Ok(())
@@ -518,7 +590,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_some<T: Serialize + ?Sized>(self, value: &T) -> Result<Self::Ok, Self::Error> {
         let buf = if !self.isolated {
-            Some(self.writer.begin_isolate())
+            Some(self.writer.begin_isolate()?)
         } else {
             None
         };
@@ -614,7 +686,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        let buf = if !self.isolated { Some((self.writer.begin_isolate(), self.writer.pos())) } else { None };
+        let buf = if !self.isolated { Some((self.writer.begin_isolate()?, self.writer.pos())) } else { None };
         Ok(SeqSerializer {
             writer: self.writer,
             code_page: self.code_page,
@@ -624,7 +696,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        let buf = if !self.isolated { Some((self.writer.begin_isolate(), self.writer.pos())) } else { None };
+        let buf = if !self.isolated { Some((self.writer.begin_isolate()?, self.writer.pos())) } else { None };
         Ok(MapSerializer {
             value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
