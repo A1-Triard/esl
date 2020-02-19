@@ -4,13 +4,25 @@ use std::mem::size_of;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
-use std::marker::PhantomData;
 
 use crate::strings::*;
+use crate::serde_helpers::*;
 
 pub use crate::tag::*;
 
 include!(concat!(env!("OUT_DIR"), "/tags.rs"));
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
+pub enum LinebreakStyle {
+    Unix,
+    Dos
+}
+
+impl LinebreakStyle {
+    pub fn new_line(self) -> &'static str {
+        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
+    }
+}
 
 macro_attr! {
     #[derive(Primitive)]
@@ -72,18 +84,6 @@ enum_serde!([
 pub enum StringCoerce {
     None,
     TrimTailZeros
-}
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum LinebreakStyle {
-    Unix,
-    Dos
-}
-
-impl LinebreakStyle {
-    pub fn new_line(self) -> &'static str {
-        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -273,66 +273,15 @@ pub struct ScriptMetadata {
 }
 
 mod string_32 {
-    use std::fmt::{self};
-    use serde::{Serializer, Deserializer, Deserialize};
-    use serde::de::{self};
-    use serde::ser::Error as ser_Error;
-    use serde::ser::SerializeTuple;
-    use serde::de::Error as de_Error;
+    use serde::{Serializer, Deserializer};
+    use crate::serde_helpers::*;
 
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            serializer.serialize_str(s)
-        } else {
-            if s.len() > 32 {
-                return Err(S::Error::custom("string length is above 32 chars"));
-            }
-            let mut serializer = serializer.serialize_tuple(32)?;
-            for c in s.chars() {
-                serializer.serialize_element(&c)?;
-            }
-            for _ in s.len() .. 32 {
-                serializer.serialize_element(&'\0')?;
-            }
-            serializer.end()
-        }
+        serialize_string_tuple(s, 32, serializer)
     }
 
-    struct StringNHRDeserializer;
-
-    impl<'de> de::Visitor<'de> for StringNHRDeserializer {
-        type Value = String;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "32 character string")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-            if let Some(n) = seq.size_hint() {
-                if n != 32 {
-                    return Err(A::Error::invalid_length(n, &self));
-                }
-            }
-            let mut string: String = String::with_capacity(32);
-            while let Some(c) = seq.next_element()? {
-                string.push(c);
-            }
-            if string.len() != 32 {
-                Err(A::Error::invalid_length(string.len(), &self))
-            } else {
-                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
-                string.truncate(cut_to);
-                Ok(string)
-            }
-        }
-    }
-    
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            String::deserialize(deserializer)
-        } else {
-            deserializer.deserialize_tuple(32, StringNHRDeserializer)
-        }
+        deserialize_string_tuple(32, deserializer)
     }
 }
 
@@ -348,81 +297,15 @@ pub struct FileMetadata {
 }
 
 mod multiline_256_dos {
-    use std::fmt::{self};
-    use serde::{Serializer, Deserializer, Serialize, Deserialize};
-    use serde::de::{self};
-    use serde::ser::Error as ser_Error;
-    use serde::ser::SerializeTuple;
-    use serde::de::Error as de_Error;
+    use serde::{Serializer, Deserializer};
     use crate::field::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            lines.serialize(serializer)
-        } else {
-            let new_line = LinebreakStyle::Dos.new_line();
-            let mut capacity = 0;
-            for line in lines {
-                if line.contains(new_line) {
-                    return Err(S::Error::custom("string list item contains separator"));
-                }
-                capacity += line.len() + new_line.len();
-            }
-            let mut text = String::with_capacity(capacity);
-            for line in lines.iter() {
-                text.push_str(line);
-                text.push_str(new_line);
-            }
-            text.truncate(text.len() - new_line.len());
-            if text.len() > 256 {
-                return Err(S::Error::custom("string list total length is above 256 bytes"));
-            }
-            let mut serializer = serializer.serialize_tuple(256)?;
-            for c in text.chars() {
-                serializer.serialize_element(&c)?;
-            }
-            for _ in text.len() .. 256 {
-                serializer.serialize_element(&'\0')?;
-            }
-            serializer.end()
-        }
-    }
-
-    struct StringListNHRDeserializer;
-
-    impl<'de> de::Visitor<'de> for StringListNHRDeserializer {
-        type Value = Vec<String>;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "256 character string")
-        }
-
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-            if let Some(n) = seq.size_hint() {
-                if n != 256 {
-                    return Err(A::Error::invalid_length(n, &self));
-                }
-            }
-            let mut string: String = String::with_capacity(256);
-            while let Some(c) = seq.next_element()? {
-                string.push(c);
-            }
-            if string.len() != 256 {
-                Err(A::Error::invalid_length(string.len(), &self))
-            } else {
-                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
-                string.truncate(cut_to);
-                Ok(string.split(LinebreakStyle::Dos.new_line()).map(|x| x.into()).collect())
-            }
-        }
+        serialize_string_list(lines, LinebreakStyle::Dos.new_line(), 256, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            <Vec<String>>::deserialize(deserializer)
-        } else {
-            deserializer.deserialize_tuple(256, StringListNHRDeserializer)
-        }
+        deserialize_string_list(LinebreakStyle::Dos.new_line(), 256, deserializer)
     }
 }
 
@@ -512,156 +395,6 @@ impl Serialize for NpcCharacteristicsOption {
     }
 }
 
-struct StructSeqProxyDeserializer<'de, A: de::SeqAccess<'de>> {
-    seq: A,
-    phantom: PhantomData<&'de ()>
-}
-
-impl<'de, A: de::SeqAccess<'de>> Deserializer<'de> for StructSeqProxyDeserializer<'de, A> {
-    type Error = A::Error;
-
-    fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> {
-        visitor.visit_seq(self.seq)
-    }
-
-    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    serde_if_integer128! {
-        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-    }
-
-    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_str<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_string<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_tuple<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_tuple_struct<V>(self, _: &'static str, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_identifier<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-}
-
-struct StructMapProxyDeserializer<'de, A: de::MapAccess<'de>> {
-    map: A,
-    phantom: PhantomData<&'de ()>
-}
-
-impl<'de, A: de::MapAccess<'de>> Deserializer<'de> for StructMapProxyDeserializer<'de, A> {
-    type Error = A::Error;
-
-    fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> {
-        visitor.visit_map(self.map)
-    }
-
-    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    serde_if_integer128! {
-        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-    }
-
-    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_str<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_string<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_tuple<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_tuple_struct<V>(self, _: &'static str, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_identifier<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-
-    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
-}
-
 struct NpcCharacteristicsOptionHRDeserializer;
 
 impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionHRDeserializer {
@@ -676,12 +409,12 @@ impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionHRDeserializer {
     }
 
     fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let c = NpcCharacteristics::deserialize(StructSeqProxyDeserializer { seq, phantom: PhantomData })?;
+        let c = NpcCharacteristics::deserialize(StructSeqProxyDeserializer::new(seq))?;
         Ok(NpcCharacteristicsOption::Some(c))
     }
 
     fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let c = NpcCharacteristics::deserialize(StructMapProxyDeserializer { map, phantom: PhantomData })?;
+        let c = NpcCharacteristics::deserialize(StructMapProxyDeserializer::new(map))?;
         Ok(NpcCharacteristicsOption::Some(c))
     }
 }
@@ -904,12 +637,12 @@ impl<'de> de::Visitor<'de> for DialogTypeOptionHRDeserializer {
     }
 
     fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let c = DialogType::deserialize(StructSeqProxyDeserializer { seq, phantom: PhantomData })?;
+        let c = DialogType::deserialize(StructSeqProxyDeserializer::new(seq))?;
         Ok(DialogTypeOption::Some(c))
     }
 
     fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let c = DialogType::deserialize(StructMapProxyDeserializer { map, phantom: PhantomData })?;
+        let c = DialogType::deserialize(StructMapProxyDeserializer::new(map))?;
         Ok(DialogTypeOption::Some(c))
     }
 }

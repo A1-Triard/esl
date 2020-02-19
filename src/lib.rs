@@ -45,3 +45,5 @@ mod strings;
 pub use crate::strings::*;
 
 pub mod code;
+
+mod serde_helpers;
