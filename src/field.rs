@@ -1,9 +1,12 @@
 use either::{Either, Left, Right};
-use std::fmt::{Debug};
-use serde::{Serialize, Deserialize};
+use std::fmt::{self, Debug};
+use std::mem::size_of;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::{self, Unexpected, VariantAccess};
+use serde::de::Error as de_Error;
+use std::marker::PhantomData;
 
 use crate::strings::*;
-use crate::strings_serde::*;
 
 pub use crate::tag::*;
 
@@ -270,19 +273,66 @@ pub struct ScriptMetadata {
 }
 
 mod string_32 {
-    use serde::{Serializer, Deserializer};
-    use crate::strings_serde::*;
+    use std::fmt::{self};
+    use serde::{Serializer, Deserializer, Deserialize};
+    use serde::de::{self};
+    use serde::ser::Error as ser_Error;
+    use serde::ser::SerializeTuple;
+    use serde::de::Error as de_Error;
 
-    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where
-        S: Serializer {
-        
-        CODE_PAGE.with(|x| serializer.serialize_string(x.get(), Some(32), s))
+    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(s)
+        } else {
+            if s.len() > 32 {
+                return Err(S::Error::custom("string length is above 32 chars"));
+            }
+            let mut serializer = serializer.serialize_tuple(32)?;
+            for c in s.chars() {
+                serializer.serialize_element(&c)?;
+            }
+            for _ in s.len() .. 32 {
+                serializer.serialize_element(&'\0')?;
+            }
+            serializer.end()
+        }
+    }
+
+    struct StringNHRDeserializer;
+
+    impl<'de> de::Visitor<'de> for StringNHRDeserializer {
+        type Value = String;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "32 character string")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+            if let Some(n) = seq.size_hint() {
+                if n != 32 {
+                    return Err(A::Error::invalid_length(n, &self));
+                }
+            }
+            let mut string: String = String::with_capacity(32);
+            while let Some(c) = seq.next_element()? {
+                string.push(c);
+            }
+            if string.len() != 32 {
+                Err(A::Error::invalid_length(string.len(), &self))
+            } else {
+                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
+                string.truncate(cut_to);
+                Ok(string)
+            }
+        }
     }
     
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where
-        D: Deserializer<'de> {
-
-        CODE_PAGE.with(|x| deserializer.deserialize_string_ext(x.get(), 32, true))
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            String::deserialize(deserializer)
+        } else {
+            deserializer.deserialize_tuple(32, StringNHRDeserializer)
+        }
     }
 }
 
@@ -298,20 +348,81 @@ pub struct FileMetadata {
 }
 
 mod multiline_256_dos {
-    use serde::{Serializer, Deserializer};
-    use crate::strings_serde::*;
+    use std::fmt::{self};
+    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use serde::de::{self};
+    use serde::ser::Error as ser_Error;
+    use serde::ser::SerializeTuple;
+    use serde::de::Error as de_Error;
     use crate::field::*;
 
-    pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where
-        S: Serializer {
-
-        CODE_PAGE.with(|x| serializer.serialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), Some(256), lines))
+    pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            lines.serialize(serializer)
+        } else {
+            let new_line = LinebreakStyle::Dos.new_line();
+            let mut capacity = 0;
+            for line in lines {
+                if line.contains(new_line) {
+                    return Err(S::Error::custom("string list item contains separator"));
+                }
+                capacity += line.len() + new_line.len();
+            }
+            let mut text = String::with_capacity(capacity);
+            for line in lines.iter() {
+                text.push_str(line);
+                text.push_str(new_line);
+            }
+            text.truncate(text.len() - new_line.len());
+            if text.len() > 256 {
+                return Err(S::Error::custom("string list total length is above 256 bytes"));
+            }
+            let mut serializer = serializer.serialize_tuple(256)?;
+            for c in text.chars() {
+                serializer.serialize_element(&c)?;
+            }
+            for _ in text.len() .. 256 {
+                serializer.serialize_element(&'\0')?;
+            }
+            serializer.end()
+        }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where
-        D: Deserializer<'de> {
-        
-        CODE_PAGE.with(|x| deserializer.deserialize_string_list(x.get(), LinebreakStyle::Dos.new_line(), 256, true))
+    struct StringListNHRDeserializer;
+
+    impl<'de> de::Visitor<'de> for StringListNHRDeserializer {
+        type Value = Vec<String>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "256 character string")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+            if let Some(n) = seq.size_hint() {
+                if n != 256 {
+                    return Err(A::Error::invalid_length(n, &self));
+                }
+            }
+            let mut string: String = String::with_capacity(256);
+            while let Some(c) = seq.next_element()? {
+                string.push(c);
+            }
+            if string.len() != 256 {
+                Err(A::Error::invalid_length(string.len(), &self))
+            } else {
+                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
+                string.truncate(cut_to);
+                Ok(string.split(LinebreakStyle::Dos.new_line()).map(|x| x.into()).collect())
+            }
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            <Vec<String>>::deserialize(deserializer)
+        } else {
+            deserializer.deserialize_tuple(256, StringListNHRDeserializer)
+        }
     }
 }
 
@@ -377,6 +488,283 @@ pub struct NpcCharacteristics {
     pub fatigue: i16,
 }
 
+#[derive(Debug, Clone)]
+pub enum NpcCharacteristicsOption {
+    None(u16),
+    Some(NpcCharacteristics)
+}
+
+impl Serialize for NpcCharacteristicsOption {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            match self {
+                &NpcCharacteristicsOption::None(padding) => serializer.serialize_u16(padding),
+                NpcCharacteristicsOption::Some(c) => c.serialize(serializer)
+            }
+        } else {
+            match self {
+                NpcCharacteristicsOption::None(padding) =>
+                    serializer.serialize_newtype_variant("NpcCharacteristicsOption", size_of::<u16>() as u32, "None", padding),
+                NpcCharacteristicsOption::Some(c) =>
+                    serializer.serialize_newtype_variant("NpcCharacteristicsOption", size_of::<NpcCharacteristics>() as u32, "Some", c),
+            }
+        }
+    }
+}
+
+struct StructSeqProxyDeserializer<'de, A: de::SeqAccess<'de>> {
+    seq: A,
+    phantom: PhantomData<&'de ()>
+}
+
+impl<'de, A: de::SeqAccess<'de>> Deserializer<'de> for StructSeqProxyDeserializer<'de, A> {
+    type Error = A::Error;
+
+    fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> {
+        visitor.visit_seq(self.seq)
+    }
+
+    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    serde_if_integer128! {
+        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+    }
+
+    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_str<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_string<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_tuple<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_tuple_struct<V>(self, _: &'static str, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_identifier<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+}
+
+struct StructMapProxyDeserializer<'de, A: de::MapAccess<'de>> {
+    map: A,
+    phantom: PhantomData<&'de ()>
+}
+
+impl<'de, A: de::MapAccess<'de>> Deserializer<'de> for StructMapProxyDeserializer<'de, A> {
+    type Error = A::Error;
+
+    fn deserialize_struct<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> {
+        visitor.visit_map(self.map)
+    }
+
+    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    serde_if_integer128! {
+        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+    }
+
+    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_str<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_string<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_tuple<V>(self, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_tuple_struct<V>(self, _: &'static str, _: usize, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_identifier<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+
+    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: de::Visitor<'de> { unreachable!() }
+}
+
+struct NpcCharacteristicsOptionHRDeserializer;
+
+impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionHRDeserializer {
+    type Value = NpcCharacteristicsOption;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "16-bit unsigned integer or NPC characteristics")
+    }
+
+    fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E> where E: de::Error {
+        Ok(NpcCharacteristicsOption::None(v))
+    }
+
+    fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let c = NpcCharacteristics::deserialize(StructSeqProxyDeserializer { seq, phantom: PhantomData })?;
+        Ok(NpcCharacteristicsOption::Some(c))
+    }
+
+    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let c = NpcCharacteristics::deserialize(StructMapProxyDeserializer { map, phantom: PhantomData })?;
+        Ok(NpcCharacteristicsOption::Some(c))
+    }
+}
+
+struct NpcCharacteristicsOptionNHRDeserializer;
+
+impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionNHRDeserializer {
+    type Value = NpcCharacteristicsOption;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "16-bit unsigned integer or NPC characteristics")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            2 => Ok(NpcCharacteristicsOption::None(variant.newtype_variant()?)),
+            42 => Ok(NpcCharacteristicsOption::Some(variant.newtype_variant()?)),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for NpcCharacteristicsOption {
+    fn deserialize<D>(deserializer: D) -> Result<NpcCharacteristicsOption, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(NpcCharacteristicsOptionHRDeserializer)
+        } else {
+            deserializer.deserialize_enum("NpcCharacteristicsOption", &["None", "Some"], NpcCharacteristicsOptionNHRDeserializer)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Npc12Or52 {
+    Npc12(Npc12),
+    Npc52(Npc52)
+}
+
+impl Serialize for Npc12Or52 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            Npc::from(self.clone()).serialize(serializer)
+        } else {
+            match self {
+                Npc12Or52::Npc12(npc12) =>
+                    serializer.serialize_newtype_variant("Npc12Or52", size_of::<Npc12>() as u32, "Npc12", npc12),
+                Npc12Or52::Npc52(npc52) =>
+                    serializer.serialize_newtype_variant("Npc12Or52", size_of::<Npc52>() as u32, "Npc52", npc52),
+            }
+        }
+    }
+}
+
+struct Npc12Or52NHRDeserializer;
+
+impl<'de> de::Visitor<'de> for Npc12Or52NHRDeserializer {
+    type Value = Npc12Or52;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "NPC")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            12 => Ok(Npc12Or52::Npc12(variant.newtype_variant()?)),
+            52 => Ok(Npc12Or52::Npc52(variant.newtype_variant()?)),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Npc12Or52 {
+    fn deserialize<D>(deserializer: D) -> Result<Npc12Or52, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            Npc::deserialize(deserializer).map(Npc12Or52::from)
+        } else {
+            deserializer.deserialize_enum("Npc12Or52", &["Npc12", "Npc52"], Npc12Or52NHRDeserializer)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Npc {
     pub level: u16,
@@ -385,46 +773,67 @@ pub struct Npc {
     pub rank: i8,
     pub gold: i32,
     pub padding: u8,
-    pub characteristics: Either<u16, NpcCharacteristics>
+    pub characteristics: NpcCharacteristicsOption
 }
 
-impl Npc {
-    pub fn variant(&self) -> Either<Npc12, Npc52> {
-        match &self.characteristics {
-            Right(characteristics) => Right(Npc52 {
-                level: self.level, disposition: self.disposition,
-                reputation: self.reputation, rank: self.rank,
-                padding: self.padding,
-                gold: self.gold,
-                characteristics: characteristics.clone()
+impl From<Npc> for Npc12Or52 {
+    fn from(npc: Npc) -> Npc12Or52 {
+        match npc.characteristics {
+            NpcCharacteristicsOption::Some(characteristics) => Npc12Or52::Npc52(Npc52 {
+                level: npc.level, disposition: npc.disposition,
+                reputation: npc.reputation, rank: npc.rank,
+                padding: npc.padding,
+                gold: npc.gold,
+                characteristics
             }),
-            &Left(padding_16) => Left(Npc12 {
-                level: self.level, disposition: self.disposition,
-                reputation: self.reputation, rank: self.rank,
-                padding_8: self.padding, padding_16,
-                gold: self.gold
+            NpcCharacteristicsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
+                level: npc.level, disposition: npc.disposition,
+                reputation: npc.reputation, rank: npc.rank,
+                padding_8: npc.padding, padding_16,
+                gold: npc.gold
             })
+        }
+    }
+}
+
+impl From<Npc12> for Npc12Or52 {
+    fn from(npc: Npc12) -> Npc12Or52 {
+        Npc12Or52::Npc12(npc)
+    }
+}
+
+impl From<Npc52> for Npc12Or52 {
+    fn from(npc: Npc52) -> Npc12Or52 {
+        Npc12Or52::Npc52(npc)
+    }
+}
+
+impl From<Npc12Or52> for Npc {
+    fn from(npc: Npc12Or52) -> Npc {
+        match npc {
+            Npc12Or52::Npc12(npc) => Npc {
+                level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+                rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
+                characteristics: NpcCharacteristicsOption::None(npc.padding_16)
+            },
+            Npc12Or52::Npc52(npc) => Npc {
+                level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+                rank: npc.rank, gold: npc.gold, padding: npc.padding,
+                characteristics: NpcCharacteristicsOption::Some(npc.characteristics)
+            }
         }
     }
 }
 
 impl From<Npc12> for Npc {
     fn from(npc: Npc12) -> Npc {
-        Npc {
-            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
-            rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
-            characteristics: Left(npc.padding_16)
-        }
+        Npc12Or52::from(npc).into()
     }
 }
 
 impl From<Npc52> for Npc {
     fn from(npc: Npc52) -> Npc {
-        Npc {
-            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
-            rank: npc.rank, gold: npc.gold, padding: npc.padding,
-            characteristics: Right(npc.characteristics)
-        }
+        Npc12Or52::from(npc).into()
     }
 }
 
@@ -458,6 +867,83 @@ pub struct Item {
 }
 
 #[derive(Debug, Clone)]
+pub enum DialogTypeOption {
+    None(u32),
+    Some(DialogType)
+}
+
+impl Serialize for DialogTypeOption {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            match self {
+                &DialogTypeOption::None(padding) => serializer.serialize_u32(padding),
+                DialogTypeOption::Some(c) => c.serialize(serializer)
+            }
+        } else {
+            match self {
+                DialogTypeOption::None(padding) =>
+                    serializer.serialize_newtype_variant("DialogTypeOption", size_of::<u32>() as u32, "None", padding),
+                DialogTypeOption::Some(c) =>
+                    serializer.serialize_newtype_variant("DialogTypeOption", size_of::<NpcCharacteristics>() as u32, "Some", c),
+            }
+        }
+    }
+}
+
+struct DialogTypeOptionHRDeserializer;
+
+impl<'de> de::Visitor<'de> for DialogTypeOptionHRDeserializer {
+    type Value = DialogTypeOption;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "32-bit unsigned integer or NPC characteristics")
+    }
+
+    fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E> where E: de::Error {
+        Ok(DialogTypeOption::None(v))
+    }
+
+    fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let c = DialogType::deserialize(StructSeqProxyDeserializer { seq, phantom: PhantomData })?;
+        Ok(DialogTypeOption::Some(c))
+    }
+
+    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let c = DialogType::deserialize(StructMapProxyDeserializer { map, phantom: PhantomData })?;
+        Ok(DialogTypeOption::Some(c))
+    }
+}
+
+struct DialogTypeOptionNHRDeserializer;
+
+impl<'de> de::Visitor<'de> for DialogTypeOptionNHRDeserializer {
+    type Value = DialogTypeOption;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "32-bit unsigned integer or dialog type")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            4 => Ok(DialogTypeOption::None(variant.newtype_variant()?)),
+            1 => Ok(DialogTypeOption::Some(variant.newtype_variant()?)),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DialogTypeOption {
+    fn deserialize<D>(deserializer: D) -> Result<DialogTypeOption, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(DialogTypeOptionHRDeserializer)
+        } else {
+            deserializer.deserialize_enum("DialogTypeOption", &["None", "Some"], DialogTypeOptionNHRDeserializer)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Field {
     Binary(Vec<u8>),
     String(String),
@@ -472,7 +958,7 @@ pub enum Field {
     Byte(u8),
     Ingredient(Ingredient),
     ScriptMetadata(ScriptMetadata),
-    DialogMetadata(Either<u32, DialogType>),
+    DialogMetadata(DialogTypeOption),
     FileMetadata(FileMetadata),
     SavedNpc(SavedNpc),
     Npc(Npc),

@@ -13,7 +13,7 @@ use std::fmt::{self};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use either::{Either, Left, Right};
+use either::{Left, Right};
 
 use crate::strings::*;
 use crate::field::*;
@@ -428,20 +428,20 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     )(input)
 }
 
-fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogType>, FieldBodyError> {
+fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, FieldBodyError> {
     map(
         map_res(
             set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
             |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBodyError::InvalidDialogType(d)))
         ),
-        Right
+        DialogTypeOption::Some
     )(input)
 }
 
-fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], Either<u32, DialogType>, FieldBodyError> {
+fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, FieldBodyError> {
     map(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        Left
+        DialogTypeOption::None
     )(input)
 }
 
@@ -1147,7 +1147,7 @@ mod tests {
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
-    use either::{Left, Right};
+    use crate::code::*;
 
     fn string(s: &str) -> Vec<u8> {
         WINDOWS_1251.encode(s, EncoderTrap::Strict).unwrap()
@@ -1331,7 +1331,7 @@ mod tests {
             skills: [-1, 0, 17, 19],
             attributes: [-1, 1, 10, 14]
         };
-        let bin: Vec<u8> = bincode::serialize(&ingredient).unwrap();
+        let bin: Vec<u8> = serialize(&ingredient,).unwrap();
         let res = ingredient_field(&bin).unwrap().1;
         assert_eq!(res.weight, ingredient.weight);
         assert_eq!(res.value, ingredient.value);
@@ -1359,7 +1359,7 @@ mod tests {
             data_size: 65500,
             var_table_size: 100
         };
-        let bin: Vec<u8> = bincode::serialize(&script_metadata).unwrap();
+        let bin: Vec<u8> = serialize(&script_metadata).unwrap();
         let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.name, script_metadata.name);
         assert_eq!(res.shorts, script_metadata.shorts);
@@ -1378,7 +1378,7 @@ mod tests {
             description: vec!["descr line1".into(), "descr line2".into()],
             records_count: 1333
         };
-        let bin: Vec<u8> = bincode::serialize(&file_metadata).unwrap();
+        let bin: Vec<u8> = serialize(&file_metadata).unwrap();
         let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
@@ -1399,7 +1399,7 @@ mod tests {
             magnitude_min: 1,
             magnitude_max: 300
         };
-        let bin: Vec<u8> = bincode::serialize(&effect).unwrap();
+        let bin: Vec<u8> = serialize(&effect).unwrap();
         let res = effect_field(&bin).unwrap().1;
         assert_eq!(res.id, effect.id);
         assert_eq!(res.skill, effect.skill);
@@ -1418,7 +1418,7 @@ mod tests {
             reputation: -200,
             index: 129
         };
-        let bin: Vec<u8> = bincode::serialize(&saved_npc).unwrap();
+        let bin: Vec<u8> = serialize(&saved_npc).unwrap();
         let res = saved_npc_field(&bin).unwrap().1;
         assert_eq!(res.disposition, saved_npc.disposition);
         assert_eq!(res.reputation, saved_npc.reputation);
@@ -1436,7 +1436,7 @@ mod tests {
             light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
             hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
-        let bin: Vec<u8> = bincode::serialize(&npc_char).unwrap();
+        let bin: Vec<u8> = serialize(&npc_char).unwrap();
         let res = npc_characteristics(&bin).unwrap().1;
         assert_eq!(res.strength, npc_char.strength);
         assert_eq!(res.intelligence, npc_char.intelligence);
@@ -1488,7 +1488,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: Right(NpcCharacteristics {
+            characteristics: NpcCharacteristicsOption::Some(NpcCharacteristics {
                 strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
                 personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
                 blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1498,7 +1498,7 @@ mod tests {
                 hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
             })
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.variant().right().unwrap()).unwrap();
+        let bin: Vec<u8> = serialize(&npc.to_12_or_52().right().unwrap()).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1518,9 +1518,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: Left(30001)
+            characteristics: NpcCharacteristicsOption::None(30001)
         };
-        let bin: Vec<u8> = bincode::serialize(&npc.variant().left().unwrap()).unwrap();
+        let bin: Vec<u8> = serialize(&npc.to_12_or_52().left().unwrap()).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1537,7 +1537,7 @@ mod tests {
             count: -3,
             item_id: "b_item_01 ".into()
         };
-        let bin: Vec<u8> = bincode::serialize(&item).unwrap();
+        let bin: Vec<u8> = serialize(&item).unwrap();
         let res = item_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
@@ -1561,7 +1561,7 @@ mod tests {
                 ]))
             ]
         };
-        let bin: Vec<u8> = bincode::serialize(&record).unwrap();
+        let bin: Vec<u8> = serialize(&record).unwrap();
         let mut bin = &bin[..];
         let records = Records::new(CodePage::English, true, 0, &mut bin);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
