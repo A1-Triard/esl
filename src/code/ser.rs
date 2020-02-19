@@ -126,6 +126,8 @@ impl<'a> SliceWriter<'a> {
             pos: 0
         }
     }
+    
+    pub fn written(&self) -> usize { self.pos }
 }
 
 impl<'a> Write for SliceWriter<'a> {
