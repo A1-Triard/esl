@@ -584,28 +584,29 @@ mod tests {
         assert_eq!(d.map[&Key { variant: Variant::Variant2, s: "str".into() }], String::from("value"));
     }
 
-    /*#[test]
-    fn vec_serialize_tuple_key() {
-        let mut s: HashMap<(Key, Key), u64> = HashMap::new();
-        s.insert((
-            Key { variant: Variant::Variant2, s: "str".into() },
-            Key { variant: Variant::Variant1, s: "стр".into() }
-        ), 22);
-        let mut v = Vec::new();
-        s.serialize(VecEslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, vec![
+    #[test]
+    fn vec_deserialize_tuple_key() {
+        let data = vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
             1, 3, 0, 0, 0, 241, 242, 240,
             22, 0, 0, 0, 0, 0, 0, 0
-        ]);
+        ];
+        let d: HashMap<(Key, Key), u64> = HashMap::deserialize(EslDeserializer {
+            reader: &mut (&data[..]),
+            map_entry_value_size: None,
+            isolated: Some(data.len() as u32),
+            code_page: CodePage::Russian,
+            phantom: PhantomData
+        }).unwrap();
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[&(
+            Key { variant: Variant::Variant2, s: "str".into() },
+            Key { variant: Variant::Variant1, s: "стр".into() }
+        )], 22);
     }
 
-    #[derive(Serialize, Hash, Eq, PartialEq)]
+    /*#[derive(Serialize, Hash, Eq, PartialEq)]
     struct Key2((Key, Key));
 
     #[test]
