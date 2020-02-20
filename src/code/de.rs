@@ -201,6 +201,8 @@ struct MapDeserializer<'a, 'de, R: Reader<'de>> {
 impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
     type Error = Error;
 
+    fn size_hint(&self) -> Option<usize> { Some(1) }
+    
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> where K: DeserializeSeed<'de> {
         if self.value_size.is_some() { return Ok(None); }
         let mut value_size = None;
@@ -211,6 +213,7 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
         self.value_size = Some(value_size.map_or_else(|| self.reader.read_u32::<LittleEndian>(), Ok)?);
         Ok(Some(key))
     }
+    
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error> where V: DeserializeSeed<'de> {
         seed.deserialize(EslDeserializer {
             isolated: Some(self.value_size.unwrap()), code_page: self.code_page, reader: self.reader,
