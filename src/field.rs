@@ -1,6 +1,6 @@
 use either::{Either, Left, Right};
 use std::fmt::{self, Debug};
-use std::mem::{size_of, transmute};
+use std::mem::{transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
@@ -386,6 +386,9 @@ pub enum NpcCharacteristicsOption {
     Some(NpcCharacteristics)
 }
 
+const U16_SERDE_SIZE: u32 = 12;
+const NPC_CHARACTERISTICS_SERDE_SIZE: u32 = 42;
+
 impl Serialize for NpcCharacteristicsOption {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
@@ -397,13 +400,13 @@ impl Serialize for NpcCharacteristicsOption {
             match self {
                 NpcCharacteristicsOption::None(padding) => serializer.serialize_newtype_variant(
                     name_of!(type NpcCharacteristicsOption), 
-                    size_of::<u16>() as u32,
+                    U16_SERDE_SIZE,
                     name_of!(const None in NpcCharacteristicsOption),
                     padding
                 ),
                 NpcCharacteristicsOption::Some(c) => serializer.serialize_newtype_variant(
                     name_of!(type NpcCharacteristicsOption),
-                    size_of::<NpcCharacteristics>() as u32,
+                    NPC_CHARACTERISTICS_SERDE_SIZE,
                     name_of!(const Some in NpcCharacteristicsOption),
                     c
                 ),
@@ -448,8 +451,8 @@ impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionNHRDeserializer {
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            2 => Ok(NpcCharacteristicsOption::None(variant.newtype_variant()?)),
-            42 => Ok(NpcCharacteristicsOption::Some(variant.newtype_variant()?)),
+            U16_SERDE_SIZE => Ok(NpcCharacteristicsOption::None(variant.newtype_variant()?)),
+            NPC_CHARACTERISTICS_SERDE_SIZE => Ok(NpcCharacteristicsOption::Some(variant.newtype_variant()?)),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
@@ -475,6 +478,9 @@ pub enum Npc12Or52 {
     Npc52(Npc52)
 }
 
+const NPC12_SERDE_SIZE: u32 = 12;
+const NPC52_SERDE_SIZE: u32 = 52;
+
 impl Serialize for Npc12Or52 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
@@ -483,13 +489,13 @@ impl Serialize for Npc12Or52 {
             match self {
                 Npc12Or52::Npc12(npc12) => serializer.serialize_newtype_variant(
                     name_of!(type Npc12Or52),
-                    size_of::<Npc12>() as u32,
+                    NPC12_SERDE_SIZE,
                     name_of!(const Npc12 in Npc12Or52),
                     npc12
                 ),
                 Npc12Or52::Npc52(npc52) => serializer.serialize_newtype_variant(
                     name_of!(type Npc12Or52),
-                    size_of::<Npc52>() as u32,
+                    NPC52_SERDE_SIZE,
                     name_of!(const Npc52 in Npc12Or52), 
                     npc52
                 ),
@@ -510,8 +516,8 @@ impl<'de> de::Visitor<'de> for Npc12Or52NHRDeserializer {
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            12 => Ok(Npc12Or52::Npc12(variant.newtype_variant()?)),
-            52 => Ok(Npc12Or52::Npc52(variant.newtype_variant()?)),
+            NPC12_SERDE_SIZE => Ok(Npc12Or52::Npc12(variant.newtype_variant()?)),
+            NPC52_SERDE_SIZE => Ok(Npc12Or52::Npc52(variant.newtype_variant()?)),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
@@ -638,6 +644,9 @@ pub enum DialogTypeOption {
     Some(DialogType)
 }
 
+const U32_SERDE_SIZE: u32 = 4;
+const DIALOG_TYPE_SERDE_SIZE: u32 = 1;
+
 impl Serialize for DialogTypeOption {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
@@ -648,14 +657,14 @@ impl Serialize for DialogTypeOption {
         } else {
             match self {
                 DialogTypeOption::None(padding) => serializer.serialize_newtype_variant(
-                    name_of!(type DialogTypeOption), 
-                    size_of::<u32>() as u32,
+                    name_of!(type DialogTypeOption),
+                    U32_SERDE_SIZE,
                     name_of!(const None in DialogTypeOption),
                     padding
                 ),
                 DialogTypeOption::Some(c) => serializer.serialize_newtype_variant(
                     name_of!(type DialogTypeOption),
-                    size_of::<NpcCharacteristics>() as u32,
+                    DIALOG_TYPE_SERDE_SIZE,
                     name_of!(const Some in DialogTypeOption),
                     c
                 ),
@@ -700,8 +709,8 @@ impl<'de> de::Visitor<'de> for DialogTypeOptionNHRDeserializer {
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            4 => Ok(DialogTypeOption::None(variant.newtype_variant()?)),
-            1 => Ok(DialogTypeOption::Some(variant.newtype_variant()?)),
+            U32_SERDE_SIZE => Ok(DialogTypeOption::None(variant.newtype_variant()?)),
+            DIALOG_TYPE_SERDE_SIZE => Ok(DialogTypeOption::Some(variant.newtype_variant()?)),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
