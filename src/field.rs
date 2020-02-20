@@ -395,10 +395,18 @@ impl Serialize for NpcCharacteristicsOption {
             }
         } else {
             match self {
-                NpcCharacteristicsOption::None(padding) =>
-                    serializer.serialize_newtype_variant(name_of!(type NpcCharacteristicsOption), size_of::<u16>() as u32, "None", padding),
-                NpcCharacteristicsOption::Some(c) =>
-                    serializer.serialize_newtype_variant(name_of!(type NpcCharacteristicsOption), size_of::<NpcCharacteristics>() as u32, "Some", c),
+                NpcCharacteristicsOption::None(padding) => serializer.serialize_newtype_variant(
+                    name_of!(type NpcCharacteristicsOption), 
+                    size_of::<u16>() as u32,
+                    name_of!(const None in NpcCharacteristicsOption),
+                    padding
+                ),
+                NpcCharacteristicsOption::Some(c) => serializer.serialize_newtype_variant(
+                    name_of!(type NpcCharacteristicsOption),
+                    size_of::<NpcCharacteristics>() as u32,
+                    name_of!(const Some in NpcCharacteristicsOption),
+                    c
+                ),
             }
         }
     }
@@ -452,7 +460,11 @@ impl<'de> Deserialize<'de> for NpcCharacteristicsOption {
         if deserializer.is_human_readable() {
             deserializer.deserialize_any(NpcCharacteristicsOptionHRDeserializer)
         } else {
-            deserializer.deserialize_enum(name_of!(type NpcCharacteristicsOption), &["None", "Some"], NpcCharacteristicsOptionNHRDeserializer)
+            deserializer.deserialize_enum(
+                name_of!(type NpcCharacteristicsOption),
+                &[name_of!(const None in NpcCharacteristicsOption), name_of!(const Some in NpcCharacteristicsOption)],
+                NpcCharacteristicsOptionNHRDeserializer
+            )
         }
     }
 }
@@ -469,10 +481,18 @@ impl Serialize for Npc12Or52 {
             Npc::from(self.clone()).serialize(serializer)
         } else {
             match self {
-                Npc12Or52::Npc12(npc12) =>
-                    serializer.serialize_newtype_variant(name_of!(type Npc12Or52), size_of::<Npc12>() as u32, name_of!(type Npc12), npc12),
-                Npc12Or52::Npc52(npc52) =>
-                    serializer.serialize_newtype_variant(name_of!(type Npc12Or52), size_of::<Npc52>() as u32, name_of!(type Npc52), npc52),
+                Npc12Or52::Npc12(npc12) => serializer.serialize_newtype_variant(
+                    name_of!(type Npc12Or52),
+                    size_of::<Npc12>() as u32,
+                    name_of!(const Npc12 in Npc12Or52),
+                    npc12
+                ),
+                Npc12Or52::Npc52(npc52) => serializer.serialize_newtype_variant(
+                    name_of!(type Npc12Or52),
+                    size_of::<Npc52>() as u32,
+                    name_of!(const Npc52 in Npc12Or52), 
+                    npc52
+                ),
             }
         }
     }
@@ -502,7 +522,11 @@ impl<'de> Deserialize<'de> for Npc12Or52 {
         if deserializer.is_human_readable() {
             Npc::deserialize(deserializer).map(Npc12Or52::from)
         } else {
-            deserializer.deserialize_enum(name_of!(type Npc12Or52), &[name_of!(type Npc12), name_of!(type Npc52)], Npc12Or52NHRDeserializer)
+            deserializer.deserialize_enum(
+                name_of!(type Npc12Or52),
+                &[name_of!(const Npc12 in Npc12Or52), name_of!(const Npc52 in Npc12Or52)],
+                Npc12Or52NHRDeserializer
+            )
         }
     }
 }
@@ -623,10 +647,18 @@ impl Serialize for DialogTypeOption {
             }
         } else {
             match self {
-                DialogTypeOption::None(padding) =>
-                    serializer.serialize_newtype_variant("DialogTypeOption", size_of::<u32>() as u32, "None", padding),
-                DialogTypeOption::Some(c) =>
-                    serializer.serialize_newtype_variant("DialogTypeOption", size_of::<NpcCharacteristics>() as u32, "Some", c),
+                DialogTypeOption::None(padding) => serializer.serialize_newtype_variant(
+                    name_of!(type DialogTypeOption), 
+                    size_of::<u32>() as u32,
+                    name_of!(const None in DialogTypeOption),
+                    padding
+                ),
+                DialogTypeOption::Some(c) => serializer.serialize_newtype_variant(
+                    name_of!(type DialogTypeOption),
+                    size_of::<NpcCharacteristics>() as u32,
+                    name_of!(const Some in DialogTypeOption),
+                    c
+                ),
             }
         }
     }
@@ -680,7 +712,11 @@ impl<'de> Deserialize<'de> for DialogTypeOption {
         if deserializer.is_human_readable() {
             deserializer.deserialize_any(DialogTypeOptionHRDeserializer)
         } else {
-            deserializer.deserialize_enum("DialogTypeOption", &["None", "Some"], DialogTypeOptionNHRDeserializer)
+            deserializer.deserialize_enum(
+                name_of!(type DialogTypeOption),
+                &[name_of!(const None in DialogTypeOption), name_of!(const Some in DialogTypeOption)],
+                DialogTypeOptionNHRDeserializer
+            )
         }
     }
 }
