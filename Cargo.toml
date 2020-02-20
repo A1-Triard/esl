@@ -1,6 +1,6 @@
 [package]
-name = "tes3"
-version = "0.13.0"
+name = "esl"
+version = "0.0.1"
 authors = ["Warlock <internalmike@gmail.com>"]
 edition = "2018"
 build = "build.rs"
