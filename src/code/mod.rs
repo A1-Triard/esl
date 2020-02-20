@@ -26,18 +26,42 @@ pub fn deserialize_from_seed<'de, T: DeserializeSeed<'de>>(seed: T, reader: &'de
     seed.deserialize(deserializer)
 }
 
-pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8], code_page: CodePage, isolated: bool)
+pub fn deserialize_from_slice<'a, 'de, T: Deserialize<'de>>(bytes: &'a mut &'de [u8], code_page: CodePage, isolated: bool)
     -> Result<T, de::Error> {
 
-    let deserializer = bytes_deserializer(&mut bytes, code_page, isolated);
+    let deserializer = bytes_deserializer(bytes, code_page, isolated);
     T::deserialize(deserializer)
 }
 
-pub fn deserialize_seed<'de, T: DeserializeSeed<'de>>(seed: T, mut bytes: &'de [u8], code_page: CodePage, isolated: bool)
+pub fn deserialize_from_slice_seed<'a, 'de, T: DeserializeSeed<'de>>(seed: T, bytes: &'a mut &'de [u8], code_page: CodePage, isolated: bool)
     -> Result<T::Value, de::Error> {
+
+    let deserializer = bytes_deserializer(bytes, code_page, isolated);
+    seed.deserialize(deserializer)
+}
+
+pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8], code_page: CodePage, isolated: bool)
+    -> Result<T, de::ExtError> {
+
+    let deserializer = bytes_deserializer(&mut bytes, code_page, isolated);
+    let res = T::deserialize(deserializer)?;
+    if !bytes.is_empty() {
+        Err(de::ExtError::Unread(bytes))
+    } else {
+        Ok(res)
+    }
+}
+
+pub fn deserialize_seed<'de, T: DeserializeSeed<'de>>(seed: T, mut bytes: &'de [u8], code_page: CodePage, isolated: bool)
+    -> Result<T::Value, de::ExtError> {
     
     let deserializer = bytes_deserializer(&mut bytes, code_page, isolated);
-    seed.deserialize(deserializer)
+    let res = seed.deserialize(deserializer)?;
+    if !bytes.is_empty() {
+        Err(de::ExtError::Unread(bytes))
+    } else {
+        Ok(res)
+    }
 }
 
 fn bytes_deserializer<'a, 'de>(bytes: &'a mut (&'de [u8]), code_page: CodePage, isolated: bool) -> EslDeserializer<'static, 'a, 'de, &'de [u8]> {

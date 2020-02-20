@@ -1552,7 +1552,6 @@ mod tests {
         assert_eq!(res.item_id, item.item_id);
     }
 
-    /*
     #[test]
     fn serialize_record() {
         let record = Record {
@@ -1571,7 +1570,8 @@ mod tests {
                 ]))
             ]
         };
-        let bin: Vec<u8> = serialize(&record).unwrap();
+        let bin: Vec<u8> = serialize(&record, CodePage::English, true).unwrap();
+        println!("{:?}", bin);
         let mut bin = &bin[..];
         let records = Records::new(CodePage::English, true, 0, &mut bin);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
@@ -1581,5 +1581,4 @@ mod tests {
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);
     }
-    */
 }

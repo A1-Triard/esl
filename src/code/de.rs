@@ -46,6 +46,43 @@ impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error { Error::Io(e) }
 }
 
+#[derive(Debug)]
+pub enum ExtError<'de> {
+    Error(Error),
+    Unread(&'de [u8]),
+}
+
+impl<'de> Display for ExtError<'de> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExtError::Error(s) => Display::fmt(s, f),
+            ExtError::Unread(b) => write!(f, "not all input read, {} bytes left", b.len()),
+        }
+    }
+}
+
+impl<'de> std::error::Error for ExtError<'de> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        if let ExtError::Error(e) = self {
+            Some(e)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'de> de::Error for ExtError<'de> {
+    fn custom<T: Display>(msg: T) -> Self { ExtError::Error(Error::custom(msg)) }
+}
+
+impl<'de> From<io::Error> for ExtError<'de> {
+    fn from(e: io::Error) -> Self { Error::Io(e).into() }
+}
+
+impl<'de> From<Error> for ExtError<'de> {
+    fn from(e: Error) -> Self { ExtError::Error(e) }
+}
+
 pub(crate) trait Reader<'de>: Read {
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>>;
     fn pos(&self) -> isize;
