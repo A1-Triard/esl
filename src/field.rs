@@ -1,6 +1,6 @@
 use either::{Either, Left, Right};
 use std::fmt::{self, Debug};
-use std::mem::size_of;
+use std::mem::{size_of, transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
@@ -86,7 +86,7 @@ pub enum StringCoerce {
     TrimTailZeros
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FieldType {
     Binary,
     String(Either<StringCoerce, u32>),
@@ -253,7 +253,10 @@ impl FieldType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Derivative)]
+#[derivative(PartialEq, Eq)]
 pub struct Ingredient {
+    #[derivative(PartialEq(compare_with="eq_f32"))]
     pub weight: f32,
     pub value: u32,
     pub effects: [i32; 4],
@@ -261,7 +264,13 @@ pub struct Ingredient {
     pub attributes: [i32; 4]
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn eq_f32(a: &f32, b: &f32) -> bool {
+    let a: u32 = unsafe { transmute(*a) };
+    let b: u32 = unsafe { transmute(*b) };
+    a == b
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ScriptMetadata {
     #[serde(with = "string_32")]
     pub name: String,
@@ -285,7 +294,7 @@ mod string_32 {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileMetadata {
     pub version: u32,
     pub file_type: FileType,
@@ -309,7 +318,7 @@ mod multiline_256_dos {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Effect {
     pub id: i16,
     pub skill: i8,
@@ -321,14 +330,14 @@ pub struct Effect {
     pub magnitude_max: i32
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SavedNpc {
     pub disposition: i16,
     pub reputation: i16,
     pub index: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct NpcCharacteristics {
     pub strength: u8,
     pub intelligence: u8,
@@ -371,7 +380,7 @@ pub struct NpcCharacteristics {
     pub fatigue: i16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum NpcCharacteristicsOption {
     None(u16),
     Some(NpcCharacteristics)
@@ -448,7 +457,7 @@ impl<'de> Deserialize<'de> for NpcCharacteristicsOption {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Npc12Or52 {
     Npc12(Npc12),
     Npc52(Npc52)
@@ -498,7 +507,7 @@ impl<'de> Deserialize<'de> for Npc12Or52 {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Npc {
     pub level: u16,
     pub disposition: i8,
@@ -570,7 +579,7 @@ impl From<Npc52> for Npc {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Npc12 {
     pub level: u16,
     pub disposition: i8,
@@ -581,7 +590,7 @@ pub struct Npc12 {
     pub gold: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Npc52 {
     pub level: u16,
     pub characteristics: NpcCharacteristics,
@@ -592,14 +601,14 @@ pub struct Npc52 {
     pub gold: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Item {
     pub count: i32,
     #[serde(with = "string_32")]
     pub item_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DialogTypeOption {
     None(u32),
     Some(DialogType)
@@ -677,6 +686,8 @@ impl<'de> Deserialize<'de> for DialogTypeOption {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Derivative)]
+#[derivative(PartialEq="feature_allow_slow_enum", Eq)]
 pub enum Field {
     Binary(Vec<u8>),
     String(String),
@@ -684,7 +695,7 @@ pub enum Field {
     StringList(Vec<String>),
     StringZList(StringZList),
     Item(Item),
-    Float(f32),
+    Float(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
     Int(i32),
     Short(i16),
     Long(i64),

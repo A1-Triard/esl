@@ -16,6 +16,8 @@ extern crate debug_panic;
 extern crate lazy_static;
 #[macro_use]
 extern crate serde;
+#[macro_use]
+extern crate derivative;
 
 #[macro_use]
 mod tag;

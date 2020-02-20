@@ -68,7 +68,7 @@ enum_serde!({
     Unsigned, u64
 });
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Record {
     pub tag: Tag,
     pub flags: RecordFlags,
