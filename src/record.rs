@@ -13,12 +13,13 @@ use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
-use flate2::write::ZlibDecoder;
+use flate2::write::{ZlibDecoder, ZlibEncoder};
+use flate2::Compression;
 use std::io::Write;
 
 use crate::field::*;
-use crate::field_serde::*;
 use crate::serde_helpers::*;
+use crate::strings::*;
 
 bitflags! {
     pub struct RecordFlags: u64 {
@@ -98,29 +99,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(_, lb) => if let Field::StringList(s) = self.field {
-                if serializer.is_human_readable() {
-                    let mut serializer = serializer.serialize_seq(Some(s.len()))?;
-                    for line in s {
-                        serializer.serialize_element(line)?;
-                    }
-                    serializer.end()
-                } else {
-                    let new_line = lb.new_line();
-                    let mut capacity = 0;
-                    for line in s {
-                        if line.contains(new_line) {
-                            return Err(S::Error::custom("string list item contains separator"));
-                        }
-                        capacity += line.len() + new_line.len();
-                    }
-                    let mut text = String::with_capacity(capacity);
-                    for line in s {
-                        text.push_str(line);
-                        text.push_str(new_line);
-                    }
-                    text.truncate(text.len() - new_line.len());
-                    serializer.serialize_str(&text)
-                }
+                serialize_string_list(&s, lb.new_line(), None, serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -270,31 +249,68 @@ impl Serialize for Record {
     }
 }
 
-struct FieldBodyHRDeserializer {
+struct FieldBodyDeserializer {
     record_tag: Tag,
     field_tag: Tag
 }
 
-impl<'de> DeserializeSeed<'de> for FieldBodyHRDeserializer {
+impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
         D: Deserializer<'de> {
 
-        if self.field_tag == META {
+        if deserializer.is_human_readable() && self.field_tag == META {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
-            deserializer.deserialize_field(self.record_tag, self.field_tag, None)
-                .map(|x| Right((self.field_tag, x)))
+            match FieldType::from_tags(self.record_tag, self.field_tag) {
+                FieldType::String(p) => if let Right(len) = p {
+                    deserialize_string_tuple(len as usize, deserializer)
+                } else {
+                    String::deserialize(deserializer)
+                }.map(Field::String),
+                FieldType::StringZ =>
+                    StringZ::deserialize(deserializer).map(Field::StringZ),
+                FieldType::Multiline(_, lb) =>
+                    deserialize_string_list(lb.new_line(), None, deserializer).map(Field::StringList),
+                FieldType::StringZList =>
+                    StringZList::deserialize(deserializer).map(Field::StringZList),
+                FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),
+                FieldType::Compressed => if deserializer.is_human_readable() {
+                    <Vec<u8>>::deserialize(deserializer)
+                } else {
+                    let bytes = <&[u8]>::deserialize(deserializer)?;
+                    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
+                    encoder.write_all(bytes).unwrap();
+                    Ok(encoder.finish().unwrap())
+                }.map(Field::Binary),
+                FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
+                FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
+                FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
+                FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
+                FieldType::SavedNpc => SavedNpc::deserialize(deserializer).map(Field::SavedNpc),
+                FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
+                FieldType::Npc => if deserializer.is_human_readable() {
+                    Npc::deserialize(deserializer)
+                } else {
+                    Npc12Or52::deserialize(deserializer).map(Npc::from)
+                }.map(Field::Npc),
+                FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(Field::DialogMetadata),
+                FieldType::Float => f32::deserialize(deserializer).map(Field::Float),
+                FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
+                FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
+                FieldType::Long => i64::deserialize(deserializer).map(Field::Long),
+                FieldType::Byte => u8::deserialize(deserializer).map(Field::Byte),
+            }.map(|x| Right((self.field_tag, x)))
         }
     }
 }
 
-struct FieldHRDeserializer {
+struct FieldDeserializer {
     record_tag: Tag
 }
 
-impl<'de> de::Visitor<'de> for FieldHRDeserializer {
+impl<'de> de::Visitor<'de> for FieldDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -306,7 +322,7 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
 
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
-        let body = map.next_value_seed(FieldBodyHRDeserializer { record_tag: self.record_tag, field_tag })?;
+        let body = map.next_value_seed(FieldBodyDeserializer { record_tag: self.record_tag, field_tag })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
         }
@@ -314,7 +330,7 @@ impl<'de> de::Visitor<'de> for FieldHRDeserializer {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for FieldHRDeserializer {
+impl<'de> DeserializeSeed<'de> for FieldDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
@@ -324,37 +340,37 @@ impl<'de> DeserializeSeed<'de> for FieldHRDeserializer {
     }
 }
 
-struct RecordBodyHRDeserializer {
-    record_tag: Tag
+struct RecordBodyDeserializer {
+    record_tag: Tag,
+    record_flags: Option<RecordFlags>
 }
 
-impl<'de> de::Visitor<'de> for RecordBodyHRDeserializer {
+impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
     type Value = Record;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "field list")
     }
 
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where
+    fn visit_seq<A>(mut self, mut seq: A) -> Result<Self::Value, A::Error> where
         A: de::SeqAccess<'de> {
 
-        let mut record_flags = None;
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        while let Some(field) = seq.next_element_seed(FieldHRDeserializer { record_tag: self.record_tag })? {
+        while let Some(field) = seq.next_element_seed(FieldDeserializer { record_tag: self.record_tag })? {
             match field {
                 Left(flags) => {
-                    if record_flags.replace(flags).is_some() {
+                    if self.record_flags.replace(flags).is_some() {
                         return Err(A::Error::custom("duplicated record flags"));
                     }
                 },
                 Right(field) => fields.push(field)
             }
         }
-        Ok(Record { tag: self.record_tag, flags: record_flags.unwrap_or(RecordFlags::empty()), fields })
+        Ok(Record { tag: self.record_tag, flags: self.record_flags.unwrap_or(RecordFlags::empty()), fields })
     }
 }
 
-impl<'de> DeserializeSeed<'de> for RecordBodyHRDeserializer {
+impl<'de> DeserializeSeed<'de> for RecordBodyDeserializer {
     type Value = Record;
     
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where
@@ -364,21 +380,28 @@ impl<'de> DeserializeSeed<'de> for RecordBodyHRDeserializer {
     }
 }
 
-struct RecordHRDeserializer;
+struct RecordDeserializer {
+    is_human_readable: bool
+}
 
-impl<'de> de::Visitor<'de> for RecordHRDeserializer {
+impl<'de> de::Visitor<'de> for RecordDeserializer {
     type Value = Record;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "record")
     }
 
-    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where
-        A: de::MapAccess<'de> {
-        
-        let record_tag: Tag = map.next_key()?
-            .ok_or_else(|| A::Error::custom("missed record tag"))?;
-        let body = map.next_value_seed(RecordBodyHRDeserializer { record_tag })?;
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let (record_tag, record_flags) = if self.is_human_readable {
+            let record_tag: Tag = map.next_key()?
+                .ok_or_else(|| A::Error::custom("missed record tag"))?;
+            (record_tag, None)
+        } else {
+            let (record_tag, record_flags): (Tag, RecordFlags) = map.next_key()?
+                .ok_or_else(|| A::Error::custom("missed record tag and flags"))?;
+            (record_tag, Some(record_flags))
+        };
+        let body = map.next_value_seed(RecordBodyDeserializer { record_tag, record_flags })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
@@ -387,21 +410,9 @@ impl<'de> de::Visitor<'de> for RecordHRDeserializer {
 }
 
 impl<'de> Deserialize<'de> for Record {
-    fn deserialize<D>(deserializer: D) -> Result<Record, D::Error> where
-        D: Deserializer<'de> {
-
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_map(RecordHRDeserializer)
-        } else {
-            panic!()
-//            let bytes = bincode::serialize(&RecordBodyNHRSerializer(self)).map_err(S::Error::custom)?;
-//            let mut serializer = serializer.serialize_tuple(4)?;
-//            serializer.serialize_element(&self.tag)?;
-//            serializer.serialize_element(&(bytes.len() as u32))?;
-//            serializer.serialize_element(&self.flags)?;
-//            serializer.serialize_element(&BytesSerializer(&bytes))?;
-//            serializer.end()
-        }
+    fn deserialize<D>(deserializer: D) -> Result<Record, D::Error> where D: Deserializer<'de> {
+        let is_human_readable = deserializer.is_human_readable();
+        deserializer.deserialize_map(RecordDeserializer { is_human_readable } )
     }
 }
 

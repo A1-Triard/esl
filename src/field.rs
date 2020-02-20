@@ -301,11 +301,11 @@ mod multiline_256_dos {
     use crate::field::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_string_list(lines, LinebreakStyle::Dos.new_line(), 256, serializer)
+        serialize_string_list(lines, LinebreakStyle::Dos.new_line(), Some(256), serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        deserialize_string_list(LinebreakStyle::Dos.new_line(), 256, deserializer)
+        deserialize_string_list(LinebreakStyle::Dos.new_line(), Some(256), deserializer)
     }
 }
 
