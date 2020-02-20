@@ -264,6 +264,8 @@ impl<'r, 'a, 'de, R: Reader<'de>> EslDeserializer<'r, 'a, 'de, R> {
 impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 'de, R> {
     type Error = Error;
 
+    fn is_human_readable(&self) -> bool { false }
+
     fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         panic!("deserialize_any not supported")
     }
