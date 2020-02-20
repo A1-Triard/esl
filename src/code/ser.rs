@@ -770,7 +770,7 @@ mod tests {
         let mut v = Vec::new();
         s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
         assert_eq!(v, vec![
-            17, 0, 0, 0, 2, 3, 0, 0, 0, 115, 116, 114,
+            2, 3, 0, 0, 0, 115, 116, 114,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
             253
         ]);
@@ -843,7 +843,7 @@ mod tests {
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
         s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
         assert_eq!(v, vec![
-            17, 0, 0, 0, 2, 3, 0, 0, 0, 115, 116, 114,
+            2, 3, 0, 0, 0, 115, 116, 114,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
             253
         ]);
