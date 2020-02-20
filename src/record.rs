@@ -43,9 +43,9 @@ fn pipe(input: &str) -> IResult<&str, (), ()> {
 
 fn record_flag(input: &str) -> IResult<&str, RecordFlags, ()> {
     alt((
-        nom_value(RecordFlags::PERSISTENT, nom_tag("PERSISTENT")),
-        nom_value(RecordFlags::BLOCKED, nom_tag("BLOCKED")),
-        nom_value(RecordFlags::DELETED, nom_tag("DELETED"))
+        nom_value(RecordFlags::PERSISTENT, nom_tag(name_of!(const PERSISTENT in RecordFlags))),
+        nom_value(RecordFlags::BLOCKED, nom_tag(name_of!(const BLOCKED in RecordFlags))),
+        nom_value(RecordFlags::DELETED, nom_tag(name_of!(const DELETED in RecordFlags)))
     ))(input)
 }
 

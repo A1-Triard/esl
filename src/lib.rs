@@ -18,6 +18,8 @@ extern crate lazy_static;
 extern crate serde;
 #[macro_use]
 extern crate derivative;
+#[macro_use]
+extern crate nameof;
 
 #[macro_use]
 mod tag;
