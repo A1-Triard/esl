@@ -282,7 +282,6 @@ pub(crate) struct MapSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     value_buf_and_pos: Option<(W::Buf, usize)>,
-    buf_and_start_pos: Option<(W::Buf, usize)>,
 }
 
 #[derive(Debug)]
@@ -354,9 +353,6 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        if let Some((buf, start_pos)) = self.buf_and_start_pos {
-            self.writer.end_isolate(buf, start_pos)?;
-        }
         Ok(())
     }
 }
@@ -699,12 +695,11 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         })
     }
 
-    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        let buf = if !self.isolated { Some((self.writer.begin_isolate()?, self.writer.pos())) } else { None };
+    fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        assert_eq!(len, Some(1), "Maps with length different from 1 not supported.");
         Ok(MapSerializer {
             value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
-            buf_and_start_pos: buf
         })
     }
 }

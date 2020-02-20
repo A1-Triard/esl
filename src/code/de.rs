@@ -192,36 +192,30 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
 
 #[derive(Debug)]
 struct MapDeserializer<'a, 'de, R: Reader<'de>> {
-    start_pos: isize,
-    size: u32,
     code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>,
-    value_size: u32
+    value_size: Option<u32>
 }
 
 impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>, Self::Error> where K: DeserializeSeed<'de> {
-        if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
+        if self.value_size.is_some() { return Ok(None); }
         let mut value_size = None;
         let key = seed.deserialize(EslDeserializer {
             isolated: None, code_page: self.code_page, reader: self.reader,
             phantom: PhantomData, map_entry_value_size: Some(&mut value_size)
         })?;
-        self.value_size = value_size.map_or_else(|| self.reader.read_u32::<LittleEndian>(), Ok)?;
+        self.value_size = Some(value_size.map_or_else(|| self.reader.read_u32::<LittleEndian>(), Ok)?);
         Ok(Some(key))
     }
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error> where V: DeserializeSeed<'de> {
-        let value = seed.deserialize(EslDeserializer {
-            isolated: Some(self.value_size), code_page: self.code_page, reader: self.reader,
+        seed.deserialize(EslDeserializer {
+            isolated: Some(self.value_size.unwrap()), code_page: self.code_page, reader: self.reader,
             phantom: PhantomData, map_entry_value_size: None
-        })?;
-        if self.reader.pos() > self.start_pos + self.size as isize {
-            return Err(Error::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
-        }
-        Ok(value)
+        })
     }
 }
 
@@ -427,13 +421,11 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         })
     }
 
-    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let size = self.deserialize_size()?;
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         visitor.visit_map(MapDeserializer {
-            size, start_pos: self.reader.pos(),
             code_page: self.code_page,
             reader: self.reader, phantom: PhantomData,
-            value_size: 0
+            value_size: None
         })
     }
 
