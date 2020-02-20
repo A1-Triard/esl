@@ -32,14 +32,6 @@ pub use crate::record::*;
 
 pub mod read;
 
-mod strings_serde;
-mod field_serde;
-
-pub mod serde_ {
-    pub use crate::strings_serde::*;
-    pub use crate::field_serde::*;
-}
-
 mod strings;
 
 pub use crate::strings::*;
