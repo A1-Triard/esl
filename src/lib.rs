@@ -149,4 +149,13 @@ mod tests {
         let bytes = code::serialize(&test_file1(), CodePage::Russian, true).unwrap();
         assert_eq!(bytes, test_file_1_bytes());
     }
+
+    #[test]
+    fn deserialize_file_1() {
+        let mut records = &test_file_1_bytes()[..];
+        let record1: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        let record2: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        assert!(records.is_empty());
+        assert_eq!(vec![record1, record2], test_file1());
+    }
 }
