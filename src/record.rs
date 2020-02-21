@@ -75,6 +75,14 @@ pub struct Record {
     pub fields: Vec<(Tag, Field)>,
 }
 
+impl Record {
+    pub fn coerce(&mut self) {
+        for &mut (field_tag, ref mut field) in self.fields.iter_mut() {
+            field.coerce(self.tag, field_tag);
+        }
+    }
+}
+    
 struct FieldBodySerializer<'a> {
     record_tag: Tag,
     field_tag: Tag,

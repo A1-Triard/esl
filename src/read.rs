@@ -161,28 +161,20 @@ fn decode_string(code_page: CodePage, bytes: &[u8]) -> String {
     code_page.encoding().decode(bytes, DecoderTrap::Strict).unwrap()
 }
 
-fn string_field<E>(code_page: CodePage, trim_tail_zeros: bool) -> impl Fn(&[u8]) -> IResult<&[u8], String, E> {
+fn string_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], String, E> {
     move |input| {
-        Ok((&input[input.len()..], {
-            let input = if trim_tail_zeros {
-                trim_end_nulls(input)
-            } else {
-                input
-            };
-            decode_string(code_page, input)
-        }))
+        Ok((&input[input.len()..], decode_string(code_page, input)))
     }
 }
 
-fn string_z_field<E>(code_page: CodePage, allow_coerce: bool) -> impl Fn(&[u8]) -> IResult<&[u8], StringZ, E> {
+fn string_z_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], StringZ, E> {
     move |input| {
         Ok((&input[input.len()..], {
-            let (input, has_tail_zero) = if allow_coerce {
-                (trim_end_nulls(input), true)
-            } else if !input.is_empty() && input[input.len() - 1] == 0 {
-                (&input[..input.len() - 1], true)                
+            let has_tail_zero = !input.is_empty() && input[input.len() - 1] == 0;
+            let input = if has_tail_zero {
+                &input[..input.len() - 1]                
             } else {
-                (input, false)
+                input
             };
             StringZ { string: decode_string(code_page, input), has_tail_zero }
         }))
@@ -194,7 +186,7 @@ fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8])
     
     no_err(
         map(
-            string_z_field(code_page, false),
+            string_z_field(code_page),
             |s| StringZList { vec: s.string.split("\0").map(String::from).collect(), has_tail_zero: s.has_tail_zero }
         )
     )
@@ -238,12 +230,12 @@ fn string_len_field<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8])
     set_err(string_len(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))
 }
 
-fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle, trim_tail_zeros: bool)
+fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
 
     no_err(
         map(
-            string_field(code_page, trim_tail_zeros),
+            string_field(code_page),
             move |s| s.split(linebreaks.new_line()).map(String::from).collect()
         )
     )
@@ -445,7 +437,7 @@ fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, Fie
     )(input)
 }
 
-fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, field_tag: Tag, field_size: u32)
+fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_size: u32)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
 
     move |input| {
@@ -453,14 +445,14 @@ fn field_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag, fiel
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Binary)(input),
-            FieldType::Multiline(coerce, linebreaks) =>
-                map(multiline_field(code_page, linebreaks, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::StringList)(input),
+            FieldType::Multiline(_, linebreaks) =>
+                map(multiline_field(code_page, linebreaks), Field::StringList)(input),
             FieldType::Item =>
                 map(item_field(code_page), Field::Item)(input),
             FieldType::String(Right(len)) => map(string_len_field(code_page, len), Field::String)(input),
-            FieldType::String(Left(coerce)) =>
-                map(string_field(code_page, coerce == StringCoerce::TrimTailZeros && allow_coerce), Field::String)(input),
-            FieldType::StringZ => map(string_z_field(code_page, allow_coerce), Field::StringZ)(input),
+            FieldType::String(Left(_)) =>
+                map(string_field(code_page), Field::String)(input),
+            FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -518,14 +510,12 @@ fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
     )(input)
 }
 
-fn field<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
-    
+fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     map_res(
         field_bytes,
         move |(field_tag, field_size, field_bytes), _| {
             let (remaining_field_bytes, field_body) = map_err(
-                field_body(code_page, allow_coerce, record_tag, field_tag, field_size),
+                field_body(code_page, record_tag, field_tag, field_size),
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                     FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
@@ -842,7 +832,7 @@ struct RecordBodyError<'a>(FieldError, &'a [u8]);
 
 impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
 
-fn record_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag) 
+fn record_body<'a>(code_page: CodePage, record_tag: Tag) 
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
     
     many0(
@@ -854,18 +844,18 @@ fn record_body<'a>(code_page: CodePage, allow_coerce: bool, record_tag: Tag)
                     Ok((input, ()))
                 }
             },
-            cut(map_err(field(code_page, allow_coerce, record_tag), |e, input| RecordBodyError(e, input)))
+            cut(map_err(field(code_page, record_tag), |e, input| RecordBodyError(e, input)))
         )
     )
 }
 
-fn read_record_body(record_offset: u64, code_page: CodePage, allow_coerce: bool,
+fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_tag: Tag, record_size: u32, record_flags: RecordFlags,
                     input: &[u8])
     -> Result<Record, RecordError> {
     
     let (remaining_record_bytes, record_body) = map_err(
-        record_body(code_page, allow_coerce, record_tag),
+        record_body(code_page, record_tag),
         move |e, input| match e {
             RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
                 RecordError::RecordSizeMismatch(RecordSizeMismatch {
@@ -1074,9 +1064,7 @@ impl RecordReader {
         Ok(())
     }
 
-    pub fn read<Input: Read + ?Sized>(&mut self,
-                                      code_page: CodePage, allow_coerce: bool,
-                                      offset: u64, input: &mut Input)
+    pub fn read<Input: Read + ?Sized>(&mut self, code_page: CodePage, offset: u64, input: &mut Input)
         -> Result<Option<(Record, u32)>, ReadRecordError> {
 
         self.buf.resize(16, 0);
@@ -1091,7 +1079,7 @@ impl RecordReader {
             })?;
         self.buf.resize(16 + record_size as usize, 0);
         self.fill_buf(16, offset, input)?;
-        let record = read_record_body(offset, code_page, allow_coerce, record_tag, record_size, record_flags,
+        let record = read_record_body(offset, code_page, record_tag, record_size, record_flags,
                          &self.buf[16..]).map_err(|record_error| ReadRecordError {
             io_error: None,
             record_error,
@@ -1105,16 +1093,14 @@ pub struct Records<'a, Input: Read + ?Sized> {
     code_page: CodePage,
     input: &'a mut Input,
     offset: u64,
-    allow_coerce: bool,
     reader: RecordReader,
 }
 
 impl<'a, Input: Read + ?Sized> Records<'a, Input> {
-    pub fn new(code_page: CodePage, allow_coerce: bool, offset: u64, input: &'a mut Input) -> Self {
+    pub fn new(code_page: CodePage, offset: u64, input: &'a mut Input) -> Self {
         Records {
             code_page,
             input,
-            allow_coerce,
             offset,
             reader: RecordReader::new()
         }
@@ -1125,7 +1111,7 @@ impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
     type Item = Result<Record, ReadRecordError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.reader.read(self.code_page, self.allow_coerce, self.offset, self.input) {
+        match self.reader.read(self.code_page, self.offset, self.input) {
             Ok(None) => None,
             Err(e) => {
                 self.offset += e.as_bytes().len() as u64;
@@ -1168,7 +1154,7 @@ mod tests {
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0u64.to_le_bytes().iter());
         let (result, read) =
-            RecordReader::new().read(CodePage::English, false, 0x11, &mut (&input[..])).unwrap().unwrap();
+            RecordReader::new().read(CodePage::English, 0x11, &mut (&input[..])).unwrap().unwrap();
         assert_eq!(read, 16);
         assert_eq!(result.flags, RecordFlags::empty());
         assert_eq!(result.tag, TES3);
@@ -1181,7 +1167,7 @@ mod tests {
         input.extend(TES3.dword.to_le_bytes().iter());
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0x70000u64.to_le_bytes().iter());
-        let result = RecordReader::new().read(CodePage::English, false, 0x11, &mut (&input[..]));
+        let result = RecordReader::new().read(CodePage::English, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
         if let RecordError::InvalidRecordFlags(error) = error.into_record_error() { 
             assert_eq!(error.value, 0x70000);
@@ -1198,7 +1184,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(6u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, true, DIAL)(&input);
+        let result = field(CodePage::English, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -1214,7 +1200,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, true, DIAL)(&input);
+        let result = field(CodePage::English, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -1230,7 +1216,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00].iter());
-        let result = field(CodePage::English, true, DIAL)(&input);
+        let result = field(CodePage::English, DIAL)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -1244,7 +1230,7 @@ mod tests {
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
         if let (remaining_input, Field::StringList(result)) =
-                field_body(CodePage::Russian, true, CONT, BNAM, input.len() as u32)(input).unwrap() {
+                field_body(CodePage::Russian, CONT, BNAM, input.len() as u32)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
             assert_eq!(result[0], "123");
@@ -1259,13 +1245,13 @@ mod tests {
     #[test]
     fn read_from_vec() {
         let input: Vec<u8> = Vec::new();
-        field_body(CodePage::English, true, TES3, HEDR, input.len() as u32)(&input).err().unwrap();
+        field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input).err().unwrap();
     }
 
     #[test]
     fn read_from_vec_if_let() {
         let input: Vec<u8> = Vec::new();
-        let res = field_body(CodePage::English, true, TES3, HEDR, input.len() as u32)(&input);
+        let res = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         if let Ok((_, _)) = res {
             panic!()
         } else { }
@@ -1279,7 +1265,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description\r\nlines\r\n")));
         input.extend(vec![0x01, 0x02, 0x03, 0x04]);
-        let result = field_body(CodePage::English, true, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.file_type, FileType::ESS);
@@ -1299,7 +1285,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description")));
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
-        let result = field_body(CodePage::English, true, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
             assert_eq!(val, 0x100000);
@@ -1313,7 +1299,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend([0x00, 0x00, 0x00, 0x22].iter());
         input.extend([0x20, 0x00, 0x00].iter());
-        let result = field_body(CodePage::English, true, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnexpectedEndOfField(size)) = error {
             assert_eq!(size, 300);
@@ -1573,7 +1559,7 @@ mod tests {
         let bin: Vec<u8> = serialize(&record, CodePage::English, true).unwrap();
         println!("{:?}", bin);
         let mut bin = &bin[..];
-        let records = Records::new(CodePage::English, true, 0, &mut bin);
+        let records = Records::new(CodePage::English, 0, &mut bin);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records.len(), 1);
         let res = &records[0];

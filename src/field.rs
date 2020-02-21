@@ -754,6 +754,44 @@ pub enum Field {
     Effect(Effect),
 }
 
+impl Field {
+    pub fn coerce(&mut self, record_tag: Tag, field_tag: Tag) {
+        match FieldType::from_tags(record_tag, field_tag) {
+            FieldType::String(Left(StringCoerce::TrimTailZeros)) => {
+                if let Field::String(v) = self {
+                    v.truncate(v.rfind(|x| x != '\0').map_or(0, |i| 1 + i))
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            FieldType::Multiline(StringCoerce::TrimTailZeros, _) => {
+                if let Field::StringList(v) = self {
+                    if let Some(last_line) = v.last_mut() {
+                        last_line.truncate(last_line.rfind(|x| x != '\0').map_or(0, |i| 1 + i))
+                    }
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            FieldType::StringZ => {
+                if let Field::StringZ(v) = self {
+                    v.has_tail_zero = true;
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            FieldType::StringZList => {
+                if let Field::StringZList(v) = self {
+                    v.has_tail_zero = true;
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            _ => ()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
