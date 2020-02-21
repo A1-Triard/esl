@@ -31,7 +31,7 @@ impl Display for Tag {
         let c1 = char::from((self.dword >> 8) as u8);
         let c2 = char::from((self.dword >> 16) as u8);
         let c3 = char::from((self.dword >> 24) as u8);
-        write!(f, "{}{}{}{}", c3, c2, c1, c0)
+        write!(f, "{}{}{}{}", c0, c1, c2, c3)
     }
 }
 
@@ -43,7 +43,7 @@ impl FromStr for Tag {
         let mut i = 0;
         for byte in s.bytes() {
             if i == 4 { return Err(()); }
-            dword = (dword << 8) | (byte as u32);
+            dword = dword | (byte as u32) << (8 * i);
             i += 1;
         }
         if i != 4 { return Err(()); }

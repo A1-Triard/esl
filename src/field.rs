@@ -183,7 +183,7 @@ impl FieldType {
             (_, LVCR) => FieldType::Byte,
             (FMAP, MAPD) => FieldType::Compressed,
             (FMAP, MAPH) => FieldType::Long,
-            (TES3, MAST) => FieldType::String(Left(StringCoerce::None)),
+            (TES3, MAST) => FieldType::StringZ,
             (PCDT, MNAM) => FieldType::String(Left(StringCoerce::None)),
             (CELL, MNAM) => FieldType::Byte,
             (LIGH, MODL) => FieldType::StringZ,
