@@ -48,7 +48,7 @@ mod serde_helpers;
 mod tests {
     use crate::*;
     use crate::read::*;
-    use crate::code::*;
+    use crate::code::{self, CodePage};
     use byteorder::{WriteBytesExt, LittleEndian};
     use std::iter::Iterator;
     use std::str::FromStr;
@@ -142,5 +142,11 @@ mod tests {
         let records = Records::new(CodePage::English, 0, &mut records);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records, test_file1());
+    }
+
+    #[test]
+    fn serialize_file_1() {
+        let bytes = code::serialize(&test_file1(), CodePage::Russian, true).unwrap();
+        assert_eq!(bytes, test_file_1_bytes());
     }
 }
