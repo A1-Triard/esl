@@ -170,7 +170,7 @@ fn string_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], Stri
 fn string_z_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], StringZ, E> {
     move |input| {
         Ok((&input[input.len()..], {
-            let has_tail_zero = !input.is_empty() && input[input.len() - 1] == 0;
+            let has_tail_zero = input.last() == Some(&0);
             let input = if has_tail_zero {
                 &input[..input.len() - 1]                
             } else {

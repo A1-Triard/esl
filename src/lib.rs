@@ -52,8 +52,6 @@ mod tests {
     use byteorder::{WriteBytesExt, LittleEndian};
     use std::iter::Iterator;
     use std::str::FromStr;
-    use std::fs::File;
-    use std::io::{BufReader, BufWriter};
 
     fn test_author() -> &'static [u8] {
         b"test author\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -160,11 +158,26 @@ mod tests {
         assert!(records.is_empty());
         assert_eq!(vec![record1, record2], test_file1());
     }
-    
+  
+    #[test]
+    fn race_fnam() {
+        let record = Record {
+            tag: RACE,
+            flags: RecordFlags::empty(),
+            fields: vec![
+                (FNAM, Field::StringZ("Редгард".into()))
+            ]
+        };
+        let bytes = code::serialize(&record, CodePage::Russian, false).unwrap();
+        let mut bytes = &bytes[..]; 
+        let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
+        let record = records.next().unwrap().unwrap();
+        assert_eq!(record.fields[0].1, Field::StringZ(StringZ::from("Редгард")))
+    }
 //    #[test]
 //    fn read_empty_file() {
 //        let file = File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
-//        let mut file = BufReader::new(file);
+ //       let mut file = BufReader::new(file);
 //        let records = Records::new(CodePage::Russian, 0, &mut file);
 //        let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
 //        let o = File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();

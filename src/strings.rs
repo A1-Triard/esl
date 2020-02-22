@@ -31,7 +31,7 @@ impl Serialize for StringZ {
             s.extend(iter::repeat('^').take(carets));
             serializer.serialize_str(&s)
         } else {
-            if !self.has_tail_zero && self.string.as_bytes().last().map_or(false, |&x| x == 0) {
+            if !self.has_tail_zero && self.string.as_bytes().last() == Some(&0) {
                 return Err(S::Error::custom("zero-terminated string value has tail zero"));
             }
             let mut s = String::with_capacity(self.string.len() + if self.has_tail_zero { 1 } else { 0 });
@@ -67,7 +67,7 @@ impl<'de> de::Visitor<'de> for StringZDeserializer {
             string.truncate(string.len() - carets);
             Ok(StringZ { string, has_tail_zero })
         } else {
-            let has_tail_zero = string.as_bytes().last().map_or(false, |&x| x == 0);
+            let has_tail_zero = string.as_bytes().last() == Some(&0);
             if has_tail_zero {
                 string.truncate(string.len() - 1);
             }
@@ -165,7 +165,7 @@ impl<'de> de::Visitor<'de> for StringZListNHRDeserializer {
     }
 
     fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        let has_tail_zero = v.as_bytes().last().map_or(false, |&x| x == 0);
+        let has_tail_zero = v.as_bytes().last() == Some(&0);
         let v = if has_tail_zero { &v[.. v.len() - 1] } else { v };
         Ok(StringZList { vec: v.split('\0').map(|x| x.into()).collect(), has_tail_zero })
     }
