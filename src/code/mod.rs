@@ -64,7 +64,7 @@ pub fn deserialize_seed<'de, T: DeserializeSeed<'de>>(seed: T, mut bytes: &'de [
     }
 }
 
-fn bytes_deserializer<'a, 'de>(bytes: &'a mut (&'de [u8]), code_page: CodePage, isolated: bool) -> EslDeserializer<'static, 'a, 'de, &'de [u8]> {
+fn bytes_deserializer<'a, 'de>(bytes: &'a mut &'de [u8], code_page: CodePage, isolated: bool) -> EslDeserializer<'static, 'a, 'de, &'de [u8]> {
     assert!(!isolated || bytes.len() <= u32::max_value() as usize);
     EslDeserializer::new(if isolated { Some(bytes.len() as u32) } else { None }, code_page, bytes)
 }
@@ -82,7 +82,7 @@ pub fn serialize_into<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?
     v.serialize(serializer)
 }
 
-pub fn serialize_into_slice<'a, 'b: 'a, T: Serialize + ?Sized>(v: &T, bytes: &'b mut (&'a mut [u8]), code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
+pub fn serialize_into_slice<'a, 'b: 'a, T: Serialize + ?Sized>(v: &T, bytes: &'b mut &'a mut [u8], code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
     let mut writer = SliceWriter::new(*bytes);
     let serializer = EslSerializer::new(isolated, code_page, &mut writer);
     v.serialize(serializer)?;

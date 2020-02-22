@@ -464,7 +464,7 @@ mod tests {
                     shorts: 1, longs: 2, floats: 3,
                     data_size: 800, var_table_size: 35
                 })),
-                (TEXT, Field::StringList(vec![
+                (SCTX, Field::StringList(vec![
                     "Begin Scr1\\".into(),
                     "    short\u{7} i".into(),
                     "End Scr1".into(),
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);
         assert_eq!(res.fields[0].0, SCHD);
-        assert_eq!(res.fields[1].0, TEXT);
+        assert_eq!(res.fields[1].0, SCTX);
         if let Field::ScriptMetadata(res) = &res.fields[0].1 {
             assert_eq!(res.name, "Scr1");
             assert_eq!(res.shorts, 1);

@@ -1224,7 +1224,7 @@ mod tests {
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
         if let (remaining_input, Field::StringList(result)) =
-                field_body(CodePage::Russian, CONT, BNAM, input.len() as u32)(input).unwrap() {
+                field_body(CodePage::Russian, INFO, BNAM, input.len() as u32)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
             assert_eq!(result[0], "123");
@@ -1543,7 +1543,7 @@ mod tests {
                     shorts: 1, longs: 2, floats: 3,
                     data_size: 800, var_table_size: 35
                 })),
-                (TEXT, Field::StringList(vec![
+                (SCTX, Field::StringList(vec![
                     "Begin Scr1".into(),
                     "short i".into(),
                     "End Scr1".into(),
