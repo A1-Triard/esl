@@ -161,18 +161,18 @@ mod tests {
   
     #[test]
     fn race_fnam() {
-        let record = Record {
-            tag: RACE,
-            flags: RecordFlags::empty(),
-            fields: vec![
-                (FNAM, Field::StringZ("Редгард".into()))
-            ]
-        };
-        let bytes = code::serialize(&record, CodePage::Russian, false).unwrap();
-        let mut bytes = &bytes[..]; 
+        let mut bytes = &[
+            0x52, 0x41, 0x43, 0x45, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x4E, 0x41, 0x4D, 0x45, 0x09, 0x00, 0x00, 0x00, 0x52, 0x65, 0x64, 0x67, 0x75, 0x61, 0x72, 0x64,
+            0x00, 0x46, 0x4E, 0x41, 0x4D, 0x08, 0x00, 0x00, 0x00, 0xD0, 0xE5, 0xE4, 0xE3, 0xE0, 0xF0, 0xE4,
+            0x00
+        ][..];
         let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
-        assert_eq!(record.fields[0].1, Field::StringZ(StringZ::from("Редгард")))
+        assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
+        let yaml = serde_yaml::to_string(&record).unwrap();
+        assert!(!yaml.contains("^"));
+        assert!(!yaml.contains("\\u"));
     }
 //    #[test]
 //    fn read_empty_file() {

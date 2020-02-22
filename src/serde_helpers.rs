@@ -53,7 +53,7 @@ impl<'de> de::Visitor<'de> for StringNHRDeserializer {
         if string_len != self.len {
             Err(A::Error::invalid_length(string_len, &self))
         } else {
-            let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
+            let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().nth(0).unwrap().len_utf8());
             string.truncate(cut_to);
             Ok(string)
         }
@@ -147,7 +147,7 @@ impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
             if string_len != len {
                 return Err(A::Error::invalid_length(string_len, &self));
             } else {
-                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| 1 + n);
+                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().nth(0).unwrap().len_utf8());
                 string.truncate(cut_to);
             }
         }

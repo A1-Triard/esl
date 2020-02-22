@@ -22,7 +22,8 @@ impl<T: Into<String>> From<T> for StringZ {
 impl Serialize for StringZ {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            let mut carets = self.string.len() - self.string.rfind(|x| x != '^').map_or(0, |i| 1 + i);
+            let mut carets = self.string.len() - self.string.rfind(|x| x != '^')
+                .map_or(0, |i| i + self.string[i..].chars().nth(0).unwrap().len_utf8());
             if !self.has_tail_zero {
                 carets += 1;
             }
@@ -61,7 +62,7 @@ impl<'de> de::Visitor<'de> for StringZDeserializer {
     
     fn visit_string<E: de::Error>(self, mut string: String) -> Result<Self::Value, E> {
         if self.is_human_readable {
-            let carets = string.len() - string.rfind(|x| x != '^').map_or(0, |i| 1 + i);
+            let carets = string.len() - string.rfind(|x| x != '^').map_or(0, |i| i + string[i..].chars().nth(0).unwrap().len_utf8());
             let has_tail_zero = carets % 2 == 1;
             let carets = (carets + 1) / 2;
             string.truncate(string.len() - carets);
@@ -100,7 +101,7 @@ impl<T: Into<Vec<String>>> From<T> for StringZList {
 impl Serialize for StringZList {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            let mut carets = self.vec.len() - self.vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+            let mut carets = self.vec.len() - self.vec.iter().rposition(|x| x != "^").map_or(0, |i| i + 1);
             if !self.has_tail_zero {
                 carets += 1;
             }
@@ -147,7 +148,7 @@ impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
         while let Some(line) = seq.next_element()? {
             vec.push(line);
         }
-        let carets = vec.len() - vec.iter().rposition(|x| x != "^").map_or(0, |i| 1 + i);
+        let carets = vec.len() - vec.iter().rposition(|x| x != "^").map_or(0, |i| i + 1);
         let has_tail_zero = carets % 2 == 1;
         let carets = (carets + 1) / 2;
         vec.truncate(vec.len() - carets);

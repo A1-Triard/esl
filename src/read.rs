@@ -150,11 +150,9 @@ fn compressed_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], encoder.finish().unwrap()))
 }
 
-fn trim_end_nulls(mut bytes: &[u8]) -> &[u8] {
-    while !bytes.is_empty() && bytes[bytes.len() - 1] == 0 {
-        bytes = &bytes[..bytes.len() - 1];
-    }
-    bytes
+fn trim_end_nulls(bytes: &[u8]) -> &[u8] {
+    let cut_to = bytes.iter().rposition(|&x| x != 0).map_or(0, |i| i + 1);
+    &bytes[..cut_to]
 }
 
 fn decode_string(code_page: CodePage, bytes: &[u8]) -> String {
