@@ -1,5 +1,6 @@
 #![feature(ptr_offset_from)]
 #![feature(type_alias_impl_trait)]
+#![feature(stmt_expr_attributes)]
 #![deny(warnings)]
 
 #[macro_use]

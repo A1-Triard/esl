@@ -1617,6 +1617,18 @@ mod tests {
     }
 
     #[test]
+    fn serialize_spell() {
+        let spell = SpellMetadata {
+            flags: SpellFlags::empty(),
+            cost: 40,
+            spell_type: SpellType::Curse
+        };
+        let bin: Vec<u8> = serialize(&spell, CodePage::English, false).unwrap();
+        let res = spell_metadata_field(&bin).unwrap().1;
+        assert_eq!(res, spell);
+    }
+
+    #[test]
     fn serialize_item() {
         let item = Item {
             count: -3,

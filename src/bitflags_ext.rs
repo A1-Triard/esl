@@ -11,8 +11,9 @@ pub fn pipe(input: &str) -> IResult<&str, (), ()> {
 }
 
 macro_rules! pub_bitflags_display {
-    ($flags:ident, $ty:ty, $($name:ident = $value:literal),*) => {
+    ($flags:ident, $ty:ty, [$($name:ident = $value:literal),*]) => {
         bitflags! {
+            #[derive(Default)]
             pub struct $flags: $ty {
                 $(const $name = $value;)*
             }
@@ -20,7 +21,19 @@ macro_rules! pub_bitflags_display {
         
         impl ::std::fmt::Display for $flags {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::std::fmt::Debug::fmt(self, f)
+                let mut start = true;
+                $(
+                    if self.contains($flags::$name) {
+                        if start {
+                            #[allow(unused_assignments)]
+                            start = false;
+                        } else {
+                            write!(f, " | ")?;
+                        }
+                        write!(f, stringify!($name))?;
+                    }
+                )*
+                Ok(())
             }
         }
         

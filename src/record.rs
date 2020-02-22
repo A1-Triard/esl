@@ -13,7 +13,7 @@ use crate::field::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
 
-pub_bitflags_display!(RecordFlags, u64, PERSISTENT = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000);
+pub_bitflags_display!(RecordFlags, u64, [PERSISTENT = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000]);
 
 enum_serde!({
     RecordFlags, RecordFlagsDeserializer, "record flags",

@@ -758,7 +758,7 @@ enum_serde!([
     Unsigned, u64
 ]);
 
-pub_bitflags_display!(SpellFlags, u32, AUTOCALC = 1, PC_START = 2, ALWAYS = 4);
+pub_bitflags_display!(SpellFlags, u32, [AUTOCALC = 1, PC_START = 2, ALWAYS = 4]);
 
 enum_serde!({
     SpellFlags, SpellFlagsDeserializer, "spell flags",
