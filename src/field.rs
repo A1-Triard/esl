@@ -124,6 +124,7 @@ pub enum FieldType {
     Npc,
     SavedNpc,
     Effect,
+    SpellMetadata
 }
 
 impl FieldType {
@@ -234,6 +235,7 @@ impl FieldType {
             (PCDT, SNAM) => FieldType::Binary,
             (REGN, SNAM) => FieldType::Binary,
             (_, SNAM) => FieldType::StringZ,
+            (SPEL, SPDT) => FieldType::SpellMetadata,
             (_, STRV) => FieldType::String(None),
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (_, TEXT) => FieldType::StringZ,
@@ -764,6 +766,13 @@ enum_serde!({
     Unsigned, u64
 });
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SpellMetadata {
+    pub spell_type: SpellType,
+    pub cost: u32,
+    pub flags: SpellFlags
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -786,6 +795,7 @@ pub enum Field {
     SavedNpc(SavedNpc),
     Npc(Npc),
     Effect(Effect),
+    SpellMetadata(SpellMetadata),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

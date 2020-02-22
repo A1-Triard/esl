@@ -134,6 +134,8 @@ enum FieldBodyError {
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
     InvalidDialogType(u8),
+    InvalidSpellType(u32),
+    InvalidSpellFlags(u32),
     UnexpectedDialogMetadataFieldSize(u32),
 }
 
@@ -320,17 +322,32 @@ fn script_metadata_field<'a>(code_page: CodePage)
 fn saved_npc_field(input: &[u8]) -> IResult<&[u8], SavedNpc, FieldBodyError> {
     map(
         set_err(
-            tuple((
-                le_i16,
-                le_i16,
-                le_u32
-            )),
+            tuple((le_i16, le_i16, le_u32)),
             |_| FieldBodyError::UnexpectedEndOfField(8)
         ),
         |(disposition, reputation, index)| SavedNpc {
             disposition,
             reputation,
             index
+        }
+    )(input)
+}
+
+fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBodyError> {
+    map(
+        tuple((
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidSpellType(w)))
+            ),
+            set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::InvalidSpellFlags(w)))
+            ),
+        )),
+        |(spell_type, cost, flags)| SpellMetadata {
+            spell_type, cost, flags
         }
     )(input)
 }
@@ -449,6 +466,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
+            FieldType::SpellMetadata => map(spell_metadata_field, Field::SpellMetadata)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),
@@ -484,6 +502,8 @@ enum FieldError {
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
     InvalidDialogType(u8),
+    InvalidSpellType(u32),
+    InvalidSpellFlags(u32),
     UnexpectedDialogMetadataFieldSize(u32),
 }
 
@@ -516,6 +536,8 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                     FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
                     FieldBodyError::InvalidEffectRange(d) => FieldError::InvalidEffectRange(d),
                     FieldBodyError::InvalidDialogType(d) => FieldError::InvalidDialogType(d),
+                    FieldBodyError::InvalidSpellType(d) => FieldError::InvalidSpellType(d),
+                    FieldBodyError::InvalidSpellFlags(d) => FieldError::InvalidSpellFlags(d),
                     FieldBodyError::UnexpectedDialogMetadataFieldSize(d) => FieldError::UnexpectedDialogMetadataFieldSize(d),
                 }
             )(field_bytes)?;
@@ -738,6 +760,62 @@ impl Error for InvalidDialogType {
 }
 
 #[derive(Debug, Clone)]
+pub struct InvalidSpellType {
+    pub record_offset: u64,
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
+    pub value: u32
+}
+
+impl fmt::Display for InvalidSpellType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid spell type {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidSpellType {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidSpellFlags {
+    pub record_offset: u64,
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
+    pub value: u32
+}
+
+impl fmt::Display for InvalidSpellFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid spell flags {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidSpellFlags {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
 pub enum RecordError {
     UnexpectedEof(UnexpectedEof),
     InvalidRecordFlags(InvalidRecordFlags),
@@ -747,6 +825,8 @@ pub enum RecordError {
     UnexpectedFieldSize(UnexpectedFieldSize),
     InvalidEffectRange(InvalidEffectRange),
     InvalidDialogType(InvalidDialogType),
+    InvalidSpellType(InvalidSpellType),
+    InvalidSpellFlags(InvalidSpellFlags),
 }
 
 impl fmt::Display for RecordError {
@@ -760,6 +840,8 @@ impl fmt::Display for RecordError {
             RecordError::UnexpectedFieldSize(x) => x.fmt(f),
             RecordError::InvalidEffectRange(x) => x.fmt(f),
             RecordError::InvalidDialogType(x) => x.fmt(f),
+            RecordError::InvalidSpellType(x) => x.fmt(f),
+            RecordError::InvalidSpellFlags(x) => x.fmt(f),
         }
     }
 }
@@ -775,6 +857,8 @@ impl Error for RecordError {
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::InvalidEffectRange(x) => x,
             RecordError::InvalidDialogType(x) => x,
+            RecordError::InvalidSpellType(x) => x,
+            RecordError::InvalidSpellFlags(x) => x,
         })
     }
 }
@@ -885,6 +969,18 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag: DIAL, field_tag: DATA, value_offset: 0
+                }),
+            RecordBodyError(FieldError::InvalidSpellType(value), field) =>
+                RecordError::InvalidSpellType(InvalidSpellType {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: DIAL, field_tag: DATA, value_offset: 0
+                }),
+            RecordBodyError(FieldError::InvalidSpellFlags(value), field) =>
+                RecordError::InvalidSpellFlags(InvalidSpellFlags {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: DIAL, field_tag: DATA, value_offset: 8
                 }),
             RecordBodyError(FieldError::UnexpectedDialogMetadataFieldSize(field_size), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
