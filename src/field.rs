@@ -1,4 +1,5 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
+use std::str::FromStr;
 use std::mem::{transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
@@ -64,12 +65,35 @@ enum_serde!([
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug)]
     #[repr(i32)]
     pub enum EffectRange {
-        Oneself = 0,
+        Self_ = 0,
         Touch = 1,
-        Distance = 2,
+        Target = 2,
+    }
+}
+
+impl Display for EffectRange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            EffectRange::Self_ => write!(f, "Self"),
+            EffectRange::Touch => write!(f, "Touch"),
+            EffectRange::Target => write!(f, "Target"),
+        }
+    }
+}
+
+impl FromStr for EffectRange {
+    type Err = ();
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Self" => Ok(EffectRange::Self_),
+            "Touch" => Ok(EffectRange::Touch), 
+            "Target" => Ok(EffectRange::Target),
+            _ => Err(())
+        }
     }
 }
 
