@@ -124,7 +124,9 @@ pub enum FieldType {
     Npc,
     SavedNpc,
     Effect,
-    SpellMetadata
+    SpellMetadata,
+    Ai,
+    AiWander,
 }
 
 impl FieldType {
@@ -132,6 +134,8 @@ impl FieldType {
         match (record_tag, field_tag) {
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
+            (NPC_, AI_W) => FieldType::AiWander,
+            (NPC_, AIDT) => FieldType::Ai,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (_, ASND) => FieldType::StringZ,
@@ -773,6 +777,53 @@ pub struct SpellMetadata {
     pub flags: SpellFlags
 }
 
+pub_bitflags_display!(AiServices, u32, [
+    WEAPON = 0x00001,
+    ARMOR = 0x00002,
+    CLOTHING = 0x00004,
+    BOOKS = 0x00008,
+    INGREDIENTS = 0x00010,
+    PICKS = 0x00020,
+    PROBES = 0x00040,
+    LIGHTS = 0x00080,
+    APPARATUS = 0x00100,
+    REPAIR_ITEMS = 0x00200,
+    MISCELLANEOUS  = 0x00400,
+    POTIONS = 0x02000,
+    SPELLS = 0x00800,
+    MAGIC_ITEMS = 0x01000,
+    TRAINING = 0x04000,
+    SPELLMAKING = 0x08000,
+    ENCHANTING = 0x10000,
+    REPAIR = 0x20000
+]);
+
+enum_serde!({
+    AiServices, AiServicesDeserializer, "AI services",
+    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+});
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Ai {
+    pub hello: u16,
+    pub fight: u8,
+    pub flee: u8,
+    pub alarm: u8,
+    pub padding_8: u8,
+    pub padding_16: u16,
+    pub services: AiServices
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AiWander {
+    pub distance: u16,
+    pub duration: u16,
+    pub time_of_day: u8,
+    pub idle: [u8; 8],
+    pub repeat: u8
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -796,6 +847,8 @@ pub enum Field {
     Npc(Npc),
     Effect(Effect),
     SpellMetadata(SpellMetadata),
+    Ai(Ai),
+    AiWander(AiWander),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

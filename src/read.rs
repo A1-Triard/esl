@@ -128,15 +128,25 @@ macro_rules! impl_parse_error {
 }
 
 #[derive(Debug, Clone)]
-enum FieldBodyError {
-    UnexpectedEndOfField(u32),
+enum FieldBaseError {
     UnknownFileType(u32),
     UnexpectedNpcFieldSize(u32),
     InvalidEffectRange(i32),
     InvalidDialogType(u8),
     InvalidSpellType(u32),
     InvalidSpellFlags(u32),
+    InvalidAiServices(u32),
     UnexpectedDialogMetadataFieldSize(u32),
+}
+
+#[derive(Debug, Clone)]
+enum FieldBodyError {
+    UnexpectedEndOfField(u32),
+    Base(FieldBaseError)
+}
+
+impl From<FieldBaseError> for FieldBodyError {
+    fn from(e: FieldBaseError) -> FieldBodyError { FieldBodyError::Base(e) }
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
@@ -203,7 +213,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownFileType(w)))
+                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownFileType(w).into()))
             ),
             set_err(
                 tuple((
@@ -338,16 +348,55 @@ fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBody
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidSpellType(w)))
+                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::InvalidSpellType(w).into()))
             ),
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::InvalidSpellFlags(w)))
+                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::InvalidSpellFlags(w).into()))
             ),
         )),
         |(spell_type, cost, flags)| SpellMetadata {
             spell_type, cost, flags
+        }
+    )(input)
+}
+
+fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
+    map(
+        pair(
+            set_err(
+                tuple((le_u16, le_u8, le_u8, le_u8, le_u8, le_u16)),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::InvalidAiServices(w).into()))
+            )
+        ),
+        |((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
+            hello, fight, flee, alarm, padding_8, padding_16, services
+        }
+    )(input)
+}
+
+fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_u16, le_u16, le_u8,
+                le_u8, le_u8, le_u8, le_u8,
+                le_u8, le_u8, le_u8, le_u8,
+                le_u8
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(14)
+        ),
+        |(distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9, repeat)| AiWander {
+            distance,
+            duration,
+            time_of_day,
+            idle: [idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9],
+            repeat
         }
     )(input)
 }
@@ -416,7 +465,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
             map_res(
                 set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBodyError::InvalidEffectRange(d)))
+                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBaseError::InvalidEffectRange(d).into()))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -438,7 +487,7 @@ fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, Fie
     map(
         map_res(
             set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-            |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBodyError::InvalidDialogType(d)))
+            |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBaseError::InvalidDialogType(d).into()))
         ),
         DialogTypeOption::Some
     )(input)
@@ -467,6 +516,8 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
             FieldType::SpellMetadata => map(spell_metadata_field, Field::SpellMetadata)(input),
+            FieldType::Ai => map(ai_field, Field::Ai)(input),
+            FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),
@@ -478,13 +529,13 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedNpcFieldSize(x))),
+                x => Err(nom::Err::Error(FieldBaseError::UnexpectedNpcFieldSize(x).into())),
             },
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
                 4 => map(dialog_metadata_4_field, Field::DialogMetadata)(input),
                 1 => map(dialog_metadata_1_field, Field::DialogMetadata)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedDialogMetadataFieldSize(x))),
+                x => Err(nom::Err::Error(FieldBaseError::UnexpectedDialogMetadataFieldSize(x).into())),
             },
         }
     }
@@ -498,13 +549,7 @@ fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
 enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
-    UnknownFileType(u32),
-    UnexpectedNpcFieldSize(u32),
-    InvalidEffectRange(i32),
-    InvalidDialogType(u8),
-    InvalidSpellType(u32),
-    InvalidSpellFlags(u32),
-    UnexpectedDialogMetadataFieldSize(u32),
+    Base(FieldBaseError)
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -532,13 +577,7 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                 field_body(code_page, record_tag, field_tag, field_size),
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
-                    FieldBodyError::UnknownFileType(d) => FieldError::UnknownFileType(d),
-                    FieldBodyError::UnexpectedNpcFieldSize(d) => FieldError::UnexpectedNpcFieldSize(d),
-                    FieldBodyError::InvalidEffectRange(d) => FieldError::InvalidEffectRange(d),
-                    FieldBodyError::InvalidDialogType(d) => FieldError::InvalidDialogType(d),
-                    FieldBodyError::InvalidSpellType(d) => FieldError::InvalidSpellType(d),
-                    FieldBodyError::InvalidSpellFlags(d) => FieldError::InvalidSpellFlags(d),
-                    FieldBodyError::UnexpectedDialogMetadataFieldSize(d) => FieldError::UnexpectedDialogMetadataFieldSize(d),
+                    FieldBodyError::Base(d) => FieldError::Base(d),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -816,6 +855,34 @@ impl Error for InvalidSpellFlags {
 }
 
 #[derive(Debug, Clone)]
+pub struct InvalidAiServices {
+    pub record_offset: u64,
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
+    pub value: u32
+}
+
+impl fmt::Display for InvalidAiServices {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "invalid AI services {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl Error for InvalidAiServices {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
 pub enum RecordError {
     UnexpectedEof(UnexpectedEof),
     InvalidRecordFlags(InvalidRecordFlags),
@@ -827,6 +894,7 @@ pub enum RecordError {
     InvalidDialogType(InvalidDialogType),
     InvalidSpellType(InvalidSpellType),
     InvalidSpellFlags(InvalidSpellFlags),
+    InvalidAiServices(InvalidAiServices),
 }
 
 impl fmt::Display for RecordError {
@@ -842,6 +910,7 @@ impl fmt::Display for RecordError {
             RecordError::InvalidDialogType(x) => x.fmt(f),
             RecordError::InvalidSpellType(x) => x.fmt(f),
             RecordError::InvalidSpellFlags(x) => x.fmt(f),
+            RecordError::InvalidAiServices(x) => x.fmt(f),
         }
     }
 }
@@ -859,6 +928,7 @@ impl Error for RecordError {
             RecordError::InvalidDialogType(x) => x,
             RecordError::InvalidSpellType(x) => x,
             RecordError::InvalidSpellFlags(x) => x,
+            RecordError::InvalidAiServices(x) => x,
         })
     }
 }
@@ -946,43 +1016,49 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_offset, record_tag, field_tag, expected_size, actual_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
                 }),
-            RecordBodyError(FieldError::UnknownFileType(value), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::UnknownFileType(value)), field) =>
                 RecordError::UnknownFileType(UnknownFileType {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag: TES3, field_tag: HEDR, value_offset: 4
                 }),
-            RecordBodyError(FieldError::UnexpectedNpcFieldSize(field_size), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedNpcFieldSize(field_size)), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
                     record_offset, field_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag: NPC_, field_tag: NPDT
                 }),
-            RecordBodyError(FieldError::InvalidEffectRange(value), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::InvalidEffectRange(value)), field) =>
                 RecordError::InvalidEffectRange(InvalidEffectRange {
                     record_offset, record_tag, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     field_tag: ENAM, value_offset: 4
                 }),
-            RecordBodyError(FieldError::InvalidDialogType(value), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::InvalidDialogType(value)), field) =>
                 RecordError::InvalidDialogType(InvalidDialogType {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag: DIAL, field_tag: DATA, value_offset: 0
                 }),
-            RecordBodyError(FieldError::InvalidSpellType(value), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::InvalidSpellType(value)), field) =>
                 RecordError::InvalidSpellType(InvalidSpellType {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: DIAL, field_tag: DATA, value_offset: 0
+                    record_tag: SPEL, field_tag: SPDT, value_offset: 0
                 }),
-            RecordBodyError(FieldError::InvalidSpellFlags(value), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::InvalidSpellFlags(value)), field) =>
                 RecordError::InvalidSpellFlags(InvalidSpellFlags {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: DIAL, field_tag: DATA, value_offset: 8
+                    record_tag: SPEL, field_tag: SPDT, value_offset: 8
                 }),
-            RecordBodyError(FieldError::UnexpectedDialogMetadataFieldSize(field_size), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::InvalidAiServices(value)), field) =>
+                RecordError::InvalidAiServices(InvalidAiServices {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag: NPC_, field_tag: AIDT, value_offset: 8
+                }),
+            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedDialogMetadataFieldSize(field_size)), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
                     record_offset,  field_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
@@ -1377,7 +1453,7 @@ mod tests {
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
         let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::UnknownFileType(val)) = error {
+        if let nom::Err::Error(FieldBodyError::Base(FieldBaseError::UnknownFileType(val))) = error {
             assert_eq!(val, 0x100000);
         } else {
             panic!()

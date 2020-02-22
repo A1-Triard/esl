@@ -137,6 +137,16 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have spell metadata type", self.record_tag, self.field_tag)))
             },
+            FieldType::Ai => if let Field::Ai(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have AI type", self.record_tag, self.field_tag)))
+            },
+            FieldType::AiWander => if let Field::AiWander(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have AI wander type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serializer.serialize_f32(v)
             } else {
@@ -263,6 +273,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 }.map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(Field::DialogMetadata),
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
+                FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
+                FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::Float => f32::deserialize(deserializer).map(Field::Float),
                 FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
                 FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
@@ -402,12 +414,12 @@ mod tests {
     fn test_record_flags() {
         assert_eq!("PERSISTENT", format!("{}", RecordFlags::PERSISTENT));
         assert_eq!("PERSISTENT", format!("{:?}", RecordFlags::PERSISTENT));
-        assert_eq!("PERSISTENT | DELETED", format!("{}", RecordFlags::PERSISTENT | RecordFlags::DELETED));
+        assert_eq!("PERSISTENT DELETED", format!("{}", RecordFlags::PERSISTENT | RecordFlags::DELETED));
         assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits);
         assert_eq!(Some(RecordFlags::BLOCKED | RecordFlags::DELETED), RecordFlags::from_bits(0x202000000000));
         assert_eq!(Ok(RecordFlags::DELETED), RecordFlags::from_str("DELETED"));
-        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("DELETED|PERSISTENT"));
-        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT | DELETED"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("DELETED PERSISTENT"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSISTENT), RecordFlags::from_str("PERSISTENT  DELETED"));
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
         assert_eq!(Err(()), RecordFlags::from_str(" "));
     }
