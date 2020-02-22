@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn read_empty_file() {
-        let file = File::open("D:\\MFR\\Data Files\\Tribunal.esm").unwrap();
+        let file = File::open("D:\\MFR\\Saves\\quiksave.ess").unwrap();
         let mut file = BufReader::new(file);
         let records = Records::new(CodePage::Russian, 0, &mut file);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();

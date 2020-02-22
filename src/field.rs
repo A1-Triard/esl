@@ -207,6 +207,7 @@ impl FieldType {
             (_, PTEX) => FieldType::StringZ,
             (_, RGNN) => FieldType::StringZ,
             (FACT, RNAM) => FieldType::String(Right(32)),
+            (SCPT, RNAM) => FieldType::Int,
             (_, RNAM) => FieldType::StringZ,
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (_, SCRI) => FieldType::StringZ,
