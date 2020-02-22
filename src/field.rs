@@ -69,7 +69,7 @@ macro_attr! {
     pub enum EffectRange {
         Oneself = 0,
         Touch = 1,
-        Target = 2,
+        Distance = 2,
     }
 }
 
