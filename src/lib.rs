@@ -26,6 +26,9 @@ mod tag;
 
 pub use crate::tag::*;
 
+#[macro_use]
+mod bitflags_ext;
+
 mod field;
 
 pub use crate::field::*;

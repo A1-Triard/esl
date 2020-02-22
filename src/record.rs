@@ -1,13 +1,5 @@
 use either::{Either, Left, Right};
-use std::fmt::{self, Display, Debug};
-use std::str::{FromStr};
-use ::nom::IResult;
-use ::nom::branch::alt;
-use ::nom::combinator::{value as nom_value, map, opt};
-use ::nom::bytes::complete::tag as nom_tag;
-use ::nom::multi::{fold_many0};
-use ::nom::sequence::{preceded, terminated, pair};
-use ::nom::bytes::complete::take_while;
+use std::fmt::{self, Debug};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
@@ -21,46 +13,7 @@ use crate::field::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
 
-bitflags! {
-    pub struct RecordFlags: u64 {
-        const PERSISTENT = 0x40000000000;
-        const BLOCKED = 0x200000000000;
-        const DELETED = 0x2000000000;
-    }
-}
-
-impl Display for RecordFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
-
-fn pipe(input: &str) -> IResult<&str, (), ()> {
-    nom_value((),
-              terminated(preceded(take_while(char::is_whitespace), nom_tag("|")), take_while(char::is_whitespace))
-    )(input)
-}
-
-fn record_flag(input: &str) -> IResult<&str, RecordFlags, ()> {
-    alt((
-        nom_value(RecordFlags::PERSISTENT, nom_tag(name_of!(const PERSISTENT in RecordFlags))),
-        nom_value(RecordFlags::BLOCKED, nom_tag(name_of!(const BLOCKED in RecordFlags))),
-        nom_value(RecordFlags::DELETED, nom_tag(name_of!(const DELETED in RecordFlags)))
-    ))(input)
-}
-
-impl FromStr for RecordFlags {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<RecordFlags, Self::Err> {
-        let (unconsumed, flags) = map(opt(map(pair(
-            record_flag,
-            fold_many0(preceded(pipe, record_flag), RecordFlags::empty(), |a, v| a | v)
-        ), |(a, b)| a | b)), |m| m.unwrap_or(RecordFlags::empty()))(s).map_err(|_: ::nom::Err<()>| ())?;
-        if !unconsumed.is_empty() { return Err(()); }
-        Ok(flags)
-    }
-}
+bitflags_display!(RecordFlags, u64, PERSISTENT = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000);
 
 enum_serde!({
     RecordFlags, RecordFlagsDeserializer, "record flags",

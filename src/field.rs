@@ -735,6 +735,35 @@ impl<'de> Deserialize<'de> for DialogTypeOption {
     }
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum SpellType {
+        Spell = 0,
+        Ability = 1,
+        Blight = 2,
+        Disease = 3,
+        Curse = 4,
+        Power = 5
+    }
+}
+
+enum_serde!([
+    SpellType, SpellTypeDeserializer, "spell type",
+    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+]);
+
+bitflags_display!(SpellFlags, u32, AUTOCALC = 1, PC_START = 2, ALWAYS = 4);
+
+enum_serde!({
+    SpellFlags, SpellFlagsDeserializer, "spell flags",
+    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+});
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
