@@ -247,7 +247,7 @@ fn item_field<'a>(code_page: CodePage)
                 le_i32,
                 string_len(code_page, 32)
             ),
-            |(count, id)| Item { count, item_id: id }
+            |(count, item_id)| Item { count, item_id }
         ),
         |_| FieldBodyError::UnexpectedEndOfField(4 + 32)
     )
@@ -411,7 +411,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             range,
             (area, duration, magnitude_min, magnitude_max),
         )| Effect {
-            id, skill, attribute, range,
+            effect_id: id, skill, attribute, range,
             area, duration, magnitude_min, magnitude_max
         }
     )(input)
@@ -1370,7 +1370,7 @@ mod tests {
     #[test]
     fn serialize_effect() {
         let effect = Effect {
-            id: 12700,
+            effect_id: 12700,
             skill: 127,
             attribute: -128,
             range: EffectRange::Touch,
@@ -1381,7 +1381,7 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
-        assert_eq!(res.id, effect.id);
+        assert_eq!(res.effect_id, effect.effect_id);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
         assert_eq!(res.range, effect.range);

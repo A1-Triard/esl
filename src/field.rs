@@ -325,7 +325,7 @@ mod multiline_256_dos {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Effect {
-    pub id: i16,
+    pub effect_id: i16,
     pub skill: i8,
     pub attribute: i8,
     pub range: EffectRange,
