@@ -92,8 +92,8 @@ struct FieldBodySerializer<'a> {
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.field_tag) {
-            FieldType::String(p) => if let Field::String(s) = self.field {
-                if let Right(len) = p {
+            FieldType::String(len) => if let Field::String(s) = self.field {
+                if let Some(len) = len {
                     serialize_string_tuple(&s, len as usize, serializer)
                 } else {
                     serializer.serialize_str(&s)
@@ -106,8 +106,8 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
-            FieldType::Multiline(_, lb) => if let Field::StringList(s) = self.field {
-                serialize_string_list(&s, lb.new_line(), None, serializer)
+            FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
+                serialize_string_list(&s, newline.as_str(), None, serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -272,15 +272,15 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
             match FieldType::from_tags(self.record_tag, self.field_tag) {
-                FieldType::String(p) => if let Right(len) = p {
+                FieldType::String(len) => if let Some(len) = len {
                     deserialize_string_tuple(len as usize, deserializer)
                 } else {
                     String::deserialize(deserializer)
                 }.map(Field::String),
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
-                FieldType::Multiline(_, lb) =>
-                    deserialize_string_list(lb.new_line(), None, deserializer).map(Field::StringList),
+                FieldType::Multiline(newline) =>
+                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::StringList),
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),

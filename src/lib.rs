@@ -52,8 +52,6 @@ mod tests {
     use byteorder::{WriteBytesExt, LittleEndian};
     use std::iter::Iterator;
     use std::str::FromStr;
-    use std::fs::File;
-    use std::io::{BufReader, BufWriter};
 
     fn test_author() -> &'static [u8] {
         b"test author\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -175,15 +173,5 @@ mod tests {
         let yaml = serde_yaml::to_string(&record).unwrap();
         assert!(!yaml.contains("^"));
         assert!(!yaml.contains("\\u"));
-    }
-
-    #[test]
-    fn read_empty_file() {
-        let file = File::open("D:\\MFR\\Saves\\quiksave.ess").unwrap();
-        let mut file = BufReader::new(file);
-        let records = Records::new(CodePage::Russian, 0, &mut file);
-        let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
-        let o = File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
-        serde_yaml::to_writer(BufWriter::new(o), &records).unwrap();
     }
 }

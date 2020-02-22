@@ -1,4 +1,3 @@
-use either::{Either, Left, Right};
 use std::fmt::{self, Debug};
 use std::mem::{transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
@@ -13,14 +12,14 @@ pub use crate::tag::*;
 include!(concat!(env!("OUT_DIR"), "/tags.rs"));
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum LinebreakStyle {
+pub enum Newline {
     Unix,
     Dos
 }
 
-impl LinebreakStyle {
-    pub fn new_line(self) -> &'static str {
-        if self == LinebreakStyle::Unix { "\n" } else { "\r\n" }
+impl Newline {
+    pub fn as_str(self) -> &'static str {
+        if self == Newline::Unix { "\n" } else { "\r\n" }
     }
 }
 
@@ -80,18 +79,12 @@ enum_serde!([
     Signed, i64
 ]);
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum StringCoerce {
-    None,
-    TrimTailZeros
-}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FieldType {
     Binary,
-    String(Either<StringCoerce, u32>),
+    String(Option<u32>),
     StringZ,
-    Multiline(StringCoerce, LinebreakStyle),
+    Multiline(Newline),
     StringZList,
     Item,
     Float,
@@ -112,22 +105,22 @@ pub enum FieldType {
 impl FieldType {
     pub fn from_tags(record_tag: Tag, field_tag: Tag) -> FieldType {
         match (record_tag, field_tag) {
-            (INFO, ACDT) => FieldType::String(Left(StringCoerce::None)),
+            (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
-            (FACT, ANAM) => FieldType::String(Left(StringCoerce::None)),
+            (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (_, ASND) => FieldType::StringZ,
             (_, AVFX) => FieldType::StringZ,
-            (ARMO, BNAM) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
-            (BODY, BNAM) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
-            (CLOT, BNAM) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
-            (INFO, BNAM) => FieldType::Multiline(StringCoerce::TrimTailZeros, LinebreakStyle::Dos),
-            (PCDT, BNAM) => FieldType::String(Left(StringCoerce::None)),
+            (ARMO, BNAM) => FieldType::String(None),
+            (BODY, BNAM) => FieldType::String(None),
+            (CLOT, BNAM) => FieldType::String(None),
+            (INFO, BNAM) => FieldType::Multiline(Newline::Dos),
+            (PCDT, BNAM) => FieldType::String(None),
             (_, BNAM) => FieldType::StringZ,
             (_, BSND) => FieldType::StringZ,
             (_, BVFX) => FieldType::StringZ,
-            (ARMO, CNAM) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
-            (CLOT, CNAM) => FieldType::String(Left(StringCoerce::None)),
+            (ARMO, CNAM) => FieldType::String(None),
+            (CLOT, CNAM) => FieldType::String(None),
             (KLST, CNAM) => FieldType::Int,
             (REGN, CNAM) => FieldType::Int,
             (_, CNAM) => FieldType::StringZ,
@@ -138,22 +131,22 @@ impl FieldType {
             (LEVC, DATA) => FieldType::Int,
             (LEVI, DATA) => FieldType::Int,
             (LTEX, DATA) => FieldType::StringZ,
-            (SSCR, DATA) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
+            (SSCR, DATA) => FieldType::String(None),
             (TES3, DATA) => FieldType::Long,
-            (QUES, DATA) => FieldType::String(Left(StringCoerce::None)),
+            (QUES, DATA) => FieldType::String(None),
             (DIAL, DELE) => FieldType::Int,
             (BSGN, DESC) => FieldType::StringZ,
-            (_, DESC) => FieldType::String(Left(StringCoerce::None)),
+            (_, DESC) => FieldType::String(None),
             (_, DNAM) => FieldType::StringZ,
             (ALCH, ENAM) => FieldType::Effect,
             (ENCH, ENAM) => FieldType::Effect,
             (PCDT, ENAM) => FieldType::Long,
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
-            (CELL, FGTN) => FieldType::String(Left(StringCoerce::None)),
+            (CELL, FGTN) => FieldType::String(None),
             (_, FLAG) => FieldType::Int,
             (_, FLTV) => FieldType::Float,
-            (GLOB, FNAM) => FieldType::String(Left(StringCoerce::None)),
+            (GLOB, FNAM) => FieldType::String(None),
             (PCDT, FNAM) => FieldType::Binary,
             (_, FNAM) => FieldType::StringZ,
             (CELL, FRMR) => FieldType::Int,
@@ -173,13 +166,13 @@ impl FieldType {
             (PCDT, KNAM) => FieldType::Binary,
             (_, KNAM) => FieldType::StringZ,
             (PCDT, LNAM) => FieldType::Long,
-            (CELL, LSHN) => FieldType::String(Left(StringCoerce::None)),
-            (CELL, LSTN) => FieldType::String(Left(StringCoerce::None)),
+            (CELL, LSHN) => FieldType::String(None),
+            (CELL, LSTN) => FieldType::String(None),
             (_, LVCR) => FieldType::Byte,
             (FMAP, MAPD) => FieldType::Compressed,
             (FMAP, MAPH) => FieldType::Long,
             (TES3, MAST) => FieldType::StringZ,
-            (PCDT, MNAM) => FieldType::String(Left(StringCoerce::None)),
+            (PCDT, MNAM) => FieldType::String(None),
             (CELL, MNAM) => FieldType::Byte,
             (_, MODL) => FieldType::StringZ,
             (CELL, NAM0) => FieldType::Int,
@@ -187,11 +180,11 @@ impl FieldType {
             (CELL, NAM5) => FieldType::Int,
             (CELL, NAM9) => FieldType::Int,
             (PCDT, NAM9) => FieldType::Int,
-            (GMST, NAME) => FieldType::String(Left(StringCoerce::None)),
-            (INFO, NAME) => FieldType::String(Left(StringCoerce::None)),
-            (JOUR, NAME) => FieldType::Multiline(StringCoerce::None, LinebreakStyle::Unix), // TODO None need check
+            (GMST, NAME) => FieldType::String(None),
+            (INFO, NAME) => FieldType::String(None),
+            (JOUR, NAME) => FieldType::Multiline(Newline::Unix),
             (SPLM, NAME) => FieldType::Int,
-            (SSCR, NAME) => FieldType::String(Left(StringCoerce::TrimTailZeros)),
+            (SSCR, NAME) => FieldType::String(None),
             (_, NAME) => FieldType::StringZ,
             (_, ND3D) => FieldType::Byte,
             (LEVC, NNAM) => FieldType::Byte,
@@ -200,25 +193,25 @@ impl FieldType {
             (_, NPCO) => FieldType::Item,
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::SavedNpc,
-            (_, NPCS) => FieldType::String(Right(32)),
+            (_, NPCS) => FieldType::String(Some(32)),
             (_, ONAM) => FieldType::StringZ,
             (PCDT, PNAM) => FieldType::Binary,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
             (_, RGNN) => FieldType::StringZ,
-            (FACT, RNAM) => FieldType::String(Right(32)),
+            (FACT, RNAM) => FieldType::String(Some(32)),
             (SCPT, RNAM) => FieldType::Int,
             (_, RNAM) => FieldType::StringZ,
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (_, SCRI) => FieldType::StringZ,
-            (_, SCTX) => FieldType::Multiline(StringCoerce::TrimTailZeros, LinebreakStyle::Dos),
+            (_, SCTX) => FieldType::Multiline(Newline::Dos),
             (SCPT, SCVR) => FieldType::StringZList,
-            (_, SCVR) => FieldType::String(Left(StringCoerce::None)),
+            (_, SCVR) => FieldType::String(None),
             (PCDT, SNAM) => FieldType::Binary,
             (REGN, SNAM) => FieldType::Binary,
             (_, SNAM) => FieldType::StringZ,
-            (_, STRV) => FieldType::String(Left(StringCoerce::None)),
-            (BOOK, TEXT) => FieldType::Multiline(StringCoerce::TrimTailZeros, LinebreakStyle::Dos),
+            (_, STRV) => FieldType::String(None),
+            (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (_, TEXT) => FieldType::StringZ,
             (_, TNAM) => FieldType::StringZ,
             (_, VCLR) => FieldType::Compressed,
@@ -298,11 +291,11 @@ mod multiline_256_dos {
     use crate::field::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_string_list(lines, LinebreakStyle::Dos.new_line(), Some(256), serializer)
+        serialize_string_list(lines, Newline::Dos.as_str(), Some(256), serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        deserialize_string_list(LinebreakStyle::Dos.new_line(), Some(256), deserializer)
+        deserialize_string_list(Newline::Dos.as_str(), Some(256), deserializer)
     }
 }
 
@@ -742,27 +735,47 @@ pub enum Field {
     Effect(Effect),
 }
 
+fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
+    match (record_tag, field_tag) {
+        (ARMO, BNAM) => true,
+        (BODY, BNAM) => true,
+        (CLOT, BNAM) => true,
+        (INFO, BNAM) => true,
+        (ARMO, CNAM) => true,
+        (SSCR, DATA) => true,
+        (BSGN, DESC) => true,
+        (SSCR, NAME) => true,
+        (_, SCTX) => true,
+        (BOOK, TEXT) => true,
+        (FACT, RNAM) => true,
+        // TODO (JOUR, NAME)
+        _ => false
+    }
+}
+
 impl Field {
     pub fn coerce(&mut self, record_tag: Tag, field_tag: Tag) {
+        if !allow_coerce(record_tag, field_tag) { return; }
         match FieldType::from_tags(record_tag, field_tag) {
-            FieldType::String(Left(StringCoerce::TrimTailZeros)) => {
+            FieldType::String(_) => {
                 if let Field::String(v) = self {
-                    v.truncate(v.rfind(|x| x != '\0').map_or(0, |i| 1 + i))
+                    v.find('\0').map(|i| v.truncate(i));
                 } else {
                     panic!("invalid field type")
                 }
             },
-            FieldType::Multiline(StringCoerce::TrimTailZeros, _) => {
+            FieldType::Multiline(newline) => {
                 if let Field::StringList(v) = self {
-                    if let Some(last_line) = v.last_mut() {
-                        last_line.truncate(last_line.rfind(|x| x != '\0').map_or(0, |i| 1 + i))
-                    }
+                    let mut s = v.join(newline.as_str());
+                    s.find('\0').map(|i| s.truncate(i));
+                    *v = s.split(newline.as_str()).map(String::from).collect();
                 } else {
                     panic!("invalid field type")
                 }
             },
             FieldType::StringZ => {
                 if let Field::StringZ(v) = self {
+                    v.string.find('\0').map(|i| v.string.truncate(i));
                     v.has_tail_zero = true;
                 } else {
                     panic!("invalid field type")

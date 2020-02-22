@@ -13,7 +13,6 @@ use std::fmt::{self};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use either::{Left, Right};
 
 use crate::strings::*;
 use crate::field::*;
@@ -209,7 +208,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
                     string_len(code_page, 32),
                     map(
                         string_len(code_page, 256),
-                        |s| s.split(LinebreakStyle::Dos.new_line()).map(String::from).collect()
+                        |s| s.split(Newline::Dos.as_str()).map(String::from).collect()
                     ),
                     le_u32
                 )),
@@ -228,13 +227,13 @@ fn string_len_field<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8])
     set_err(string_len(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))
 }
 
-fn multiline_field<'a, E>(code_page: CodePage, linebreaks: LinebreakStyle)
+fn multiline_field<'a, E>(code_page: CodePage, linebreaks: Newline)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
 
     no_err(
         map(
             string_field(code_page),
-            move |s| s.split(linebreaks.new_line()).map(String::from).collect()
+            move |s| s.split(linebreaks.as_str()).map(String::from).collect()
         )
     )
 }
@@ -443,13 +442,10 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
         match field_type {
             FieldType::Binary => map(binary_field, Field::Binary)(input),
             FieldType::Compressed => map(compressed_field, Field::Binary)(input),
-            FieldType::Multiline(_, linebreaks) =>
-                map(multiline_field(code_page, linebreaks), Field::StringList)(input),
-            FieldType::Item =>
-                map(item_field(code_page), Field::Item)(input),
-            FieldType::String(Right(len)) => map(string_len_field(code_page, len), Field::String)(input),
-            FieldType::String(Left(_)) =>
-                map(string_field(code_page), Field::String)(input),
+            FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
+            FieldType::Item => map(item_field(code_page), Field::Item)(input),
+            FieldType::String(Some(len)) => map(string_len_field(code_page, len), Field::String)(input),
+            FieldType::String(None) => map(string_field(code_page), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
