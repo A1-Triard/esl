@@ -1,15 +1,3 @@
-use ::nom::IResult;
-use ::nom::combinator::{value as nom_value};
-use ::nom::bytes::complete::tag as nom_tag;
-use ::nom::sequence::{preceded, terminated};
-use ::nom::bytes::complete::take_while;
-
-pub fn pipe(input: &str) -> IResult<&str, (), ()> {
-    nom_value((),
-        terminated(preceded(take_while(char::is_whitespace), nom_tag("|")), take_while(char::is_whitespace))
-    )(input)
-}
-
 macro_rules! pub_bitflags_display {
     ($flags:ident, $ty:ty, [$($name:ident = $value:literal),*]) => {
         bitflags! {
@@ -28,7 +16,7 @@ macro_rules! pub_bitflags_display {
                             #[allow(unused_assignments)]
                             start = false;
                         } else {
-                            write!(f, " | ")?;
+                            write!(f, " ")?;
                         }
                         write!(f, stringify!($name))?;
                     }
@@ -51,7 +39,7 @@ macro_rules! pub_bitflags_display {
 
                 let (unconsumed, flags_value) = ::nom::combinator::map(::nom::combinator::opt(::nom::combinator::map(::nom::sequence::pair(
                     flag,
-                    ::nom::multi::fold_many0(::nom::sequence::preceded(crate::bitflags_ext::pipe, flag), $flags::empty(), |a, v| a | v)
+                    ::nom::multi::fold_many0(::nom::sequence::preceded(::nom::bytes::complete::take_while(char::is_whitespace), flag), $flags::empty(), |a, v| a | v)
                 ), |(a, b)| a | b)), |m| m.unwrap_or($flags::empty()))(s).map_err(|_: ::nom::Err<()>| ())?;
                 if !unconsumed.is_empty() { return Err(()); }
                 Ok(flags_value)
