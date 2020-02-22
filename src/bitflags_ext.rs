@@ -10,7 +10,7 @@ pub fn pipe(input: &str) -> IResult<&str, (), ()> {
     )(input)
 }
 
-macro_rules! bitflags_display {
+macro_rules! pub_bitflags_display {
     ($flags:ident, $ty:ty, $($name:ident = $value:literal),*) => {
         bitflags! {
             pub struct $flags: $ty {
