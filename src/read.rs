@@ -357,6 +357,28 @@ fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBody
     )(input)
 }
 
+fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
+    map(
+        tuple((
+            set_err(
+                tuple((le_f32, le_u32, le_i32, le_u32)),
+                |_| FieldBodyError::UnexpectedEndOfField(24)
+            ),
+            map(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                Color
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                |w, _| LightFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::LightFlags(w), 20).into()))
+            )
+        )),
+        |((weight, value, time, radius), color, flags)| Light {
+            weight, value, time, radius, color, flags
+        }
+    )(input)
+}
+
 fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
     map(
         pair(
@@ -609,6 +631,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),
+            FieldType::Light => map(light_field, Field::Light)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -820,6 +843,7 @@ pub enum Unknown {
     BloodTexture(u8),
     ContainerFlags(u32),
     CreatureType(u32),
+    LightFlags(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -836,6 +860,7 @@ impl fmt::Display for Unknown {
             Unknown::BloodTexture(v) => write!(f, "blood texture {}", v),
             Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
             Unknown::CreatureType(v) => write!(f, "creature type {}", v),
+            Unknown::LightFlags(v) => write!(f, "light flags {:08X}h", v),
         }
     }
 }

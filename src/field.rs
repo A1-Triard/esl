@@ -119,7 +119,8 @@ pub enum FieldType {
     CreatureFlags,
     Book,
     ContainerFlags,
-    Creature
+    Creature,
+    Light,
 }
 
 impl FieldType {
@@ -192,6 +193,7 @@ impl FieldType {
             (_, ITEX) => FieldType::StringZ,
             (PCDT, KNAM) => FieldType::Binary,
             (_, KNAM) => FieldType::StringZ,
+            (LIGH, LHDT) => FieldType::Light,
             (PCDT, LNAM) => FieldType::Long,
             (CELL, LSHN) => FieldType::String(None),
             (CELL, LSTN) => FieldType::String(None),
@@ -985,6 +987,33 @@ impl FromStr for Color {
 
 enum_serde!(Color, "ARGB color", u32, ());
 
+pub_bitflags_display!(LightFlags, u32,
+    DYNAMIC = 0x0001,
+    CAN_CARRY = 0x0002,
+    NEGATIVE = 0x0004,
+    FLICKER = 0x0008,
+    FIRE = 0x0010,
+    OFF_BY_DEFAULT = 0x0020,
+    FLICKER_SLOW = 0x0040,
+    PULSE = 0x0080,
+    PULSE_SLOW = 0x0100
+);
+
+enum_serde!(LightFlags, "light flags", u32, bits, try from_bits, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Light {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub time: i32,
+    pub radius: u32,
+    pub color: Color,
+    pub flags: LightFlags,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1015,6 +1044,7 @@ pub enum Field {
     Book(Book),
     ContainerFlags(ContainerFlags),
     Creature(Creature),
+    Light(Light),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
