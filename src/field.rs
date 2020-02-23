@@ -130,6 +130,7 @@ pub enum FieldType {
     NpcFlags,
     CreatureFlags,
     Book,
+    ContainerFlags,
 }
 
 impl FieldType {
@@ -177,6 +178,7 @@ impl FieldType {
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
             (CELL, FGTN) => FieldType::String(None),
+            (CONT, FLAG) => FieldType::ContainerFlags,
             (CREA, FLAG) => FieldType::CreatureFlags,
             (NPC_, FLAG) => FieldType::NpcFlags,
             (_, FLAG) => FieldType::Int,
@@ -886,7 +888,7 @@ enum_serde!({
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct FlagsField<Flags> {
+pub struct FlagsAndBloodTexture<Flags> {
     pub flags: Flags,
     pub blood_texture: BloodTexture,
     pub padding: u16,
@@ -902,6 +904,18 @@ pub struct Book {
     pub skill: i32,
     pub enchantment: u32
 }
+
+pub_bitflags_display!(ContainerFlags, u32,
+    ORGANIC = 0x01,
+    RESPAWN = 0x02,
+    BASE = 0x08
+);
+
+enum_serde!({
+    ContainerFlags, ContainerFlagsDeserializer, "container flags",
+    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+});
 
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
@@ -928,9 +942,10 @@ pub enum Field {
     SpellMetadata(SpellMetadata),
     Ai(Ai),
     AiWander(AiWander),
-    NpcFlags(FlagsField<NpcFlags>),
-    CreatureFlags(FlagsField<CreatureFlags>),
+    NpcFlags(FlagsAndBloodTexture<NpcFlags>),
+    CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
     Book(Book),
+    ContainerFlags(ContainerFlags),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

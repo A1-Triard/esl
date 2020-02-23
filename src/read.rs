@@ -129,16 +129,8 @@ macro_rules! impl_parse_error {
 
 #[derive(Debug, Clone)]
 enum FieldBaseError {
-    UnknownFileType(u32),
+    UnknownValue(Unknown, u32),
     UnexpectedNpcFieldSize(u32),
-    InvalidEffectRange(i32),
-    InvalidDialogType(u8),
-    InvalidSpellType(u32),
-    InvalidSpellFlags(u32),
-    InvalidAiServices(u32),
-    InvalidNpcFlags(u8),
-    InvalidCreatureFlags(u8),
-    InvalidBloodTexture(u8),
     UnexpectedDialogMetadataFieldSize(u32),
 }
 
@@ -216,7 +208,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownFileType(w).into()))
+                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::FileType(w), 4).into()))
             ),
             set_err(
                 tuple((
@@ -351,12 +343,12 @@ fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBody
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::InvalidSpellType(w).into()))
+                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::SpellType(w), 0).into()))
             ),
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::InvalidSpellFlags(w).into()))
+                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::SpellFlags(w), 8).into()))
             ),
         )),
         |(spell_type, cost, flags)| SpellMetadata {
@@ -374,7 +366,7 @@ fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::InvalidAiServices(w).into()))
+                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiServices(w), 8).into()))
             )
         ),
         |((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
@@ -404,20 +396,20 @@ fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
     )(input)
 }
 
-fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsField<NpcFlags>, FieldBodyError> {
+fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
     map(
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| NpcFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::InvalidNpcFlags(b).into()))
+                |b, _| NpcFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::InvalidBloodTexture(b).into()))
+                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
-        |(flags, blood_texture, padding)| FlagsField {
+        |(flags, blood_texture, padding)| FlagsAndBloodTexture {
             flags,
             blood_texture,
             padding
@@ -425,24 +417,31 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsField<NpcFlags>, FieldBo
     )(input)
 }
 
-fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsField<CreatureFlags>, FieldBodyError> {
+fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<CreatureFlags>, FieldBodyError> {
     map(
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| CreatureFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::InvalidCreatureFlags(b).into()))
+                |b, _| CreatureFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::InvalidBloodTexture(b).into()))
+                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
-        |(flags, blood_texture, padding)| FlagsField {
+        |(flags, blood_texture, padding)| FlagsAndBloodTexture {
             flags,
             blood_texture,
             padding
         }
+    )(input)
+}
+
+fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBodyError> {
+    map_res(
+        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
+        |w, _| ContainerFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
     )(input)
 }
 
@@ -522,7 +521,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
             map_res(
                 set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBaseError::InvalidEffectRange(d).into()))
+                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::EffectRange(d), 4).into()))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -544,7 +543,7 @@ fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, Fie
     map(
         map_res(
             set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-            |d, _| DialogType::from_u8(d).ok_or(nom::Err::Error(FieldBaseError::InvalidDialogType(d).into()))
+            |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::DialogType(b), 0).into()))
         ),
         DialogTypeOption::Some
     )(input)
@@ -578,6 +577,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),
+            FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),
@@ -609,7 +609,7 @@ fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
 enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
-    Base(FieldBaseError)
+    Base(FieldBaseError, Tag)
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -637,7 +637,7 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                 field_body(code_page, record_tag, field_tag, field_size),
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
-                    FieldBodyError::Base(d) => FieldError::Base(d),
+                    FieldBodyError::Base(d) => FieldError::Base(d, field_tag),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -704,7 +704,7 @@ pub struct RecordSizeMismatch {
 impl fmt::Display for RecordSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "record size mismatch, expected {:04X}h, found {:04X}h at {:X}h in {} record started at {:X}h",
+            f, "record size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} record started at {:X}h",
             self.expected_size,
             self.actual_size,
             self.record_offset + 4,
@@ -731,7 +731,7 @@ pub struct FieldSizeMismatch {
 impl fmt::Display for FieldSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "field size mismatch, expected {:04X}h, found {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            f, "field size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.expected_size,
             self.actual_size,
             self.record_offset + 16 + self.field_offset as u64 + 4,
@@ -744,34 +744,6 @@ impl fmt::Display for FieldSizeMismatch {
 }
 
 impl Error for FieldSizeMismatch {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct UnknownFileType {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u32
-}
-
-impl fmt::Display for UnknownFileType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "unknown file type {:04X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for UnknownFileType {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
@@ -803,47 +775,50 @@ impl Error for UnexpectedFieldSize {
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidEffectRange {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: i32,
+pub enum Unknown {
+    FileType(u32),
+    EffectRange(i32),
+    DialogType(u8),
+    SpellType(u32),
+    SpellFlags(u32),
+    AiServices(u32),
+    NpcFlags(u8),
+    CreatureFlags(u8),
+    BloodTexture(u8),
+    ContainerFlags(u32)
 }
 
-impl fmt::Display for InvalidEffectRange {
+impl fmt::Display for Unknown {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid effect range {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
+        match self {
+            Unknown::FileType(v) => write!(f, "file type {:08X}h", v),
+            Unknown::EffectRange(v) => write!(f, "effect range {}", v),
+            Unknown::DialogType(v) => write!(f, "dialog type {}", v),
+            Unknown::SpellType(v) => write!(f, "spell type {}", v),
+            Unknown::SpellFlags(v) => write!(f, "spell flags {:08X}h", v),
+            Unknown::AiServices(v) => write!(f, "AI services {:08X}h", v),
+            Unknown::NpcFlags(v) => write!(f, "NPC flags {:02X}h", v),
+            Unknown::CreatureFlags(v) => write!(f, "creature flags {:02X}h", v),
+            Unknown::BloodTexture(v) => write!(f, "blood texture {}", v),
+            Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
+        }
     }
-}
-
-impl Error for InvalidEffectRange {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidDialogType {
+pub struct UnknownValue {
     pub record_offset: u64,
     pub record_tag: Tag,
     pub field_offset: u32,
     pub field_tag: Tag,
     pub value_offset: u32,
-    pub value: u8
+    pub value: Unknown,
 }
 
-impl fmt::Display for InvalidDialogType {
+impl fmt::Display for UnknownValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "invalid dialog type {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            f, "Unknown {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
             self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
             self.field_tag,
@@ -854,175 +829,7 @@ impl fmt::Display for InvalidDialogType {
     }
 }
 
-impl Error for InvalidDialogType {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidSpellType {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u32
-}
-
-impl fmt::Display for InvalidSpellType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid spell type {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidSpellType {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidSpellFlags {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u32
-}
-
-impl fmt::Display for InvalidSpellFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid spell flags {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidSpellFlags {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidAiServices {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u32
-}
-
-impl fmt::Display for InvalidAiServices {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid AI services {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidAiServices {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidNpcFlags {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u8
-}
-
-impl fmt::Display for InvalidNpcFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid NPC flags {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidNpcFlags {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidCreatureFlags {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u8
-}
-
-impl fmt::Display for InvalidCreatureFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid creature flags {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidCreatureFlags {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
-pub struct InvalidBloodTexture {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub value: u8
-}
-
-impl fmt::Display for InvalidBloodTexture {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "invalid blood texture {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.value,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidBloodTexture {
+impl Error for UnknownValue {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
@@ -1032,16 +839,8 @@ pub enum RecordError {
     InvalidRecordFlags(InvalidRecordFlags),
     RecordSizeMismatch(RecordSizeMismatch),
     FieldSizeMismatch(FieldSizeMismatch),
-    UnknownFileType(UnknownFileType),
     UnexpectedFieldSize(UnexpectedFieldSize),
-    InvalidEffectRange(InvalidEffectRange),
-    InvalidDialogType(InvalidDialogType),
-    InvalidSpellType(InvalidSpellType),
-    InvalidSpellFlags(InvalidSpellFlags),
-    InvalidAiServices(InvalidAiServices),
-    InvalidNpcFlags(InvalidNpcFlags),
-    InvalidCreatureFlags(InvalidCreatureFlags),
-    InvalidBloodTexture(InvalidBloodTexture),
+    UnknownValue(UnknownValue),
 }
 
 impl fmt::Display for RecordError {
@@ -1051,16 +850,8 @@ impl fmt::Display for RecordError {
             RecordError::InvalidRecordFlags(x) => x.fmt(f),
             RecordError::RecordSizeMismatch(x) => x.fmt(f),
             RecordError::FieldSizeMismatch(x) => x.fmt(f),
-            RecordError::UnknownFileType(x) => x.fmt(f),
             RecordError::UnexpectedFieldSize(x) => x.fmt(f),
-            RecordError::InvalidEffectRange(x) => x.fmt(f),
-            RecordError::InvalidDialogType(x) => x.fmt(f),
-            RecordError::InvalidSpellType(x) => x.fmt(f),
-            RecordError::InvalidSpellFlags(x) => x.fmt(f),
-            RecordError::InvalidAiServices(x) => x.fmt(f),
-            RecordError::InvalidNpcFlags(x) => x.fmt(f),
-            RecordError::InvalidCreatureFlags(x) => x.fmt(f),
-            RecordError::InvalidBloodTexture(x) => x.fmt(f),
+            RecordError::UnknownValue(x) => x.fmt(f),
         }
     }
 }
@@ -1072,16 +863,8 @@ impl Error for RecordError {
             RecordError::InvalidRecordFlags(x) => x,
             RecordError::RecordSizeMismatch(x) => x,
             RecordError::FieldSizeMismatch(x) => x,
-            RecordError::UnknownFileType(x) => x,
             RecordError::UnexpectedFieldSize(x) => x,
-            RecordError::InvalidEffectRange(x) => x,
-            RecordError::InvalidDialogType(x) => x,
-            RecordError::InvalidSpellType(x) => x,
-            RecordError::InvalidSpellFlags(x) => x,
-            RecordError::InvalidAiServices(x) => x,
-            RecordError::InvalidNpcFlags(x) => x,
-            RecordError::InvalidCreatureFlags(x) => x,
-            RecordError::InvalidBloodTexture(x) => x,
+            RecordError::UnknownValue(x) => x,
         })
     }
 }
@@ -1169,71 +952,23 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_offset, record_tag, field_tag, expected_size, actual_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
                 }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnknownFileType(value)), field) =>
-                RecordError::UnknownFileType(UnknownFileType {
+            RecordBodyError(FieldError::Base(FieldBaseError::UnknownValue(value, value_offset), field_tag), field) =>
+                RecordError::UnknownValue(UnknownValue {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: TES3, field_tag: HEDR, value_offset: 4
+                    record_tag, field_tag, value_offset
                 }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedNpcFieldSize(field_size)), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedNpcFieldSize(field_size), field_tag), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
                     record_offset, field_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: NPC_, field_tag: NPDT
+                    record_tag, field_tag
                 }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidEffectRange(value)), field) =>
-                RecordError::InvalidEffectRange(InvalidEffectRange {
-                    record_offset, record_tag, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    field_tag: ENAM, value_offset: 4
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidDialogType(value)), field) =>
-                RecordError::InvalidDialogType(InvalidDialogType {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: DIAL, field_tag: DATA, value_offset: 0
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidSpellType(value)), field) =>
-                RecordError::InvalidSpellType(InvalidSpellType {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: SPEL, field_tag: SPDT, value_offset: 0
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidSpellFlags(value)), field) =>
-                RecordError::InvalidSpellFlags(InvalidSpellFlags {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: SPEL, field_tag: SPDT, value_offset: 8
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidAiServices(value)), field) =>
-                RecordError::InvalidAiServices(InvalidAiServices {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: NPC_, field_tag: AIDT, value_offset: 8
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidNpcFlags(value)), field) =>
-                RecordError::InvalidNpcFlags(InvalidNpcFlags {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: NPC_, field_tag: FLAG, value_offset: 0
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidCreatureFlags(value)), field) =>
-                RecordError::InvalidCreatureFlags(InvalidCreatureFlags {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: NPC_, field_tag: FLAG, value_offset: 0
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::InvalidBloodTexture(value)), field) =>
-                RecordError::InvalidBloodTexture(InvalidBloodTexture {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag: FLAG, value_offset: 1
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedDialogMetadataFieldSize(field_size)), field) =>
+            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedDialogMetadataFieldSize(field_size), field_tag), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
                     record_offset,  field_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag: DIAL, field_tag: DATA
+                    record_tag, field_tag
                 }),
         }
     )(input).map_err(|x| x.unwrap())?;
@@ -1624,8 +1359,9 @@ mod tests {
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
         let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::Base(FieldBaseError::UnknownFileType(val))) = error {
+        if let nom::Err::Error(FieldBodyError::Base(FieldBaseError::UnknownValue(Unknown::FileType(val), offset))) = error {
             assert_eq!(val, 0x100000);
+            assert_eq!(offset, 4);
         } else {
             panic!()
         }
@@ -1891,7 +1627,7 @@ mod tests {
     fn serialize_record() {
         let record = Record {
             tag: SCPT,
-            flags: RecordFlags::PERSISTENT,
+            flags: RecordFlags::PERSIST,
             fields: vec![
                 (SCHD, Field::ScriptMetadata(ScriptMetadata {
                     name: "Scr1".into(),
