@@ -486,6 +486,38 @@ fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
     )(input)
 }
 
+fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
+    map(
+        tuple((
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(96)),
+                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureType(w), 0).into()))
+            ),
+            set_err(
+                tuple((
+                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
+                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
+                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32))
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(96)
+            )
+        )),
+        |(
+            creature_type,
+            (
+                (level, strength, intelligence, willpower, agility, speed, endurance, personality),
+                (luck, health, magicka, fatigue, soul, combat, magic, stealth),
+                (attack_1_min, attack_1_max, attack_2_min, attack_2_max, attack_3_min, attack_3_max, gold)
+            )
+        )| Creature {
+            creature_type,
+            level, strength, intelligence, willpower, agility, speed, endurance, personality,
+            luck, health, magicka, fatigue, soul, combat, magic, stealth,
+            attack_1_min, attack_1_max, attack_2_min, attack_2_max, attack_3_min, attack_3_max, gold
+        }
+    )(input)
+}
+
 fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
     map(
         set_err(
@@ -577,6 +609,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),
+            FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
@@ -785,7 +818,8 @@ pub enum Unknown {
     NpcFlags(u8),
     CreatureFlags(u8),
     BloodTexture(u8),
-    ContainerFlags(u32)
+    ContainerFlags(u32),
+    CreatureType(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -801,6 +835,7 @@ impl fmt::Display for Unknown {
             Unknown::CreatureFlags(v) => write!(f, "creature flags {:02X}h", v),
             Unknown::BloodTexture(v) => write!(f, "blood texture {}", v),
             Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
+            Unknown::CreatureType(v) => write!(f, "creature type {}", v),
         }
     }
 }

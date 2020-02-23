@@ -131,6 +131,7 @@ pub enum FieldType {
     CreatureFlags,
     Book,
     ContainerFlags,
+    Creature
 }
 
 impl FieldType {
@@ -229,6 +230,7 @@ impl FieldType {
             (LEVI, NNAM) => FieldType::Byte,
             (_, NNAM) => FieldType::StringZ,
             (_, NPCO) => FieldType::Item,
+            (CREA, NPDT) => FieldType::Creature,
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::SavedNpc,
             (_, NPCS) => FieldType::String(Some(32)),
@@ -918,6 +920,53 @@ enum_serde!({
     Unsigned, u64
 });
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum CreatureType {
+        Creature = 0,
+        Daedra  = 1,
+        Undead = 2,
+        Humanoid = 3
+    }
+}
+
+enum_serde!([
+    CreatureType, CreatureTypeDeserializer, "creature type",
+    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
+    Unsigned, u64
+]);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Creature {
+    pub creature_type: CreatureType,
+    pub level: u32,
+    pub strength: u32,
+    pub intelligence: u32,
+    pub willpower: u32,
+    pub agility: u32,
+    pub speed: u32,
+    pub endurance: u32,
+    pub personality: u32,
+    pub luck: u32,
+    pub health: u32,
+    pub magicka: u32,
+    pub fatigue: u32,
+    pub soul: u32,
+    pub combat: u32,
+    pub magic: u32,
+    pub stealth: u32,
+    pub attack_1_min: u32,
+    pub attack_1_max: u32,
+    pub attack_2_min: u32,
+    pub attack_2_max: u32,
+    pub attack_3_min: u32,
+    pub attack_3_max: u32,
+    pub gold: u32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -947,6 +996,7 @@ pub enum Field {
     CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
     Book(Book),
     ContainerFlags(ContainerFlags),
+    Creature(Creature),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
