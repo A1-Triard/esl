@@ -129,6 +129,7 @@ pub enum FieldType {
     AiWander,
     NpcFlags,
     CreatureFlags,
+    Book,
 }
 
 impl FieldType {
@@ -142,6 +143,7 @@ impl FieldType {
             (_, ANAM) => FieldType::StringZ,
             (_, ASND) => FieldType::StringZ,
             (_, AVFX) => FieldType::StringZ,
+            (BOOK, BKDT) => FieldType::Book,
             (ARMO, BNAM) => FieldType::String(None),
             (BODY, BNAM) => FieldType::String(None),
             (CLOT, BNAM) => FieldType::String(None),
@@ -890,6 +892,17 @@ pub struct FlagsField<Flags> {
     pub padding: u16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Book {
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    pub weight: f32,
+    pub value: u32,
+    pub scroll: u32,
+    pub skill: i32,
+    pub enchantment: u32
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -917,6 +930,7 @@ pub enum Field {
     AiWander(AiWander),
     NpcFlags(FlagsField<NpcFlags>),
     CreatureFlags(FlagsField<CreatureFlags>),
+    Book(Book),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

@@ -446,6 +446,18 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsField<CreatureFlags
     )(input)
 }
 
+fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_f32, le_u32, le_u32, le_i32, le_u32)),
+            |_| FieldBodyError::UnexpectedEndOfField(20)
+        ),
+        |(weight, value, scroll, skill, enchantment)| Book {
+            weight, value, scroll, skill, enchantment
+        }
+    )(input)
+}
+
 fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
     map(
         tuple((
@@ -565,6 +577,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
+            FieldType::Book => map(book_field, Field::Book)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),

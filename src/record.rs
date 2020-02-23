@@ -157,6 +157,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have creature flags type", self.record_tag, self.field_tag)))
             },
+            FieldType::Book => if let Field::Book(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have book type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serializer.serialize_f32(v)
             } else {
@@ -287,6 +292,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::NpcFlags => <FlagsField<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsField<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
+                FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::Float => f32::deserialize(deserializer).map(Field::Float),
                 FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
                 FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
