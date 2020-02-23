@@ -121,6 +121,7 @@ pub enum FieldType {
     ContainerFlags,
     Creature,
     Light,
+    MiscItem,
 }
 
 impl FieldType {
@@ -201,6 +202,7 @@ impl FieldType {
             (FMAP, MAPD) => FieldType::Compressed,
             (FMAP, MAPH) => FieldType::Long,
             (TES3, MAST) => FieldType::StringZ,
+            (MISC, MCDT) => FieldType::MiscItem,
             (PCDT, MNAM) => FieldType::String(None),
             (CELL, MNAM) => FieldType::Byte,
             (_, MODL) => FieldType::StringZ,
@@ -1014,6 +1016,16 @@ pub struct Light {
     pub flags: LightFlags,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct MiscItem {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub is_key: u32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1045,6 +1057,7 @@ pub enum Field {
     ContainerFlags(ContainerFlags),
     Creature(Creature),
     Light(Light),
+    MiscItem(MiscItem),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

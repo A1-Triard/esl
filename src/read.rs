@@ -379,6 +379,18 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
     )(input)
 }
 
+fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_f32, le_u32, le_u32)),
+            |_| FieldBodyError::UnexpectedEndOfField(12)
+        ),
+        |(weight, value, is_key)| MiscItem {
+            weight, value, is_key
+        }
+    )(input)
+}
+
 fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
     map(
         pair(
@@ -632,6 +644,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),
             FieldType::Light => map(light_field, Field::Light)(input),
+            FieldType::MiscItem => map(misc_item_field, Field::MiscItem)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
