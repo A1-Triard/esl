@@ -127,6 +127,8 @@ pub enum FieldType {
     SpellMetadata,
     Ai,
     AiWander,
+    NpcFlags,
+    CreatureFlags,
 }
 
 impl FieldType {
@@ -134,8 +136,8 @@ impl FieldType {
         match (record_tag, field_tag) {
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
-            (NPC_, AI_W) => FieldType::AiWander,
-            (NPC_, AIDT) => FieldType::Ai,
+            (_, AI_W) => FieldType::AiWander,
+            (_, AIDT) => FieldType::Ai,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (_, ASND) => FieldType::StringZ,
@@ -173,6 +175,8 @@ impl FieldType {
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
             (CELL, FGTN) => FieldType::String(None),
+            (CREA, FLAG) => FieldType::CreatureFlags,
+            (NPC_, FLAG) => FieldType::NpcFlags,
             (_, FLAG) => FieldType::Int,
             (_, FLTV) => FieldType::Float,
             (GLOB, FNAM) => FieldType::String(None),
@@ -762,7 +766,7 @@ enum_serde!([
     Unsigned, u64
 ]);
 
-pub_bitflags_display!(SpellFlags, u32, [AUTOCALC = 1, PC_START = 2, ALWAYS = 4]);
+pub_bitflags_display!(SpellFlags, u32, AUTOCALC = 1, PC_START = 2, ALWAYS = 4);
 
 enum_serde!({
     SpellFlags, SpellFlagsDeserializer, "spell flags",
@@ -788,7 +792,8 @@ pub_bitflags_display!(AiServices, u32, [
     LIGHTS = 0x00000080,
     APPARATUS = 0x00000100,
     REPAIR_ITEMS = 0x00000200,
-    MISCELLANEOUS  = 0x00000400,
+    MISCELLANEOUS  = 0x00000400
+], [
     POTIONS = 0x00002000,
     SPELLS = 0x00000800,
     MAGIC_ITEMS = 0x00001000,
@@ -796,8 +801,11 @@ pub_bitflags_display!(AiServices, u32, [
     SPELLMAKING = 0x00008000,
     ENCHANTING = 0x00010000,
     REPAIR = 0x00020000,
+    _80000 = 0x00080000,
     _200000 = 0x00200000,
-    _800000 = 0x00800000
+    _400000 = 0x00400000,
+    _800000 = 0x00800000,
+    _1000000 = 0x01000000
 ]);
 
 enum_serde!({
@@ -826,6 +834,62 @@ pub struct AiWander {
     pub repeat: u8
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
+    pub enum BloodTexture {
+        Default = 0,
+        Skeleton = 4,
+        MetalSparks = 8,
+    }
+}
+
+enum_serde!([
+    BloodTexture, BloodTextureDeserializer, "blood texture",
+    u8, from_u8, to_u8, visit_u8, serialize_u8, deserialize_u8,
+    Unsigned, u64
+]);
+
+pub_bitflags_display!(NpcFlags, u8,
+    FEMALE = 0x01,
+    ESSENTIAL = 0x02,
+    RESPAWN = 0x04,
+    BASE = 0x08,
+    AUTO_CALCULATE_STATS = 0x10
+);
+
+enum_serde!({
+    NpcFlags, NpcFlagsDeserializer, "NPC flags",
+    u8, from_bits, bits, visit_u8, serialize_u8, deserialize_u8,
+    Unsigned, u64
+});
+
+pub_bitflags_display!(CreatureFlags, u8,
+    BIPED = 0x01,
+    RESPAWN = 0x02,
+    WEAPON_AND_SHIELD = 0x04,
+    BASE = 0x08,
+    SWIMS = 0x10,
+    FLIES = 0x20,
+    WALKS = 0x40,
+    ESSENTIAL = 0x80
+);
+
+enum_serde!({
+    CreatureFlags, CreatureFlagsDeserializer, "creature flags",
+    u8, from_bits, bits, visit_u8, serialize_u8, deserialize_u8,
+    Unsigned, u64
+});
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct FlagsField<Flags> {
+    pub flags: Flags,
+    pub blood_texture: BloodTexture,
+    pub padding: u16,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -851,6 +915,8 @@ pub enum Field {
     SpellMetadata(SpellMetadata),
     Ai(Ai),
     AiWander(AiWander),
+    NpcFlags(FlagsField<NpcFlags>),
+    CreatureFlags(FlagsField<CreatureFlags>),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

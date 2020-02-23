@@ -13,7 +13,7 @@ use crate::field::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
 
-pub_bitflags_display!(RecordFlags, u64, [PERSISTENT = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000]);
+pub_bitflags_display!(RecordFlags, u64, PERSISTENT = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000);
 
 enum_serde!({
     RecordFlags, RecordFlagsDeserializer, "record flags",
@@ -147,6 +147,16 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have AI wander type", self.record_tag, self.field_tag)))
             },
+            FieldType::NpcFlags => if let Field::NpcFlags(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have NPC flags type", self.record_tag, self.field_tag)))
+            },
+            FieldType::CreatureFlags => if let Field::CreatureFlags(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have creature flags type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serializer.serialize_f32(v)
             } else {
@@ -275,6 +285,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
+                FieldType::NpcFlags => <FlagsField<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
+                FieldType::CreatureFlags => <FlagsField<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
                 FieldType::Float => f32::deserialize(deserializer).map(Field::Float),
                 FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
                 FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
