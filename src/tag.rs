@@ -52,8 +52,7 @@ impl FromStr for Tag {
 }
 
 macro_rules! enum_serde {
-    ([$name:ident, $de:ident, $exp:literal, $bits:ty, $from:ident, $to:ident,
-    $visit:ident, $serialize:ident, $deserialize:ident, $signed:ident, $big:ident]) => {
+    ($name:ident, $exp:literal, $bits:ty, $to:ident, as $from:ident) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
                 S: ::serde::Serializer {
@@ -61,35 +60,10 @@ macro_rules! enum_serde {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&format!("{}", self))
                 } else {
-                    serializer.$serialize(::num_traits::cast::ToPrimitive::$to(self).unwrap())
-                }
-            }
-        }
-        
-        struct $de {
-            is_human_readable: bool
-        }
-        
-        impl<'de> ::serde::de::Visitor<'de> for $de {
-            type Value = $name;
-        
-            fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, $exp)
-            }
-        
-            fn $visit<E: ::serde::de::Error>(self, v: $bits) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    Err(E::invalid_type(::serde::de::Unexpected::$signed(v as $big), &self))
-                } else {
-                    Ok(::num_traits::cast::FromPrimitive::$from(v).unwrap())
-                }
-            }
-        
-            fn visit_str<E: ::serde::de::Error>(self, v: &str) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    ::std::str::FromStr::from_str(v).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(v), &self))
-                } else {
-                    Err(E::invalid_type(::serde::de::Unexpected::Str(v), &self))
+                    <$bits as ::serde::Serialize>::serialize(
+                        &::num_traits::cast::ToPrimitive::$to(self).unwrap(),
+                        serializer
+                    )
                 }
             }
         }
@@ -99,15 +73,17 @@ macro_rules! enum_serde {
                 D: ::serde::Deserializer<'de> {
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str($de { is_human_readable: true })
+                    let s = <&str as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let v = ::std::str::FromStr::from_str(s).map_err(|_| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::Str(s), &$exp))?;
+                    Ok(v)
                 } else {
-                    deserializer.$deserialize($de { is_human_readable: false })
+                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
+                    Ok(::num_traits::cast::FromPrimitive::$from(b).unwrap())
                 }
             }
         }
     };
-    (<$name:ident, $de:ident, $exp:literal, $bits:ty, $from:ident, $to:ident,
-    $visit:ident, $serialize:ident, $deserialize:ident, $signed:ident, $big:ident>) => {
+    ($name:ident, $exp:literal, $bits:ty, $to:ident, $from:ident) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
                 S: ::serde::Serializer {
@@ -115,35 +91,7 @@ macro_rules! enum_serde {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&format!("{}", self))
                 } else {
-                    serializer.$serialize(self.$to)
-                }
-            }
-        }
-        
-        struct $de {
-            is_human_readable: bool
-        }
-        
-        impl<'de> ::serde::de::Visitor<'de> for $de {
-            type Value = $name;
-        
-            fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, $exp)
-            }
-        
-            fn $visit<E: ::serde::de::Error>(self, v: $bits) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    Err(E::invalid_type(::serde::de::Unexpected::$signed(v as $big), &self))
-                } else {
-                    Ok($name::$from(v))
-                }
-            }
-        
-            fn visit_str<E: ::serde::de::Error>(self, v: &str) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    ::std::str::FromStr::from_str(v).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(v), &self))
-                } else {
-                    Err(E::invalid_type(::serde::de::Unexpected::Str(v), &self))
+                    <$bits as ::serde::Serialize>::serialize(&self.$to, serializer)
                 }
             }
         }
@@ -153,15 +101,17 @@ macro_rules! enum_serde {
                 D: ::serde::Deserializer<'de> {
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str($de { is_human_readable: true })
+                    let s = <&str as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let v = ::std::str::FromStr::from_str(s).map_err(|_| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::Str(s), &$exp))?;
+                    Ok(v)
                 } else {
-                    deserializer.$deserialize($de { is_human_readable: false })
+                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
+                    Ok($name::$from(b))
                 }
             }
         }
     };
-    ({$name:ident, $de:ident, $exp:literal, $bits:ty, $from:ident, $to:ident,
-    $visit:ident, $serialize:ident, $deserialize:ident, $signed:ident, $big:ident}) => {
+    ($name:ident, $exp:literal, $bits:ty, ()) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
                 S: ::serde::Serializer {
@@ -169,35 +119,7 @@ macro_rules! enum_serde {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&format!("{}", self))
                 } else {
-                    serializer.$serialize(self.$to)
-                }
-            }
-        }
-        
-        struct $de {
-            is_human_readable: bool
-        }
-        
-        impl<'de> ::serde::de::Visitor<'de> for $de {
-            type Value = $name;
-        
-            fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(f, $exp)
-            }
-        
-            fn $visit<E: ::serde::de::Error>(self, v: $bits) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    Err(E::invalid_type(::serde::de::Unexpected::$signed(v as $big), &self))
-                } else {
-                    $name::$from(v).ok_or_else(|| E::invalid_value(::serde::de::Unexpected::$signed(v as $big), &self))
-                }
-            }
-        
-            fn visit_str<E: ::serde::de::Error>(self, v: &str) -> ::std::result::Result<Self::Value, E> {
-                if self.is_human_readable {
-                    ::std::str::FromStr::from_str(v).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(v), &self))
-                } else {
-                    Err(E::invalid_type(::serde::de::Unexpected::Str(v), &self))
+                    <$bits as ::serde::Serialize>::serialize(&self.0, serializer)
                 }
             }
         }
@@ -207,17 +129,45 @@ macro_rules! enum_serde {
                 D: ::serde::Deserializer<'de> {
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str($de { is_human_readable: true })
+                    let s = <&str as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let v = ::std::str::FromStr::from_str(s).map_err(|_| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::Str(s), &$exp))?;
+                    Ok(v)
                 } else {
-                    deserializer.$deserialize($de { is_human_readable: false })
+                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
+                    Ok($name(b))
+                }
+            }
+        }
+    };
+    ($name:ident, $exp:literal, $bits:ty, $to:ident, try $from:ident, $signed:ident, $big:ident) => {
+        impl ::serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
+                S: ::serde::Serializer {
+        
+                if serializer.is_human_readable() {
+                    serializer.serialize_str(&format!("{}", self))
+                } else {
+                    <$bits as ::serde::Serialize>::serialize(&self.$to, serializer)
+                }
+            }
+        }
+        
+        impl<'de> ::serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
+                D: ::serde::Deserializer<'de> {
+        
+                if deserializer.is_human_readable() {
+                    let s = <&str as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let v = ::std::str::FromStr::from_str(s).map_err(|_| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::Str(s), &$exp))?;
+                    Ok(v)
+                } else {
+                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let v = $name::$from(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))?;
+                    Ok(v)
                 }
             }
         }
     }
 }
 
-enum_serde!(<
-    Tag, TagDeserializer, "four-byte tag",
-    u32, from, dword, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
->);
+enum_serde!(Tag, "four-byte tag", u32, dword, from);

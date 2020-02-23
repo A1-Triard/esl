@@ -15,11 +15,7 @@ use crate::strings::*;
 
 pub_bitflags_display!(RecordFlags, u64, PERSIST = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000);
 
-enum_serde!({
-    RecordFlags, RecordFlagsDeserializer, "record flags",
-    u64, from_bits, bits, visit_u64, serialize_u64, deserialize_u64,
-    Unsigned, u64
-});
+enum_serde!(RecordFlags, "record flags", u64, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Record {

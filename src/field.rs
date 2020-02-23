@@ -36,11 +36,7 @@ macro_attr! {
     }
 }
 
-enum_serde!([
-    FileType, FileTypeDeserializer, "file type",
-    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-]);
+enum_serde!(FileType, "file type", u32, to_u32, as from_u32);
 
 macro_attr! {
     #[derive(Primitive)]
@@ -56,11 +52,7 @@ macro_attr! {
     }
 }
 
-enum_serde!([
-    DialogType, DialogTypeDeserializer, "dialog type",
-    u8, from_u8, to_u8, visit_u8, serialize_u8, deserialize_u8,
-    Unsigned, u64
-]);
+enum_serde!(DialogType, "dialog type", u8, to_u8, as from_u8);
 
 macro_attr! {
     #[derive(Primitive)]
@@ -97,11 +89,7 @@ impl FromStr for EffectRange {
     }
 }
 
-enum_serde!([
-    EffectRange, EffectRangeDeserializer, "effect range",
-    i32, from_i32, to_i32, visit_i32, serialize_i32, deserialize_i32,
-    Signed, i64
-]);
+enum_serde!(EffectRange, "effect range", i32, to_i32, as from_i32);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FieldType {
@@ -781,19 +769,11 @@ macro_attr! {
     }
 }
 
-enum_serde!([
-    SpellType, SpellTypeDeserializer, "spell type",
-    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-]);
+enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32);
 
 pub_bitflags_display!(SpellFlags, u32, AUTOCALC = 1, PC_START = 2, ALWAYS = 4);
 
-enum_serde!({
-    SpellFlags, SpellFlagsDeserializer, "spell flags",
-    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-});
+enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SpellMetadata {
@@ -829,11 +809,7 @@ pub_bitflags_display!(AiServices, u32, [
     _1000000 = 0x01000000
 ]);
 
-enum_serde!({
-    AiServices, AiServicesDeserializer, "AI services",
-    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-});
+enum_serde!(AiServices, "AI services", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Ai {
@@ -867,11 +843,7 @@ macro_attr! {
     }
 }
 
-enum_serde!([
-    BloodTexture, BloodTextureDeserializer, "blood texture",
-    u8, from_u8, to_u8, visit_u8, serialize_u8, deserialize_u8,
-    Unsigned, u64
-]);
+enum_serde!(BloodTexture, "blood texture", u8, to_u8, as from_u8);
 
 pub_bitflags_display!(NpcFlags, u8,
     FEMALE = 0x01,
@@ -881,11 +853,7 @@ pub_bitflags_display!(NpcFlags, u8,
     AUTO_CALCULATE_STATS = 0x10
 );
 
-enum_serde!({
-    NpcFlags, NpcFlagsDeserializer, "NPC flags",
-    u8, from_bits, bits, visit_u8, serialize_u8, deserialize_u8,
-    Unsigned, u64
-});
+enum_serde!(NpcFlags, "NPC flags", u8, bits, try from_bits, Unsigned, u64);
 
 pub_bitflags_display!(CreatureFlags, u8,
     BIPED = 0x01,
@@ -898,11 +866,7 @@ pub_bitflags_display!(CreatureFlags, u8,
     ESSENTIAL = 0x80
 );
 
-enum_serde!({
-    CreatureFlags, CreatureFlagsDeserializer, "creature flags",
-    u8, from_bits, bits, visit_u8, serialize_u8, deserialize_u8,
-    Unsigned, u64
-});
+enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FlagsAndBloodTexture<Flags> {
@@ -929,11 +893,7 @@ pub_bitflags_display!(ContainerFlags, u32,
     BASE = 0x08
 );
 
-enum_serde!({
-    ContainerFlags, ContainerFlagsDeserializer, "container flags",
-    u32, from_bits, bits, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-});
+enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64);
 
 macro_attr! {
     #[derive(Primitive)]
@@ -948,11 +908,7 @@ macro_attr! {
     }
 }
 
-enum_serde!([
-    CreatureType, CreatureTypeDeserializer, "creature type",
-    u32, from_u32, to_u32, visit_u32, serialize_u32, deserialize_u32,
-    Unsigned, u64
-]);
+enum_serde!(CreatureType, "creature type", u32, to_u32, as from_u32);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Creature {
@@ -981,6 +937,53 @@ pub struct Creature {
     pub attack_3_max: u32,
     pub gold: u32,
 }
+
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
+pub struct Color(pub u32);
+
+impl Color {
+    pub fn argb(a: u8, r: u8, g: u8, b: u8) -> Color {
+        Color((r as u32) | ((g as u32) << 8) | ((b as u32) << 16) | ((a as u32) << 24))
+    }
+    pub fn rgb(r: u8, g: u8, b: u8) -> Color {
+        Color((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
+    }
+    
+    pub fn r(self) -> u8 { (self.0 & 0xFF) as u8 }
+    pub fn g(self) -> u8 { ((self.0 >> 8) & 0xFF) as u8 }
+    pub fn b(self) -> u8 { ((self.0 >> 16) & 0xFF) as u8 }
+    pub fn a(self) -> u8 { ((self.0 >> 24) & 0xFF) as u8 }
+}
+
+impl Display for Color {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#{:02X}{:02X}{:02X}{:02X}", self.a(), self.r(), self.g(), self.b())
+    }
+}
+
+impl FromStr for Color {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let with_alpha = match s.len() {
+            9 => true,
+            7 => false,
+            _ => return Err(())
+        };
+        if &s[0..1] != "#" || &s[1..2] == "+" { return Err(()); }
+        let x = u8::from_str_radix(&s[1..3], 16).map_err(|_| ())?;
+        let y = u8::from_str_radix(&s[3..5], 16).map_err(|_| ())?;
+        let z = u8::from_str_radix(&s[5..7], 16).map_err(|_| ())?;
+        if with_alpha {
+            let w = u8::from_str_radix(&s[7..9], 16).map_err(|_| ())?;
+            Ok(Color::argb(x, y, z, w))
+        } else {
+            Ok(Color::rgb(x, y, z))
+        }
+    }
+}
+
+enum_serde!(Color, "ARGB color", u32, ());
 
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
