@@ -158,6 +158,7 @@ impl FieldType {
             (KLST, CNAM) => FieldType::Int,
             (REGN, CNAM) => FieldType::Int,
             (_, CNAM) => FieldType::StringZ,
+            (CONT, CNDT) => FieldType::Float,
             (_, CSND) => FieldType::StringZ,
             (_, CVFX) => FieldType::StringZ,
             (DIAL, DATA) => FieldType::DialogMetadata,
