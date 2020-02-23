@@ -1,10 +1,54 @@
 use std::fmt::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self};
+use serde::de::{self, Unexpected};
 use serde::de::Error as de_Error;
 use std::marker::PhantomData;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeTuple, SerializeSeq};
+use std::mem::{transmute};
+
+pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    if v.is_nan() && serializer.is_human_readable() {
+        let d: u32 = unsafe { transmute(v) };
+        if d == 0xFFFFFFFF {
+            serializer.serialize_f32(v)
+        } else {
+            serializer.serialize_str(&format!("NaN_{:08X}", d))
+        }
+    } else {
+        serializer.serialize_f32(v)
+    }
+}
+
+struct FloatHRDeserializer;
+
+impl<'de> de::Visitor<'de> for FloatHRDeserializer {
+    type Value = f32;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "float or string 'NaN_XXXXXXXX' where X is hex digit")
+    }
+
+    fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E> where E: de::Error {
+        Ok(if v.is_nan() { unsafe { transmute(0xFFFFFFFFu32) } } else { v })
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
+        if s.len() != 12 || !s.starts_with("NaN_") || &s[4..5] == "+" {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
+        let d = u32::from_str_radix(&s[4..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
+        Ok(unsafe { transmute(d) })
+    }
+}
+
+pub fn deserialize_f32_as_is<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
+    if deserializer.is_human_readable() {
+        deserializer.deserialize_any(FloatHRDeserializer)
+    } else {
+        f32::deserialize(deserializer)
+    }
+}
 
 pub fn serialize_string_tuple<S>(s: &str, len: usize, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if serializer.is_human_readable() {

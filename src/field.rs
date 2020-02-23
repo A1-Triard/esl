@@ -279,6 +279,7 @@ impl FieldType {
 #[derivative(PartialEq, Eq)]
 pub struct Ingredient {
     #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     pub effects: [i32; 4],
@@ -290,6 +291,19 @@ fn eq_f32(a: &f32, b: &f32) -> bool {
     let a: u32 = unsafe { transmute(*a) };
     let b: u32 = unsafe { transmute(*b) };
     a == b
+}
+
+mod float_32 {
+    use serde::{Serializer, Deserializer};
+    use crate::serde_helpers::*;
+
+    pub fn serialize<S>(v: &f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serialize_f32_as_is(*v, serializer)
+    }
+    
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
+        deserialize_f32_as_is(deserializer)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -901,6 +915,7 @@ pub struct FlagsAndBloodTexture<Flags> {
 #[derivative(Eq, PartialEq)]
 pub struct Book {
     #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     pub scroll: u32,
