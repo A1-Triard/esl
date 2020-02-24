@@ -125,6 +125,9 @@ pub enum FieldType {
     Apparatus,
     Weapon,
     Armor,
+    BipedObject,
+    BodyPart,
+    Clothing,
 }
 
 impl FieldType {
@@ -149,6 +152,7 @@ impl FieldType {
             (_, BNAM) => FieldType::StringZ,
             (_, BSND) => FieldType::StringZ,
             (_, BVFX) => FieldType::StringZ,
+            (BODY, BYDT) => FieldType::BodyPart,
             (ARMO, CNAM) => FieldType::String(None),
             (CLOT, CNAM) => FieldType::String(None),
             (KLST, CNAM) => FieldType::Int,
@@ -156,6 +160,7 @@ impl FieldType {
             (_, CNAM) => FieldType::StringZ,
             (CONT, CNDT) => FieldType::Float,
             (_, CSND) => FieldType::StringZ,
+            (CLOT, CTDT) => FieldType::Clothing,
             (_, CVFX) => FieldType::StringZ,
             (DIAL, DATA) => FieldType::DialogMetadata,
             (LAND, DATA) => FieldType::Int,
@@ -188,8 +193,8 @@ impl FieldType {
             (_, HSND) => FieldType::StringZ,
             (_, HVFX) => FieldType::StringZ,
             (_, INAM) => FieldType::StringZ,
-            (ARMO, INDX) => FieldType::Byte,
-            (CLOT, INDX) => FieldType::Byte,
+            (ARMO, INDX) => FieldType::BipedObject,
+            (CLOT, INDX) => FieldType::BipedObject,
             (_, INDX) => FieldType::Int,
             (LAND, INTV) => FieldType::Long,
             (LEVC, INTV) => FieldType::Short,
@@ -1152,6 +1157,131 @@ pub struct Weapon {
     pub flags: WeaponFlags,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
+    pub enum MeshType {
+        Head = 0,
+        Hair = 1,
+        Neck = 2,
+        Chest = 3,
+        Groin = 4,
+        Hand = 5,
+        Wrist = 6,
+        Forearm = 7,
+        UpperArm = 8,
+        Foot = 9,
+        Ankle = 10,
+        Knee = 11,
+        UpperLeg = 12,
+        Clavicle = 13,
+        Tail = 14,
+    }
+}
+
+enum_serde!(MeshType, "mesh type", u8, to_u8, as from_u8);
+
+pub_bitflags_display!(BodyPartFlags, u8,
+    FEMALE = 0x01,
+    NON_PLAYABLE = 0x02
+);
+
+enum_serde!(BodyPartFlags, "body part flags", u8, bits, try from_bits, Unsigned, u64);
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
+    pub enum BodyPartType {
+        Skin = 0,
+        Clothing = 1,
+        Armor = 2
+    }
+}
+
+enum_serde!(BodyPartType, "body part type", u8, to_u8, as from_u8);
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
+    pub enum BipedObject {
+        Head = 0,
+        Hair = 1,
+        Neck = 2,
+        Cuirass = 3,
+        Groin = 4,
+        Skirt = 5,
+        RightHand = 6,
+        LeftHand = 7,
+        RightWrist = 8,
+        LeftWrist = 9,
+        Shield = 10,
+        RightForearm = 11,
+        LeftForearm = 12,
+        RightUpperArm = 13,
+        LeftUpperArm = 14,
+        RightFoot = 15,
+        LeftFoot = 16,
+        RightAnkle = 17,
+        LeftAnkle = 18,
+        RightKnee = 19,
+        LeftKnee = 20,
+        RightUpperLeg = 21,
+        LeftUpperLeg = 22,
+        RightPauldron = 23,
+        LeftPauldron = 24,
+        Weapon = 25,
+        Tail = 26,
+    }
+}
+
+enum_serde!(BipedObject, "biped object", u8, to_u8, as from_u8);
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum ClothingType {
+        Pants = 0,
+        Shoes = 1,
+        Shirt = 2,
+        Belt = 3,
+        Robe = 4,
+        RightGlove = 5,
+        LeftGlove = 6,
+        Skirt = 7,
+        Ring = 8,
+        Amulet = 9
+    }
+}
+
+enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct BodyPart {
+    pub mesh_type: MeshType,
+    pub vampire: u8,
+    pub flags: BodyPartFlags,
+    pub body_part_type: BodyPartType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Clothing {
+    pub clothing_type: ClothingType,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u16,
+    pub enchantment: u16,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1187,6 +1317,9 @@ pub enum Field {
     Apparatus(Apparatus),
     Armor(Armor),
     Weapon(Weapon),
+    BipedObject(BipedObject),
+    BodyPart(BodyPart),
+    Clothing(Clothing),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

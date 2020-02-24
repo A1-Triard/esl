@@ -193,6 +193,21 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
             },
+            FieldType::BipedObject => if let Field::BipedObject(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have biped object type", self.record_tag, self.field_tag)))
+            },
+            FieldType::BodyPart => if let Field::BodyPart(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have body part type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Clothing => if let Field::Clothing(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have clothing type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -330,6 +345,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Apparatus => Apparatus::deserialize(deserializer).map(Field::Apparatus),
                 FieldType::Weapon => Weapon::deserialize(deserializer).map(Field::Weapon),
                 FieldType::Armor => Armor::deserialize(deserializer).map(Field::Armor),
+                FieldType::BipedObject => BipedObject::deserialize(deserializer).map(Field::BipedObject),
+                FieldType::BodyPart => BodyPart::deserialize(deserializer).map(Field::BodyPart),
+                FieldType::Clothing => Clothing::deserialize(deserializer).map(Field::Clothing),
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),

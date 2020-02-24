@@ -427,6 +427,24 @@ fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
     )(input)
 }
 
+fn clothing_field(input: &[u8]) -> IResult<&[u8], Clothing, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ClothingType(w), 0).into()))
+            ),
+            set_err(
+                tuple((le_f32, le_u16, le_u16)),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            ),
+        ),
+        |(clothing_type, (weight, value, enchantment))| Clothing {
+            clothing_type, weight, value, enchantment
+        }
+    )(input)
+}
+
 fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
     map(
         tuple((
@@ -449,6 +467,32 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
         )),
         |((weight, value), weapon_type, (health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max), flags)| Weapon {
             weight, value, weapon_type, health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max, flags
+        }
+    )(input)
+}
+
+fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
+    map(
+        tuple((
+            map_res(
+                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
+                |b, _| MeshType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::MeshType(b), 0).into()))
+            ),
+            set_err(
+                le_u8,
+                |_| FieldBodyError::UnexpectedEndOfField(4)
+            ),
+            map_res(
+                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
+                |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BodyPartFlags(b), 2).into()))
+            ),
+            map_res(
+                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
+                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BodyPartType(b), 3).into()))
+            )
+        )),
+        |(mesh_type, vampire, flags, body_part_type)| BodyPart {
+            mesh_type, vampire, flags, body_part_type
         }
     )(input)
 }
@@ -538,6 +582,13 @@ fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBo
     map_res(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
         |w, _| ContainerFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
+    )(input)
+}
+
+fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyError> {
+    map_res(
+        set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
+        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BipedObject(b), 0).into()))
     )(input)
 }
 
@@ -710,6 +761,9 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
+            FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
+            FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
+            FieldType::Clothing => map(clothing_field, Field::Clothing)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -926,6 +980,11 @@ pub enum Unknown {
     WeaponFlags(u32),
     WeaponType(u16),
     ArmorType(u32),
+    MeshType(u8),
+    BodyPartType(u8),
+    BodyPartFlags(u8),
+    BipedObject(u8),
+    ClothingType(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -947,6 +1006,11 @@ impl fmt::Display for Unknown {
             Unknown::WeaponFlags(v) => write!(f, "weapon flags {:08X}h", v),
             Unknown::WeaponType(v) => write!(f, "weapon type {}", v),
             Unknown::ArmorType(v) => write!(f, "armor type {}", v),
+            Unknown::MeshType(v) => write!(f, "mesh type {}", v),
+            Unknown::BodyPartType(v) => write!(f, "body part type {}", v),
+            Unknown::BodyPartFlags(v) => write!(f, "body part flags {:02X}h", v),
+            Unknown::BipedObject(v) => write!(f, "biped object {}", v),
+            Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
         }
     }
 }
