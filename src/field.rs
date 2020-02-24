@@ -277,9 +277,9 @@ impl FieldType {
             (_, XCHG) => FieldType::Int,
             (_, XHLT) => FieldType::Int,
             (_, XIDX) => FieldType::Int,
-            (_, XSOL) => FieldType::StringZ,
             (SPLM, XNAM) => FieldType::Byte,
-            (CELL, XSCL) => FieldType::Int,
+            (_, XSCL) => FieldType::Float,
+            (_, XSOL) => FieldType::StringZ,
             (CELL, ZNAM) => FieldType::Byte,
             _ => FieldType::Binary
         }
