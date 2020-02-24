@@ -178,6 +178,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have misc item type", self.record_tag, self.field_tag)))
             },
+            FieldType::Apparatus => if let Field::Apparatus(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have apparatus type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -311,6 +316,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::Light => Light::deserialize(deserializer).map(Field::Light),
                 FieldType::MiscItem => MiscItem::deserialize(deserializer).map(Field::MiscItem),
+                FieldType::Apparatus => Apparatus::deserialize(deserializer).map(Field::Apparatus),
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),

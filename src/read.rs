@@ -391,6 +391,24 @@ fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
     )(input)
 }
 
+fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ApparatusType(w), 0).into()))
+            ),
+            set_err(
+                tuple((le_f32, le_f32, le_u32)),
+                |_| FieldBodyError::UnexpectedEndOfField(16)
+            ),
+        ),
+        |(apparatus_type, (quality, weight, value))| Apparatus {
+            apparatus_type, quality, weight, value
+        }
+    )(input)
+}
+
 fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
     map(
         pair(
@@ -645,6 +663,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Book => map(book_field, Field::Book)(input),
             FieldType::Light => map(light_field, Field::Light)(input),
             FieldType::MiscItem => map(misc_item_field, Field::MiscItem)(input),
+            FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -857,6 +876,7 @@ pub enum Unknown {
     ContainerFlags(u32),
     CreatureType(u32),
     LightFlags(u32),
+    ApparatusType(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -874,6 +894,7 @@ impl fmt::Display for Unknown {
             Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
             Unknown::CreatureType(v) => write!(f, "creature type {}", v),
             Unknown::LightFlags(v) => write!(f, "light flags {:08X}h", v),
+            Unknown::ApparatusType(v) => write!(f, "apparatus type {}", v),
         }
     }
 }

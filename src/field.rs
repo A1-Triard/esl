@@ -122,11 +122,13 @@ pub enum FieldType {
     Creature,
     Light,
     MiscItem,
+    Apparatus,
 }
 
 impl FieldType {
     pub fn from_tags(record_tag: Tag, field_tag: Tag) -> FieldType {
         match (record_tag, field_tag) {
+            (APPA, AADT) => FieldType::Apparatus,
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
             (_, AI_W) => FieldType::AiWander,
@@ -1026,6 +1028,34 @@ pub struct MiscItem {
     pub is_key: u32,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum ApparatusType {
+        MortarPestle = 0,
+        Alembic  = 1,
+        Calcinator = 2,
+        Retort = 3
+    }
+}
+
+enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Apparatus {
+    pub apparatus_type: ApparatusType,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub quality: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1058,6 +1088,7 @@ pub enum Field {
     Creature(Creature),
     Light(Light),
     MiscItem(MiscItem),
+    Apparatus(Apparatus),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
