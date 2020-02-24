@@ -848,6 +848,13 @@ pub struct AiWander {
     pub repeat: u8
 }
 
+pub_bitflags_display!(AiTravelFlags, u32,
+    BASE = 0x0001,
+    RESET = 0x0100
+);
+
+enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64);
+
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct AiTravel {
@@ -860,7 +867,7 @@ pub struct AiTravel {
     #[derivative(PartialEq(compare_with="eq_f32"))]
     #[serde(with="float_32")]
     pub z: f32,
-    pub reset: u32
+    pub flags: AiTravelFlags
 }
 
 macro_attr! {

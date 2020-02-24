@@ -538,14 +538,20 @@ fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
 
 fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
     map(
-        set_err(
-            tuple((
-                le_f32, le_f32, le_f32, le_u32
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(16)
+        pair(
+            set_err(
+                tuple((
+                    le_f32, le_f32, le_f32
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(16)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
+                |w, _| AiTravelFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
+            )
         ),
-        |(x, y, z, reset)| AiTravel {
-            x, y, z, reset
+        |((x, y, z), flags)| AiTravel {
+            x, y, z, flags
         }
     )(input)
 }
@@ -1000,6 +1006,7 @@ pub enum Unknown {
     BodyPartFlags(u8),
     BipedObject(u8),
     ClothingType(u32),
+    AiTravelFlags(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -1026,6 +1033,7 @@ impl fmt::Display for Unknown {
             Unknown::BodyPartFlags(v) => write!(f, "body part flags {:02X}h", v),
             Unknown::BipedObject(v) => write!(f, "biped object {}", v),
             Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
+            Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
         }
     }
 }
