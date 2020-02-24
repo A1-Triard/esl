@@ -205,6 +205,7 @@ impl FieldType {
             (ARMO, INDX) => FieldType::BipedObject,
             (CLOT, INDX) => FieldType::BipedObject,
             (_, INDX) => FieldType::Int,
+            (CELL, INTV) => FieldType::Float,
             (LAND, INTV) => FieldType::Long,
             (LEVC, INTV) => FieldType::Short,
             (LEVI, INTV) => FieldType::Short,
