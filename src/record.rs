@@ -148,6 +148,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have AI travel type", self.record_tag, self.field_tag)))
             },
+            FieldType::AiFollow => if let Field::AiFollow(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have AI follow type", self.record_tag, self.field_tag)))
+            },
             FieldType::NpcFlags => if let Field::NpcFlags(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -348,6 +353,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),
+                FieldType::AiFollow => AiFollow::deserialize(deserializer).map(Field::AiFollow),
                 FieldType::NpcFlags => <FlagsAndBloodTexture<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsAndBloodTexture<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),

@@ -116,6 +116,7 @@ pub enum FieldType {
     Ai,
     AiWander,
     AiTravel,
+    AiFollow,
     NpcFlags,
     CreatureFlags,
     Book,
@@ -138,6 +139,7 @@ impl FieldType {
             (APPA, AADT) => FieldType::Apparatus,
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
+            (_, AI_F) => FieldType::AiFollow,
             (_, AI_T) => FieldType::AiTravel,
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
@@ -871,6 +873,24 @@ pub struct AiTravel {
     pub flags: AiTravelFlags
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct AiFollow {
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub x: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub y: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub z: f32,
+    pub duration: u16,
+    #[serde(with = "string_32")]
+    pub actor_id: String,
+    pub reset: u16
+}
+
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -1353,6 +1373,7 @@ pub enum Field {
     Ai(Ai),
     AiWander(AiWander),
     AiTravel(AiTravel),
+    AiFollow(AiFollow),
     NpcFlags(FlagsAndBloodTexture<NpcFlags>),
     CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
     Book(Book),
@@ -1371,6 +1392,7 @@ pub enum Field {
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
     match (record_tag, field_tag) {
+        (_, AI_F) => true,
         (ARMO, BNAM) => true,
         (BODY, BNAM) => true,
         (CLOT, BNAM) => true,
@@ -1418,6 +1440,13 @@ impl Field {
             FieldType::StringZList => {
                 if let Field::StringZList(v) = self {
                     v.has_tail_zero = true;
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            FieldType::AiFollow => {
+                if let Field::AiFollow(v) = self {
+                    v.actor_id.find('\0').map(|i| v.actor_id.truncate(i));
                 } else {
                     panic!("invalid field type")
                 }

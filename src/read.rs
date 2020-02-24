@@ -574,6 +574,22 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
     )(input)
 }
 
+fn ai_follow_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiFollow, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32, le_f32, le_f32, le_u16,
+                string_len(code_page, 32),
+                le_u16
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(48)
+        ),
+        |(x, y, z, duration, actor_id, reset)| AiFollow {
+            x, y, z, duration, actor_id, reset
+        }
+    )
+}
+
 fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
     map(
         tuple((
@@ -792,6 +808,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Ai => map(ai_field, Field::Ai)(input),
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
             FieldType::AiTravel => map(ai_travel_field, Field::AiTravel)(input),
+            FieldType::AiFollow => map(ai_follow_field(code_page), Field::AiFollow)(input),
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),
