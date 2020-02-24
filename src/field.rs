@@ -116,7 +116,7 @@ pub enum FieldType {
     Ai,
     AiWander,
     AiTravel,
-    AiFollow,
+    AiTarget,
     NpcFlags,
     CreatureFlags,
     Book,
@@ -139,7 +139,8 @@ impl FieldType {
             (APPA, AADT) => FieldType::Apparatus,
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
-            (_, AI_F) => FieldType::AiFollow,
+            (_, AI_E) => FieldType::AiTarget,
+            (_, AI_F) => FieldType::AiTarget,
             (_, AI_T) => FieldType::AiTravel,
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
@@ -875,7 +876,7 @@ pub struct AiTravel {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
-pub struct AiFollow {
+pub struct AiTarget {
     #[derivative(PartialEq(compare_with="eq_f32"))]
     #[serde(with="float_32")]
     pub x: f32,
@@ -1373,7 +1374,7 @@ pub enum Field {
     Ai(Ai),
     AiWander(AiWander),
     AiTravel(AiTravel),
-    AiFollow(AiFollow),
+    AiTarget(AiTarget),
     NpcFlags(FlagsAndBloodTexture<NpcFlags>),
     CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
     Book(Book),
@@ -1392,6 +1393,7 @@ pub enum Field {
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
     match (record_tag, field_tag) {
+        (_, AI_E) => true,
         (_, AI_F) => true,
         (ARMO, BNAM) => true,
         (BODY, BNAM) => true,
@@ -1444,8 +1446,8 @@ impl Field {
                     panic!("invalid field type")
                 }
             },
-            FieldType::AiFollow => {
-                if let Field::AiFollow(v) = self {
+            FieldType::AiTarget => {
+                if let Field::AiTarget(v) = self {
                     v.actor_id.find('\0').map(|i| v.actor_id.truncate(i));
                 } else {
                     panic!("invalid field type")
