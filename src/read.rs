@@ -547,7 +547,7 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |w, _| AiTravelFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
+                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
             )
         ),
         |((x, y, z), flags)| AiTravel {
@@ -561,7 +561,7 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| NpcFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
+                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
@@ -582,7 +582,7 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<Cre
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| CreatureFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
+                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
@@ -601,7 +601,7 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<Cre
 fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBodyError> {
     map_res(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        |w, _| ContainerFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
+        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
     )(input)
 }
 

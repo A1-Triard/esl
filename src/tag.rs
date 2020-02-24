@@ -139,7 +139,7 @@ macro_rules! enum_serde {
             }
         }
     };
-    ($name:ident, $exp:literal, $bits:ty, $to:ident, try $from:ident, $signed:ident, $big:ident) => {
+    ($name:ident, $exp:literal, $bits:ty, $to:ident, try $from:ident, $signed:ident, $big:ident $(, ^$xor:literal)?) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
                 S: ::serde::Serializer {
@@ -147,7 +147,7 @@ macro_rules! enum_serde {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&format!("{}", self))
                 } else {
-                    <$bits as ::serde::Serialize>::serialize(&self.$to, serializer)
+                    <$bits as ::serde::Serialize>::serialize(&(self.$to $(^ $xor)?), serializer)
                 }
             }
         }
@@ -161,7 +161,7 @@ macro_rules! enum_serde {
                     let v = ::std::str::FromStr::from_str(s).map_err(|_| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::Str(s), &$exp))?;
                     Ok(v)
                 } else {
-                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
+                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)? $(^ $xor)?;
                     let v = $name::$from(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))?;
                     Ok(v)
                 }

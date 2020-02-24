@@ -849,11 +849,10 @@ pub struct AiWander {
 }
 
 pub_bitflags_display!(AiTravelFlags, u32,
-    BASE = 0x0001,
     RESET = 0x0100
 );
 
-enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64, ^0x0001);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
@@ -888,24 +887,22 @@ pub_bitflags_display!(NpcFlags, u8,
     FEMALE = 0x01,
     ESSENTIAL = 0x02,
     RESPAWN = 0x04,
-    BASE = 0x08,
     AUTO_CALCULATE_STATS = 0x10
 );
 
-enum_serde!(NpcFlags, "NPC flags", u8, bits, try from_bits, Unsigned, u64);
+enum_serde!(NpcFlags, "NPC flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
 
 pub_bitflags_display!(CreatureFlags, u8,
     BIPED = 0x01,
     RESPAWN = 0x02,
     WEAPON_AND_SHIELD = 0x04,
-    BASE = 0x08,
     SWIMS = 0x10,
     FLIES = 0x20,
     WALKS = 0x40,
     ESSENTIAL = 0x80
 );
 
-enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64);
+enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FlagsAndBloodTexture<Flags> {
@@ -928,11 +925,10 @@ pub struct Book {
 
 pub_bitflags_display!(ContainerFlags, u32,
     ORGANIC = 0x01,
-    RESPAWN = 0x02,
-    BASE = 0x08
+    RESPAWN = 0x02
 );
 
-enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64, ^0x08);
 
 macro_attr! {
     #[derive(Primitive)]
