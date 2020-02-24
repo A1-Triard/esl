@@ -590,6 +590,21 @@ fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a 
     )
 }
 
+fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
+    map(
+        set_err(
+            pair(
+                string_len(code_page, 32),
+                le_u8
+            ),
+            |_| FieldBodyError::UnexpectedEndOfField(33)
+        ),
+        |(object_id, reset)| AiActivate {
+            object_id, reset
+        }
+    )
+}
+
 fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
     map(
         tuple((
@@ -809,6 +824,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
             FieldType::AiTravel => map(ai_travel_field, Field::AiTravel)(input),
             FieldType::AiTarget => map(ai_target_field(code_page), Field::AiTarget)(input),
+            FieldType::AiActivate => map(ai_activate_field(code_page), Field::AiActivate)(input),
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),

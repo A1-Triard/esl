@@ -151,7 +151,12 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             FieldType::AiTarget => if let Field::AiTarget(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI follow type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have AI target type", self.record_tag, self.field_tag)))
+            },
+            FieldType::AiActivate => if let Field::AiActivate(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have AI activate type", self.record_tag, self.field_tag)))
             },
             FieldType::NpcFlags => if let Field::NpcFlags(v) = self.field {
                 v.serialize(serializer)
@@ -354,6 +359,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),
                 FieldType::AiTarget => AiTarget::deserialize(deserializer).map(Field::AiTarget),
+                FieldType::AiActivate => AiActivate::deserialize(deserializer).map(Field::AiActivate),
                 FieldType::NpcFlags => <FlagsAndBloodTexture<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsAndBloodTexture<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
