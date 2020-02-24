@@ -3,7 +3,7 @@ use std::fmt::{self, Debug};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
-use serde::de::{self, DeserializeSeed};
+use serde::de::{self, DeserializeSeed, Unexpected};
 use serde::de::Error as de_Error;
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
@@ -72,7 +72,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             },
             FieldType::Compressed => if let Field::Binary(v) = self.field {
                 if serializer.is_human_readable() {
-                    serializer.serialize_bytes(v)
+                    serializer.serialize_str(&base64::encode(v))
                 } else {
                     let uncompressed = (|| {
                         let mut decoder = ZlibDecoder::new(Vec::new());
@@ -289,7 +289,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),
                 FieldType::Compressed => if deserializer.is_human_readable() {
-                    <Vec<u8>>::deserialize(deserializer)
+                    let s = <&str>::deserialize(deserializer)?;
+                    base64::decode(s).map_err(|_| D::Error::invalid_value(Unexpected::Str(s), &"base64"))
                 } else {
                     let bytes = <&[u8]>::deserialize(deserializer)?;
                     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
