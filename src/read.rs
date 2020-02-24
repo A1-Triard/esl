@@ -536,6 +536,20 @@ fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
     )(input)
 }
 
+fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32, le_f32, le_f32, le_u32
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(16)
+        ),
+        |(x, y, z, reset)| AiTravel {
+            x, y, z, reset
+        }
+    )(input)
+}
+
 fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
     map(
         tuple((
@@ -753,6 +767,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::SpellMetadata => map(spell_metadata_field, Field::SpellMetadata)(input),
             FieldType::Ai => map(ai_field, Field::Ai)(input),
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
+            FieldType::AiTravel => map(ai_travel_field, Field::AiTravel)(input),
             FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
             FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
             FieldType::Book => map(book_field, Field::Book)(input),

@@ -115,6 +115,7 @@ pub enum FieldType {
     SpellMetadata,
     Ai,
     AiWander,
+    AiTravel,
     NpcFlags,
     CreatureFlags,
     Book,
@@ -136,6 +137,7 @@ impl FieldType {
             (APPA, AADT) => FieldType::Apparatus,
             (INFO, ACDT) => FieldType::String(None),
             (CELL, ACTN) => FieldType::Int,
+            (_, AI_T) => FieldType::AiTravel,
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
             (FACT, ANAM) => FieldType::String(None),
@@ -846,6 +848,21 @@ pub struct AiWander {
     pub repeat: u8
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct AiTravel {
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub x: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub y: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub z: f32,
+    pub reset: u32
+}
+
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -1307,6 +1324,7 @@ pub enum Field {
     SpellMetadata(SpellMetadata),
     Ai(Ai),
     AiWander(AiWander),
+    AiTravel(AiTravel),
     NpcFlags(FlagsAndBloodTexture<NpcFlags>),
     CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
     Book(Book),
