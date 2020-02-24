@@ -213,6 +213,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have clothing type", self.record_tag, self.field_tag)))
             },
+            FieldType::Enchantment => if let Field::Enchantment(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have enchantment type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -354,6 +359,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::BipedObject => BipedObject::deserialize(deserializer).map(Field::BipedObject),
                 FieldType::BodyPart => BodyPart::deserialize(deserializer).map(Field::BodyPart),
                 FieldType::Clothing => Clothing::deserialize(deserializer).map(Field::Clothing),
+                FieldType::Enchantment => Enchantment::deserialize(deserializer).map(Field::Enchantment),
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),

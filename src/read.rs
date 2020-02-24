@@ -409,6 +409,24 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
     )(input)
 }
 
+fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::EnchantmentType(w), 0).into()))
+            ),
+            set_err(
+                tuple((le_u32, le_u32, le_u32)),
+                |_| FieldBodyError::UnexpectedEndOfField(16)
+            ),
+        ),
+        |(enchantment_type, (cost, charge_amount, auto_calculate))| Enchantment {
+            enchantment_type, cost, charge_amount, auto_calculate
+        }
+    )(input)
+}
+
 fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
     map(
         pair(
@@ -785,6 +803,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
             FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
             FieldType::Clothing => map(clothing_field, Field::Clothing)(input),
+            FieldType::Enchantment => map(enchantment_field, Field::Enchantment)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -1007,6 +1026,7 @@ pub enum Unknown {
     BipedObject(u8),
     ClothingType(u32),
     AiTravelFlags(u32),
+    EnchantmentType(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -1034,6 +1054,7 @@ impl fmt::Display for Unknown {
             Unknown::BipedObject(v) => write!(f, "biped object {}", v),
             Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
             Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
+            Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
         }
     }
 }

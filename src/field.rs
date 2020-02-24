@@ -129,6 +129,7 @@ pub enum FieldType {
     BipedObject,
     BodyPart,
     Clothing,
+    Enchantment,
 }
 
 impl FieldType {
@@ -181,6 +182,7 @@ impl FieldType {
             (PCDT, ENAM) => FieldType::Long,
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
+            (ENCH, ENDT) => FieldType::Enchantment,
             (CELL, FGTN) => FieldType::String(None),
             (CONT, FLAG) => FieldType::ContainerFlags,
             (CREA, FLAG) => FieldType::CreatureFlags,
@@ -788,7 +790,7 @@ macro_attr! {
 
 enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32);
 
-pub_bitflags_display!(SpellFlags, u32, AUTOCALC = 1, PC_START = 2, ALWAYS = 4);
+pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE = 1, PC_START = 2, ALWAYS = 4);
 
 enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
@@ -1302,6 +1304,29 @@ pub struct Clothing {
     pub enchantment: u16,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum EnchantmentType {
+        CastOnce = 0,
+        WhenStrikes = 1,
+        WhenUsed = 2,
+        ConstantEffect = 3
+    }
+}
+
+enum_serde!(EnchantmentType, "enchantment type", u32, to_u32, as from_u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Enchantment {
+    pub enchantment_type: EnchantmentType,
+    pub cost: u32,
+    pub charge_amount: u32,
+    pub auto_calculate: u32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1341,6 +1366,7 @@ pub enum Field {
     BipedObject(BipedObject),
     BodyPart(BodyPart),
     Clothing(Clothing),
+    Enchantment(Enchantment),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
