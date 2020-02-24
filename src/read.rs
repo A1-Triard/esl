@@ -409,6 +409,50 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
     )(input)
 }
 
+fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ArmorType(w), 0).into()))
+            ),
+            set_err(
+                tuple((le_f32, le_u32, le_u32, le_u32, le_u32)),
+                |_| FieldBodyError::UnexpectedEndOfField(24)
+            ),
+        ),
+        |(armor_type, (weight, value, health, enchantment, armor))| Armor {
+            armor_type, health, weight, value, enchantment, armor
+        }
+    )(input)
+}
+
+fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
+    map(
+        tuple((
+            set_err(
+                tuple((le_f32, le_u32)),
+                |_| FieldBodyError::UnexpectedEndOfField(32)
+            ),
+            map_res(
+                set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(32)),
+                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::WeaponType(w), 8).into()))
+            ),
+            set_err(
+                tuple((le_u16, le_f32, le_f32, le_u16, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
+                |_| FieldBodyError::UnexpectedEndOfField(32)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(32)),
+                |w, _| WeaponFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::WeaponFlags(w), 28).into()))
+            )
+        )),
+        |((weight, value), weapon_type, (health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max), flags)| Weapon {
+            weight, value, weapon_type, health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max, flags
+        }
+    )(input)
+}
+
 fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
     map(
         pair(
@@ -664,6 +708,8 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Light => map(light_field, Field::Light)(input),
             FieldType::MiscItem => map(misc_item_field, Field::MiscItem)(input),
             FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
+            FieldType::Armor => map(armor_field, Field::Armor)(input),
+            FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
@@ -877,6 +923,9 @@ pub enum Unknown {
     CreatureType(u32),
     LightFlags(u32),
     ApparatusType(u32),
+    WeaponFlags(u32),
+    WeaponType(u16),
+    ArmorType(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -895,6 +944,9 @@ impl fmt::Display for Unknown {
             Unknown::CreatureType(v) => write!(f, "creature type {}", v),
             Unknown::LightFlags(v) => write!(f, "light flags {:08X}h", v),
             Unknown::ApparatusType(v) => write!(f, "apparatus type {}", v),
+            Unknown::WeaponFlags(v) => write!(f, "weapon flags {:08X}h", v),
+            Unknown::WeaponType(v) => write!(f, "weapon type {}", v),
+            Unknown::ArmorType(v) => write!(f, "armor type {}", v),
         }
     }
 }

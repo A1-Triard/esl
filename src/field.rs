@@ -123,6 +123,8 @@ pub enum FieldType {
     Light,
     MiscItem,
     Apparatus,
+    Weapon,
+    Armor,
 }
 
 impl FieldType {
@@ -135,6 +137,7 @@ impl FieldType {
             (_, AIDT) => FieldType::Ai,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
+            (ARMO, AODT) => FieldType::Armor,
             (_, ASND) => FieldType::StringZ,
             (_, AVFX) => FieldType::StringZ,
             (BOOK, BKDT) => FieldType::Book,
@@ -256,6 +259,7 @@ impl FieldType {
             (_, WHGT) => FieldType::Int,
             (_, WIDX) => FieldType::Long,
             (_, WNAM) => FieldType::Compressed,
+            (WEAP, WPDT) => FieldType::Weapon,
             (_, XCHG) => FieldType::Int,
             (_, XHLT) => FieldType::Int,
             (_, XIDX) => FieldType::Int,
@@ -1056,6 +1060,98 @@ pub struct Apparatus {
     pub value: u32,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
+    pub enum ArmorType {
+        Helmet = 0,
+        Cuirass = 1,
+        LeftPauldron = 2,
+        RightPauldron = 3,
+        Greaves = 4,
+        Boots = 5,
+        LeftGauntlet = 6,
+        RightGauntlet = 7,
+        Shield = 8,
+        LeftBracer = 9,
+        RightBracer = 10
+    }
+}
+
+enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Armor {
+    pub armor_type: ArmorType,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub health: u32,
+    pub enchantment: u32,
+    pub armor: u32,
+}
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u16)]
+    pub enum WeaponType {
+        ShortBladeOneHand = 0,
+        LongBladeOneHand = 1,
+        LongBladeTwoClose = 2,
+        BluntOneHand = 3,
+        BluntTwoClose = 4,
+        BluntTwoWide = 5,
+        SpearTwoWide = 6,
+        AxeOneHand = 7,
+        AxeTwoClose = 8,
+        MarksmanBow = 9,
+        MarksmanCrossbow = 10,
+        MarksmanThrown = 11,
+        Arrow = 12,
+        Bolt = 13
+    }
+}
+
+enum_serde!(WeaponType, "weapon type", u16, to_u16, as from_u16);
+
+pub_bitflags_display!(WeaponFlags, u32,
+    MAGICAL = 0x01,
+    SILVER = 0x02
+);
+
+enum_serde!(WeaponFlags, "weapon flags", u32, bits, try from_bits, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Weapon {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub weapon_type: WeaponType,
+    pub health: u16,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub speed: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub reach: f32,
+    pub enchantment: u16,
+    pub chop_min: u8,
+    pub chop_max: u8,
+    pub slash_min: u8,
+    pub slash_max: u8,
+    pub thrust_min: u8,
+    pub thrust_max: u8,
+    pub flags: WeaponFlags,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1089,6 +1185,8 @@ pub enum Field {
     Light(Light),
     MiscItem(MiscItem),
     Apparatus(Apparatus),
+    Armor(Armor),
+    Weapon(Weapon),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

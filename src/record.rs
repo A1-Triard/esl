@@ -183,6 +183,16 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have apparatus type", self.record_tag, self.field_tag)))
             },
+            FieldType::Weapon => if let Field::Weapon(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have weapon type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Armor => if let Field::Armor(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -318,6 +328,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Light => Light::deserialize(deserializer).map(Field::Light),
                 FieldType::MiscItem => MiscItem::deserialize(deserializer).map(Field::MiscItem),
                 FieldType::Apparatus => Apparatus::deserialize(deserializer).map(Field::Apparatus),
+                FieldType::Weapon => Weapon::deserialize(deserializer).map(Field::Weapon),
+                FieldType::Armor => Armor::deserialize(deserializer).map(Field::Armor),
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),
