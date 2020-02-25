@@ -1799,7 +1799,7 @@ mod tests {
 
     #[test]
     fn serialize_npc_stats() {
-        let npc_stats = NpcStats {
+        let stats = NpcStats {
             strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
             personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1808,47 +1808,47 @@ mod tests {
             light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
             hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
-        let bin: Vec<u8> = serialize(&npc_stats, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = serialize(&stats, CodePage::English, false).unwrap();
         let res = npc_stats(&bin).unwrap().1;
-        assert_eq!(res.strength, npc_stats.strength);
-        assert_eq!(res.intelligence, npc_stats.intelligence);
-        assert_eq!(res.willpower, npc_stats.willpower);
-        assert_eq!(res.agility, npc_stats.agility);
-        assert_eq!(res.speed, npc_stats.speed);
-        assert_eq!(res.endurance, npc_stats.endurance);
-        assert_eq!(res.personality, npc_stats.personality);
-        assert_eq!(res.luck, npc_stats.luck);
-        assert_eq!(res.block, npc_stats.block);
-        assert_eq!(res.armorer, npc_stats.armorer);
-        assert_eq!(res.medium_armor, npc_stats.medium_armor);
-        assert_eq!(res.heavy_armor, npc_stats.heavy_armor);
-        assert_eq!(res.blunt_weapon, npc_stats.blunt_weapon);
-        assert_eq!(res.long_blade, npc_stats.long_blade);
-        assert_eq!(res.axe, npc_stats.axe);
-        assert_eq!(res.spear, npc_stats.spear);
-        assert_eq!(res.athletics, npc_stats.athletics);
-        assert_eq!(res.enchant, npc_stats.enchant);
-        assert_eq!(res.destruction, npc_stats.destruction);
-        assert_eq!(res.alteration, npc_stats.alteration);
-        assert_eq!(res.illusion, npc_stats.illusion);
-        assert_eq!(res.conjuration, npc_stats.conjuration);
-        assert_eq!(res.mysticism, npc_stats.mysticism);
-        assert_eq!(res.restoration, npc_stats.restoration);
-        assert_eq!(res.alchemy, npc_stats.alchemy);
-        assert_eq!(res.unarmored, npc_stats.unarmored);
-        assert_eq!(res.security, npc_stats.security);
-        assert_eq!(res.sneak, npc_stats.sneak);
-        assert_eq!(res.acrobatics, npc_stats.acrobatics);
-        assert_eq!(res.light_armor, npc_stats.light_armor);
-        assert_eq!(res.short_blade, npc_stats.short_blade);
-        assert_eq!(res.marksman, npc_stats.marksman);
-        assert_eq!(res.mercantile, npc_stats.mercantile);
-        assert_eq!(res.speechcraft, npc_stats.speechcraft);
-        assert_eq!(res.hand_to_hand, npc_stats.hand_to_hand);
-        assert_eq!(res.faction, npc_stats.faction);
-        assert_eq!(res.health, npc_stats.health);
-        assert_eq!(res.magicka, npc_stats.magicka);
-        assert_eq!(res.fatigue, npc_stats.fatigue);
+        assert_eq!(res.strength, stats.strength);
+        assert_eq!(res.intelligence, stats.intelligence);
+        assert_eq!(res.willpower, stats.willpower);
+        assert_eq!(res.agility, stats.agility);
+        assert_eq!(res.speed, stats.speed);
+        assert_eq!(res.endurance, stats.endurance);
+        assert_eq!(res.personality, stats.personality);
+        assert_eq!(res.luck, stats.luck);
+        assert_eq!(res.block, stats.block);
+        assert_eq!(res.armorer, stats.armorer);
+        assert_eq!(res.medium_armor, stats.medium_armor);
+        assert_eq!(res.heavy_armor, stats.heavy_armor);
+        assert_eq!(res.blunt_weapon, stats.blunt_weapon);
+        assert_eq!(res.long_blade, stats.long_blade);
+        assert_eq!(res.axe, stats.axe);
+        assert_eq!(res.spear, stats.spear);
+        assert_eq!(res.athletics, stats.athletics);
+        assert_eq!(res.enchant, stats.enchant);
+        assert_eq!(res.destruction, stats.destruction);
+        assert_eq!(res.alteration, stats.alteration);
+        assert_eq!(res.illusion, stats.illusion);
+        assert_eq!(res.conjuration, stats.conjuration);
+        assert_eq!(res.mysticism, stats.mysticism);
+        assert_eq!(res.restoration, stats.restoration);
+        assert_eq!(res.alchemy, stats.alchemy);
+        assert_eq!(res.unarmored, stats.unarmored);
+        assert_eq!(res.security, stats.security);
+        assert_eq!(res.sneak, stats.sneak);
+        assert_eq!(res.acrobatics, stats.acrobatics);
+        assert_eq!(res.light_armor, stats.light_armor);
+        assert_eq!(res.short_blade, stats.short_blade);
+        assert_eq!(res.marksman, stats.marksman);
+        assert_eq!(res.mercantile, stats.mercantile);
+        assert_eq!(res.speechcraft, stats.speechcraft);
+        assert_eq!(res.hand_to_hand, stats.hand_to_hand);
+        assert_eq!(res.faction, stats.faction);
+        assert_eq!(res.health, stats.health);
+        assert_eq!(res.magicka, stats.magicka);
+        assert_eq!(res.fatigue, stats.fatigue);
     }
 
     #[test]
