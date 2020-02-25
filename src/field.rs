@@ -92,7 +92,7 @@ impl FromStr for EffectRange {
 enum_serde!(EffectRange, "effect range", i32, to_i32, as from_i32);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum FieldType {
+pub(crate) enum FieldType {
     Binary,
     String(Option<u32>),
     StringZ,
@@ -475,7 +475,7 @@ impl<'de> de::Visitor<'de> for NpcStatsOptionHRDeserializer {
     type Value = NpcStatsOption;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "16-bit unsigned integer or NPC characteristics")
+        write!(f, "16-bit unsigned integer or NPC stats")
     }
 
     fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E> where E: de::Error {
@@ -499,7 +499,7 @@ impl<'de> de::Visitor<'de> for NpcStatsOptionNHRDeserializer {
     type Value = NpcStatsOption;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "16-bit unsigned integer or NPC characteristics")
+        write!(f, "16-bit unsigned integer or NPC stats")
     }
 
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
@@ -599,18 +599,18 @@ pub struct Npc {
     pub rank: i8,
     pub gold: i32,
     pub padding: u8,
-    pub characteristics: NpcStatsOption
+    pub stats: NpcStatsOption
 }
 
 impl From<Npc> for Npc12Or52 {
     fn from(npc: Npc) -> Npc12Or52 {
-        match npc.characteristics {
-            NpcStatsOption::Some(characteristics) => Npc12Or52::Npc52(Npc52 {
+        match npc.stats {
+            NpcStatsOption::Some(stats) => Npc12Or52::Npc52(Npc52 {
                 level: npc.level, disposition: npc.disposition,
                 reputation: npc.reputation, rank: npc.rank,
                 padding: npc.padding,
                 gold: npc.gold,
-                stats: characteristics
+                stats
             }),
             NpcStatsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
                 level: npc.level, disposition: npc.disposition,
@@ -640,12 +640,12 @@ impl From<Npc12Or52> for Npc {
             Npc12Or52::Npc12(npc) => Npc {
                 level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
                 rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
-                characteristics: NpcStatsOption::None(npc.padding_16)
+                stats: NpcStatsOption::None(npc.padding_16)
             },
             Npc12Or52::Npc52(npc) => Npc {
                 level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
                 rank: npc.rank, gold: npc.gold, padding: npc.padding,
-                characteristics: NpcStatsOption::Some(npc.stats)
+                stats: NpcStatsOption::Some(npc.stats)
             }
         }
     }

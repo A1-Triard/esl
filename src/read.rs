@@ -764,9 +764,9 @@ fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
             tuple((le_u16, npc_stats, le_i8, le_i8, le_i8, le_u8, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(52)
         ),
-        |(level, characteristics, disposition, reputation, rank, padding, gold)| Npc52 {
+        |(level, stats, disposition, reputation, rank, padding, gold)| Npc52 {
             level, disposition, reputation, rank, gold,
-            stats: characteristics, padding
+            stats, padding
         }.into()
     )(input)
 }
@@ -1798,8 +1798,8 @@ mod tests {
     }
 
     #[test]
-    fn serialize_npc_characteristics() {
-        let npc_char = NpcStats {
+    fn serialize_npc_stats() {
+        let npc_stats = NpcStats {
             strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
             personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1808,52 +1808,52 @@ mod tests {
             light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
             hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
-        let bin: Vec<u8> = serialize(&npc_char, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = serialize(&npc_stats, CodePage::English, false).unwrap();
         let res = npc_stats(&bin).unwrap().1;
-        assert_eq!(res.strength, npc_char.strength);
-        assert_eq!(res.intelligence, npc_char.intelligence);
-        assert_eq!(res.willpower, npc_char.willpower);
-        assert_eq!(res.agility, npc_char.agility);
-        assert_eq!(res.speed, npc_char.speed);
-        assert_eq!(res.endurance, npc_char.endurance);
-        assert_eq!(res.personality, npc_char.personality);
-        assert_eq!(res.luck, npc_char.luck);
-        assert_eq!(res.block, npc_char.block);
-        assert_eq!(res.armorer, npc_char.armorer);
-        assert_eq!(res.medium_armor, npc_char.medium_armor);
-        assert_eq!(res.heavy_armor, npc_char.heavy_armor);
-        assert_eq!(res.blunt_weapon, npc_char.blunt_weapon);
-        assert_eq!(res.long_blade, npc_char.long_blade);
-        assert_eq!(res.axe, npc_char.axe);
-        assert_eq!(res.spear, npc_char.spear);
-        assert_eq!(res.athletics, npc_char.athletics);
-        assert_eq!(res.enchant, npc_char.enchant);
-        assert_eq!(res.destruction, npc_char.destruction);
-        assert_eq!(res.alteration, npc_char.alteration);
-        assert_eq!(res.illusion, npc_char.illusion);
-        assert_eq!(res.conjuration, npc_char.conjuration);
-        assert_eq!(res.mysticism, npc_char.mysticism);
-        assert_eq!(res.restoration, npc_char.restoration);
-        assert_eq!(res.alchemy, npc_char.alchemy);
-        assert_eq!(res.unarmored, npc_char.unarmored);
-        assert_eq!(res.security, npc_char.security);
-        assert_eq!(res.sneak, npc_char.sneak);
-        assert_eq!(res.acrobatics, npc_char.acrobatics);
-        assert_eq!(res.light_armor, npc_char.light_armor);
-        assert_eq!(res.short_blade, npc_char.short_blade);
-        assert_eq!(res.marksman, npc_char.marksman);
-        assert_eq!(res.mercantile, npc_char.mercantile);
-        assert_eq!(res.speechcraft, npc_char.speechcraft);
-        assert_eq!(res.hand_to_hand, npc_char.hand_to_hand);
-        assert_eq!(res.faction, npc_char.faction);
-        assert_eq!(res.health, npc_char.health);
-        assert_eq!(res.magicka, npc_char.magicka);
-        assert_eq!(res.fatigue, npc_char.fatigue);
+        assert_eq!(res.strength, npc_stats.strength);
+        assert_eq!(res.intelligence, npc_stats.intelligence);
+        assert_eq!(res.willpower, npc_stats.willpower);
+        assert_eq!(res.agility, npc_stats.agility);
+        assert_eq!(res.speed, npc_stats.speed);
+        assert_eq!(res.endurance, npc_stats.endurance);
+        assert_eq!(res.personality, npc_stats.personality);
+        assert_eq!(res.luck, npc_stats.luck);
+        assert_eq!(res.block, npc_stats.block);
+        assert_eq!(res.armorer, npc_stats.armorer);
+        assert_eq!(res.medium_armor, npc_stats.medium_armor);
+        assert_eq!(res.heavy_armor, npc_stats.heavy_armor);
+        assert_eq!(res.blunt_weapon, npc_stats.blunt_weapon);
+        assert_eq!(res.long_blade, npc_stats.long_blade);
+        assert_eq!(res.axe, npc_stats.axe);
+        assert_eq!(res.spear, npc_stats.spear);
+        assert_eq!(res.athletics, npc_stats.athletics);
+        assert_eq!(res.enchant, npc_stats.enchant);
+        assert_eq!(res.destruction, npc_stats.destruction);
+        assert_eq!(res.alteration, npc_stats.alteration);
+        assert_eq!(res.illusion, npc_stats.illusion);
+        assert_eq!(res.conjuration, npc_stats.conjuration);
+        assert_eq!(res.mysticism, npc_stats.mysticism);
+        assert_eq!(res.restoration, npc_stats.restoration);
+        assert_eq!(res.alchemy, npc_stats.alchemy);
+        assert_eq!(res.unarmored, npc_stats.unarmored);
+        assert_eq!(res.security, npc_stats.security);
+        assert_eq!(res.sneak, npc_stats.sneak);
+        assert_eq!(res.acrobatics, npc_stats.acrobatics);
+        assert_eq!(res.light_armor, npc_stats.light_armor);
+        assert_eq!(res.short_blade, npc_stats.short_blade);
+        assert_eq!(res.marksman, npc_stats.marksman);
+        assert_eq!(res.mercantile, npc_stats.mercantile);
+        assert_eq!(res.speechcraft, npc_stats.speechcraft);
+        assert_eq!(res.hand_to_hand, npc_stats.hand_to_hand);
+        assert_eq!(res.faction, npc_stats.faction);
+        assert_eq!(res.health, npc_stats.health);
+        assert_eq!(res.magicka, npc_stats.magicka);
+        assert_eq!(res.fatigue, npc_stats.fatigue);
     }
 
     #[test]
     fn serialize_npc_52() {
-        let npc_characteristics = NpcStats {
+        let npc_stats = NpcStats {
             strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
             personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1869,7 +1869,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: NpcStatsOption::Some(npc_characteristics.clone())
+            stats: NpcStatsOption::Some(npc_stats.clone())
         };
         let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
@@ -1879,8 +1879,8 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcStatsOption::Some(characteristics) = res.characteristics {
-            assert_eq!(characteristics.enchant, npc_characteristics.enchant);
+        if let NpcStatsOption::Some(stats) = res.stats {
+            assert_eq!(stats.enchant, npc_stats.enchant);
         } else {
             panic!()
         }
@@ -1895,7 +1895,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: NpcStatsOption::None(30001)
+            stats: NpcStatsOption::None(30001)
         };
         let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
@@ -1905,7 +1905,7 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcStatsOption::None(padding) = res.characteristics {
+        if let NpcStatsOption::None(padding) = res.stats {
             assert_eq!(padding, 30001);
         } else {
             panic!()
