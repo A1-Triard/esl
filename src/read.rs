@@ -345,9 +345,22 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
     )(input)
 }
 
+fn path_grid_field(input: &[u8]) -> IResult<&[u8], PathGrid, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_i32, le_i32, le_u16, le_u16)),
+            |_| FieldBodyError::UnexpectedEndOfField(12)
+        ),
+        |(x, y, flags, points)| PathGrid { grid: Grid { x, y }, flags, points }
+    )(input)
+}
+
 fn grid_field(input: &[u8]) -> IResult<&[u8], Grid, FieldBodyError> {
     map(
-        pair(le_i32, le_i32),
+        set_err(
+            pair(le_i32, le_i32),
+            |_| FieldBodyError::UnexpectedEndOfField(8)
+        ),
         |(x, y)| Grid { x, y }
     )(input)
 }
@@ -900,6 +913,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
                 12 => map(npc_12_field, Field::Npc)(input),
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
+            FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
                 4 => map(int_field, Field::Int)(input),

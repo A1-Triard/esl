@@ -138,6 +138,7 @@ pub(crate) enum FieldType {
     Position,
     PositionOrCell,
     Grid,
+    PathGrid,
 }
 
 impl FieldType {
@@ -182,6 +183,7 @@ impl FieldType {
             (LEVC, DATA) => FieldType::Int,
             (LEVI, DATA) => FieldType::Int,
             (LTEX, DATA) => FieldType::StringZ,
+            (PGRD, DATA) => FieldType::PathGrid,
             (SSCR, DATA) => FieldType::String(None),
             (TES3, DATA) => FieldType::Long,
             (QUES, DATA) => FieldType::String(None),
@@ -1276,6 +1278,13 @@ pub struct Grid {
     pub y: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct PathGrid {
+    pub grid: Grid,
+    pub flags: u16,
+    pub points: u16,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -1336,6 +1345,7 @@ define_field!(
     Position(Position),
     Cell(Cell),
     Grid(Grid),
+    PathGrid(PathGrid),
 );
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

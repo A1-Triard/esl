@@ -206,23 +206,23 @@ mod tests {
         assert_eq!(record, deserialized);
     }
 
-//    #[test]
-//    fn read_test_file() {
-//        let file = std::fs::File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
-//        let mut file = std::io::BufReader::new(file);
-//        let records = Records::new(CodePage::Russian, 0, &mut file);
-//        let records = records.map(|x| {
-//            match x {
-//                Ok(mut x) => {
-//                    x.coerce();
-//                    x
-//                },
-//                Err(e) => {
-//                    panic!(format!("{}", e))
-//                }
-//            }
-//        }).collect::<Vec<_>>();
-//        let o = std::fs::File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
-//        serde_yaml::to_writer(std::io::BufWriter::new(o), &records).unwrap();
-//    }
+    #[test]
+    fn read_test_file() {
+        let file = std::fs::File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
+        let mut file = std::io::BufReader::new(file);
+        let records = Records::new(CodePage::Russian, 0, &mut file);
+        let records = records.map(|x| {
+            match x {
+                Ok(mut x) => {
+                    x.coerce();
+                    x
+                },
+                Err(e) => {
+                    panic!(format!("{}", e))
+                }
+            }
+        }).collect::<Vec<_>>();
+        let o = std::fs::File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
+        serde_yaml::to_writer(std::io::BufWriter::new(o), &records).unwrap();
+    }
 }

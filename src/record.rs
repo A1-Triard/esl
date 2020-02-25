@@ -253,6 +253,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have grid type", self.record_tag, self.field_tag)))
             },
+            FieldType::PathGrid => if let Field::PathGrid(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have path grid type", self.record_tag, self.field_tag)))
+            },
             FieldType::Float => if let &Field::Float(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -426,6 +431,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
+                FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
                 FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),
                 FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
                 FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
