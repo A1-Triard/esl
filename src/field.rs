@@ -633,7 +633,7 @@ macro_attr! {
 
 enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32);
 
-pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE = 1, PC_START = 2, ALWAYS = 4);
+pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE = 1, PC_START = 2, ALWAYS_SUCCEEDS = 4);
 
 enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
