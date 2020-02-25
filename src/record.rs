@@ -3,7 +3,7 @@ use std::fmt::{self, Debug};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
-use serde::de::{self, DeserializeSeed, Unexpected};
+use serde::de::{self, DeserializeSeed, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
@@ -115,18 +115,19 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(&format!("{} {} field should have effect type", self.record_tag, self.field_tag)))
             },
             FieldType::Npc => if let Field::Npc(v) = self.field {
-                if serializer.is_human_readable() {
-                    v.serialize(serializer)
-                } else {
-                    Npc12Or52::from(v.clone()).serialize(serializer)
-                }
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have NPC type", self.record_tag, self.field_tag)))
             },
-            FieldType::DialogMetadata => if let Field::DialogMetadata(v) = self.field {
-                v.serialize(serializer)
-            } else {
-                Err(S::Error::custom(&format!("{} {} field should have dialog metadata type", self.record_tag, self.field_tag)))
+            FieldType::DialogMetadata => match self.field {
+                &Field::DialogType(v) => DialogTypeOption::Some(v).serialize(serializer),
+                &Field::Int(v) => DialogTypeOption::None(v).serialize(serializer),
+                _ => Err(S::Error::custom(&format!("{} {} field should have dialog or int type", self.record_tag, self.field_tag)))
+            },
+            FieldType::PositionOrCell => match &self.field {
+                &Field::Position(v) => PositionOrCell::Position(v.clone()).serialize(serializer),
+                &Field::Cell(v) => PositionOrCell::Cell(v.clone()).serialize(serializer),
+                _ => Err(S::Error::custom(&format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
             },
             FieldType::SpellMetadata => if let Field::SpellMetadata(v) = self.field {
                 v.serialize(serializer)
@@ -325,6 +326,32 @@ impl Serialize for Record {
     }
 }
 
+struct Base64Deserializer;
+
+impl<'de> de::Visitor<'de> for Base64Deserializer {
+    type Value = Vec<u8>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "base64") }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
+        base64::decode(s).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))
+    }
+}
+
+struct ZlibEncoderDeserializer;
+
+impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
+    type Value = Vec<u8>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "bytes") }
+
+    fn visit_bytes<E>(self, bytes: &[u8]) -> Result<Self::Value, E> where E: de::Error {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
+        encoder.write_all(bytes).unwrap();
+        Ok(encoder.finish().unwrap())
+    }
+}
+
 struct FieldBodyDeserializer {
     record_tag: Tag,
     field_tag: Tag
@@ -353,13 +380,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),
                 FieldType::Compressed => if deserializer.is_human_readable() {
-                    let s = <&str>::deserialize(deserializer)?;
-                    base64::decode(s).map_err(|_| D::Error::invalid_value(Unexpected::Str(s), &"base64"))
+                    deserializer.deserialize_str(Base64Deserializer)
                 } else {
-                    let bytes = <&[u8]>::deserialize(deserializer)?;
-                    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
-                    encoder.write_all(bytes).unwrap();
-                    Ok(encoder.finish().unwrap())
+                    deserializer.deserialize_bytes(ZlibEncoderDeserializer)
                 }.map(Field::Binary),
                 FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
@@ -367,12 +390,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
                 FieldType::NpcState => NpcState::deserialize(deserializer).map(Field::NpcState),
                 FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
-                FieldType::Npc => if deserializer.is_human_readable() {
-                    Npc::deserialize(deserializer)
-                } else {
-                    Npc12Or52::deserialize(deserializer).map(Npc::from)
-                }.map(Field::Npc),
-                FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(Field::DialogMetadata),
+                FieldType::Npc => Npc::deserialize(deserializer).map(Field::Npc),
+                FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
+                FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
@@ -520,6 +540,206 @@ impl<'de> Deserialize<'de> for Record {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum DialogTypeOption {
+    None(i32),
+    Some(DialogType)
+}
+
+impl From<DialogTypeOption> for Field {
+    fn from(v: DialogTypeOption) -> Self {
+        match v {
+            DialogTypeOption::None(i) => Field::Int(i),
+            DialogTypeOption::Some(v) => Field::DialogType(v),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="DialogTypeOption")]
+enum DialogTypeOptionHRSurrogate {
+    None(i32),
+    Some(DialogType)
+}
+
+impl From<DialogTypeOption> for DialogTypeOptionHRSurrogate {
+    fn from(t: DialogTypeOption) -> Self {
+        match t {
+            DialogTypeOption::None(i) => DialogTypeOptionHRSurrogate::None(i),
+            DialogTypeOption::Some(v) => DialogTypeOptionHRSurrogate::Some(v),
+        }
+    }
+}
+
+impl From<DialogTypeOptionHRSurrogate> for DialogTypeOption {
+    fn from(t: DialogTypeOptionHRSurrogate) -> Self {
+        match t {
+            DialogTypeOptionHRSurrogate::None(i) => DialogTypeOption::None(i),
+            DialogTypeOptionHRSurrogate::Some(v) => DialogTypeOption::Some(v),
+        }
+    }
+}
+
+const I32_SERDE_SIZE: u32 = 4;
+const DIALOG_TYPE_SERDE_SIZE: u32 = 1;
+
+impl Serialize for DialogTypeOption {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            DialogTypeOptionHRSurrogate::from(self.clone()).serialize(serializer)
+        } else {
+            match self {
+                DialogTypeOption::None(padding) => serializer.serialize_newtype_variant(
+                    name_of!(type DialogTypeOption),
+                    I32_SERDE_SIZE,
+                    name_of!(const None in DialogTypeOption),
+                    padding
+                ),
+                DialogTypeOption::Some(c) => serializer.serialize_newtype_variant(
+                    name_of!(type DialogTypeOption),
+                    DIALOG_TYPE_SERDE_SIZE,
+                    name_of!(const Some in DialogTypeOption),
+                    c
+                ),
+            }
+        }
+    }
+}
+
+struct DialogTypeOptionNHRDeserializer;
+
+impl<'de> de::Visitor<'de> for DialogTypeOptionNHRDeserializer {
+    type Value = DialogTypeOption;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "32-bit integer or dialog type")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            I32_SERDE_SIZE => Ok(DialogTypeOption::None(variant.newtype_variant()?)),
+            DIALOG_TYPE_SERDE_SIZE => Ok(DialogTypeOption::Some(variant.newtype_variant()?)),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DialogTypeOption {
+    fn deserialize<D>(deserializer: D) -> Result<DialogTypeOption, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            DialogTypeOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            deserializer.deserialize_enum(
+                name_of!(type DialogTypeOption),
+                &[name_of!(const None in DialogTypeOption), name_of!(const Some in DialogTypeOption)],
+                DialogTypeOptionNHRDeserializer
+            )
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum PositionOrCell {
+    Position(Position),
+    Cell(Cell)
+}
+
+impl From<PositionOrCell> for Field {
+    fn from(v: PositionOrCell) -> Self {
+        match v {
+            PositionOrCell::Position(p) => Field::Position(p),
+            PositionOrCell::Cell(c) => Field::Cell(c),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="PositionOrCell")]
+enum PositionOrCellHRSurrogate {
+    Position(Position),
+    Cell(Cell)
+}
+
+impl From<PositionOrCell> for PositionOrCellHRSurrogate {
+    fn from(t: PositionOrCell) -> Self {
+        match t {
+            PositionOrCell::Position(p) => PositionOrCellHRSurrogate::Position(p),
+            PositionOrCell::Cell(c) => PositionOrCellHRSurrogate::Cell(c),
+        }
+    }
+}
+
+impl From<PositionOrCellHRSurrogate> for PositionOrCell {
+    fn from(t: PositionOrCellHRSurrogate) -> Self {
+        match t {
+            PositionOrCellHRSurrogate::Position(p) => PositionOrCell::Position(p),
+            PositionOrCellHRSurrogate::Cell(c) => PositionOrCell::Cell(c),
+        }
+    }
+}
+
+const POSITION_SERDE_SIZE: u32 = 24;
+const CELL_SERDE_SIZE: u32 = 12;
+
+impl Serialize for PositionOrCell {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            PositionOrCellHRSurrogate::from(self.clone()).serialize(serializer)
+        } else {
+            match self {
+                PositionOrCell::Position(position) => serializer.serialize_newtype_variant(
+                    name_of!(type PositionOrCell),
+                    POSITION_SERDE_SIZE,
+                    name_of!(const Position in PositionOrCell),
+                    position
+                ),
+                PositionOrCell::Cell(cell) => serializer.serialize_newtype_variant(
+                    name_of!(type PositionOrCell),
+                    CELL_SERDE_SIZE,
+                    name_of!(const Cell in PositionOrCell),
+                    cell
+                ),
+            }
+        }
+    }
+}
+
+struct PositionOrCellNHRDeserializer;
+
+impl<'de> de::Visitor<'de> for PositionOrCellNHRDeserializer {
+    type Value = PositionOrCell;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "position or cell")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            POSITION_SERDE_SIZE => Ok(PositionOrCell::Position(variant.newtype_variant()?)),
+            CELL_SERDE_SIZE => Ok(PositionOrCell::Cell(variant.newtype_variant()?)),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PositionOrCell {
+    fn deserialize<D>(deserializer: D) -> Result<PositionOrCell, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            PositionOrCellHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            deserializer.deserialize_enum(
+                name_of!(type PositionOrCell),
+                &[name_of!(const Position in PositionOrCell), name_of!(const Cell in PositionOrCell)],
+                PositionOrCellNHRDeserializer
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -537,14 +757,14 @@ mod tests {
 
     #[test]
     fn test_record_flags() {
-        assert_eq!("PERSISTENT", format!("{}", RecordFlags::PERSIST));
-        assert_eq!("PERSISTENT", format!("{:?}", RecordFlags::PERSIST));
-        assert_eq!("PERSISTENT DELETED", format!("{}", RecordFlags::PERSIST | RecordFlags::DELETED));
+        assert_eq!("PERSIST", format!("{}", RecordFlags::PERSIST));
+        assert_eq!("PERSIST", format!("{:?}", RecordFlags::PERSIST));
+        assert_eq!("PERSIST DELETED", format!("{}", RecordFlags::PERSIST | RecordFlags::DELETED));
         assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits);
         assert_eq!(Some(RecordFlags::BLOCKED | RecordFlags::DELETED), RecordFlags::from_bits(0x202000000000));
         assert_eq!(Ok(RecordFlags::DELETED), RecordFlags::from_str("DELETED"));
-        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("DELETED PERSISTENT"));
-        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("PERSISTENT  DELETED"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("DELETED PERSIST"));
+        assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("PERSIST  DELETED"));
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
         assert_eq!(Err(()), RecordFlags::from_str(" "));
     }

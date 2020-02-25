@@ -4,6 +4,7 @@ use std::mem::{transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
+use either::{Either, Left, Right};
 
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -135,6 +136,7 @@ pub(crate) enum FieldType {
     Tool,
     RepairItem,
     Position,
+    PositionOrCell,
 }
 
 impl FieldType {
@@ -173,6 +175,7 @@ impl FieldType {
             (_, CSND) => FieldType::StringZ,
             (CLOT, CTDT) => FieldType::Clothing,
             (_, CVFX) => FieldType::StringZ,
+            (CELL, DATA) => FieldType::PositionOrCell,
             (DIAL, DATA) => FieldType::DialogMetadata,
             (LAND, DATA) => FieldType::Int,
             (LEVC, DATA) => FieldType::Int,
@@ -436,134 +439,82 @@ pub struct NpcStats {
     pub fatigue: i16,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum NpcStatsOption {
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="NpcStatsOption")]
+enum NpcStatsOptionHRSurrogate {
     None(u16),
     Some(NpcStats)
 }
 
-const U16_SERDE_SIZE: u32 = 12;
-const NPC_STATS_SERDE_SIZE: u32 = 42;
-
-impl Serialize for NpcStatsOption {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            match self {
-                &NpcStatsOption::None(padding) => serializer.serialize_u16(padding),
-                NpcStatsOption::Some(c) => c.serialize(serializer)
-            }
-        } else {
-            match self {
-                NpcStatsOption::None(padding) => serializer.serialize_newtype_variant(
-                    name_of!(type NpcStatsOption), 
-                    U16_SERDE_SIZE,
-                    name_of!(const None in NpcStatsOption),
-                    padding
-                ),
-                NpcStatsOption::Some(c) => serializer.serialize_newtype_variant(
-                    name_of!(type NpcStatsOption),
-                    NPC_STATS_SERDE_SIZE,
-                    name_of!(const Some in NpcStatsOption),
-                    c
-                ),
-            }
-        }
-    }
-}
-
-struct NpcStatsOptionHRDeserializer;
-
-impl<'de> de::Visitor<'de> for NpcStatsOptionHRDeserializer {
-    type Value = NpcStatsOption;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "16-bit unsigned integer or NPC stats")
-    }
-
-    fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E> where E: de::Error {
-        Ok(NpcStatsOption::None(v))
-    }
-
-    fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let c = NpcStats::deserialize(StructSeqProxyDeserializer::new(seq))?;
-        Ok(NpcStatsOption::Some(c))
-    }
-
-    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let c = NpcStats::deserialize(StructMapProxyDeserializer::new(map))?;
-        Ok(NpcStatsOption::Some(c))
-    }
-}
-
-struct NpcStatsOptionNHRDeserializer;
-
-impl<'de> de::Visitor<'de> for NpcStatsOptionNHRDeserializer {
-    type Value = NpcStatsOption;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "16-bit unsigned integer or NPC stats")
-    }
-
-    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
-        let (variant_index, variant) = data.variant::<u32>()?;
-        match variant_index {
-            U16_SERDE_SIZE => Ok(NpcStatsOption::None(variant.newtype_variant()?)),
-            NPC_STATS_SERDE_SIZE => Ok(NpcStatsOption::Some(variant.newtype_variant()?)),
-            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for NpcStatsOption {
-    fn deserialize<D>(deserializer: D) -> Result<NpcStatsOption, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_any(NpcStatsOptionHRDeserializer)
-        } else {
-            deserializer.deserialize_enum(
-                name_of!(type NpcStatsOption),
-                &[name_of!(const None in NpcStatsOption), name_of!(const Some in NpcStatsOption)],
-                NpcStatsOptionNHRDeserializer
-            )
-        }
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Npc12Or52 {
-    Npc12(Npc12),
-    Npc52(Npc52)
+pub struct Npc {
+    pub level: u16,
+    pub disposition: i8,
+    pub reputation: i8,
+    pub rank: i8,
+    pub gold: i32,
+    pub padding: u8,
+    pub stats: Either<u16, NpcStats>
 }
 
-const NPC12_SERDE_SIZE: u32 = 12;
-const NPC52_SERDE_SIZE: u32 = 52;
+#[derive(Serialize, Deserialize)]
+struct NpcHRSurrogate {
+    pub level: u16,
+    pub disposition: i8,
+    pub reputation: i8,
+    pub rank: i8,
+    pub gold: i32,
+    pub padding: u8,
+    pub stats: NpcStatsOptionHRSurrogate
+}
 
-impl Serialize for Npc12Or52 {
+impl From<Npc> for NpcHRSurrogate {
+    fn from(t: Npc) -> Self {
+        NpcHRSurrogate {
+            level: t.level, disposition: t.disposition, reputation:t.reputation,
+            rank: t.rank, gold: t.gold, padding: t.padding,
+            stats: t.stats.either(NpcStatsOptionHRSurrogate::None, NpcStatsOptionHRSurrogate::Some)
+        }
+    }
+}
+
+impl From<NpcHRSurrogate> for Npc {
+    fn from(t: NpcHRSurrogate) -> Self {
+        let stats = match t.stats {
+            NpcStatsOptionHRSurrogate::None(x) => Left(x),
+            NpcStatsOptionHRSurrogate::Some(x) => Right(x)
+        };
+        Npc {
+            level: t.level, disposition: t.disposition, reputation:t.reputation,
+            rank: t.rank, gold: t.gold, padding: t.padding,
+            stats
+        }
+    }
+}
+
+impl Serialize for Npc {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            Npc::from(self.clone()).serialize(serializer)
+            NpcHRSurrogate::from(self.clone()).serialize(serializer)
         } else {
-            match self {
-                Npc12Or52::Npc12(npc12) => serializer.serialize_newtype_variant(
-                    name_of!(type Npc12Or52),
-                    NPC12_SERDE_SIZE,
-                    name_of!(const Npc12 in Npc12Or52),
-                    npc12
+            let surrogate: Either<NpcNHRSurrogate12, NpcNHRSurrogate52> = self.clone().into();
+            match surrogate {
+                Left(npc12) => serializer.serialize_newtype_variant(
+                    name_of!(type Npc), 12, "Npc12", &npc12
                 ),
-                Npc12Or52::Npc52(npc52) => serializer.serialize_newtype_variant(
-                    name_of!(type Npc12Or52),
-                    NPC52_SERDE_SIZE,
-                    name_of!(const Npc52 in Npc12Or52), 
-                    npc52
+                Right(npc52) => serializer.serialize_newtype_variant(
+                    name_of!(type Npc), 52, "Npc52", &npc52
                 ),
             }
         }
     }
 }
 
-struct Npc12Or52NHRDeserializer;
+struct NpcNHRDeserializer;
 
-impl<'de> de::Visitor<'de> for Npc12Or52NHRDeserializer {
-    type Value = Npc12Or52;
+impl<'de> de::Visitor<'de> for NpcNHRDeserializer {
+    type Value = Npc;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "NPC")
@@ -572,101 +523,26 @@ impl<'de> de::Visitor<'de> for Npc12Or52NHRDeserializer {
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            NPC12_SERDE_SIZE => Ok(Npc12Or52::Npc12(variant.newtype_variant()?)),
-            NPC52_SERDE_SIZE => Ok(Npc12Or52::Npc52(variant.newtype_variant()?)),
+            12 => Ok(variant.newtype_variant::<NpcNHRSurrogate12>()?.into()),
+            52 => Ok(variant.newtype_variant::<NpcNHRSurrogate52>()?.into()),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
 }
 
-impl<'de> Deserialize<'de> for Npc12Or52 {
-    fn deserialize<D>(deserializer: D) -> Result<Npc12Or52, D::Error> where D: Deserializer<'de> {
+impl<'de> Deserialize<'de> for Npc {
+    fn deserialize<D>(deserializer: D) -> Result<Npc, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            Npc::deserialize(deserializer).map(Npc12Or52::from)
+            NpcHRSurrogate::deserialize(deserializer).map(Npc::from)
         } else {
-            deserializer.deserialize_enum(
-                name_of!(type Npc12Or52),
-                &[name_of!(const Npc12 in Npc12Or52), name_of!(const Npc52 in Npc12Or52)],
-                Npc12Or52NHRDeserializer
-            )
+            deserializer.deserialize_enum(name_of!(type Npc), &["Npc12", "Npc52"], NpcNHRDeserializer)
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Npc {
-    pub level: u16,
-    pub disposition: i8,
-    pub reputation: i8,
-    pub rank: i8,
-    pub gold: i32,
-    pub padding: u8,
-    pub stats: NpcStatsOption
-}
-
-impl From<Npc> for Npc12Or52 {
-    fn from(npc: Npc) -> Npc12Or52 {
-        match npc.stats {
-            NpcStatsOption::Some(stats) => Npc12Or52::Npc52(Npc52 {
-                level: npc.level, disposition: npc.disposition,
-                reputation: npc.reputation, rank: npc.rank,
-                padding: npc.padding,
-                gold: npc.gold,
-                stats
-            }),
-            NpcStatsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
-                level: npc.level, disposition: npc.disposition,
-                reputation: npc.reputation, rank: npc.rank,
-                padding_8: npc.padding, padding_16,
-                gold: npc.gold
-            })
-        }
-    }
-}
-
-impl From<Npc12> for Npc12Or52 {
-    fn from(npc: Npc12) -> Npc12Or52 {
-        Npc12Or52::Npc12(npc)
-    }
-}
-
-impl From<Npc52> for Npc12Or52 {
-    fn from(npc: Npc52) -> Npc12Or52 {
-        Npc12Or52::Npc52(npc)
-    }
-}
-
-impl From<Npc12Or52> for Npc {
-    fn from(npc: Npc12Or52) -> Npc {
-        match npc {
-            Npc12Or52::Npc12(npc) => Npc {
-                level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
-                rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
-                stats: NpcStatsOption::None(npc.padding_16)
-            },
-            Npc12Or52::Npc52(npc) => Npc {
-                level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
-                rank: npc.rank, gold: npc.gold, padding: npc.padding,
-                stats: NpcStatsOption::Some(npc.stats)
-            }
-        }
-    }
-}
-
-impl From<Npc12> for Npc {
-    fn from(npc: Npc12) -> Npc {
-        Npc12Or52::from(npc).into()
-    }
-}
-
-impl From<Npc52> for Npc {
-    fn from(npc: Npc52) -> Npc {
-        Npc12Or52::from(npc).into()
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Npc12 {
+#[derive(Serialize, Deserialize)]
+#[serde(rename="Npc12")]
+struct NpcNHRSurrogate12 {
     pub level: u16,
     pub disposition: i8,
     pub reputation: i8,
@@ -676,8 +552,9 @@ pub struct Npc12 {
     pub gold: i32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct Npc52 {
+#[derive(Serialize, Deserialize)]
+#[serde(rename="Npc52")]
+struct NpcNHRSurrogate52 {
     pub level: u16,
     pub stats: NpcStats,
     pub disposition: i8,
@@ -687,103 +564,51 @@ pub struct Npc52 {
     pub gold: i32,
 }
 
+impl From<Npc> for Either<NpcNHRSurrogate12, NpcNHRSurrogate52> {
+    fn from(npc: Npc) -> Either<NpcNHRSurrogate12, NpcNHRSurrogate52> {
+        match npc.stats {
+            Right(stats) => Right(NpcNHRSurrogate52 {
+                level: npc.level, disposition: npc.disposition,
+                reputation: npc.reputation, rank: npc.rank,
+                padding: npc.padding,
+                gold: npc.gold,
+                stats
+            }),
+            Left(padding_16) => Left(NpcNHRSurrogate12 {
+                level: npc.level, disposition: npc.disposition,
+                reputation: npc.reputation, rank: npc.rank,
+                padding_8: npc.padding, padding_16,
+                gold: npc.gold
+            })
+        }
+    }
+}
+
+impl From<NpcNHRSurrogate52> for Npc {
+    fn from(npc: NpcNHRSurrogate52) -> Npc {
+        Npc {
+            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+            rank: npc.rank, gold: npc.gold, padding: npc.padding,
+            stats: Right(npc.stats)
+        }
+    }
+}
+
+impl From<NpcNHRSurrogate12> for Npc {
+    fn from(npc: NpcNHRSurrogate12) -> Npc {
+        Npc {
+            level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
+            rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
+            stats: Left(npc.padding_16)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Item {
     pub count: i32,
     #[serde(with = "string_32")]
     pub item_id: String,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum DialogTypeOption {
-    None(u32),
-    Some(DialogType)
-}
-
-const U32_SERDE_SIZE: u32 = 4;
-const DIALOG_TYPE_SERDE_SIZE: u32 = 1;
-
-impl Serialize for DialogTypeOption {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            match self {
-                &DialogTypeOption::None(padding) => serializer.serialize_u32(padding),
-                DialogTypeOption::Some(c) => c.serialize(serializer)
-            }
-        } else {
-            match self {
-                DialogTypeOption::None(padding) => serializer.serialize_newtype_variant(
-                    name_of!(type DialogTypeOption),
-                    U32_SERDE_SIZE,
-                    name_of!(const None in DialogTypeOption),
-                    padding
-                ),
-                DialogTypeOption::Some(c) => serializer.serialize_newtype_variant(
-                    name_of!(type DialogTypeOption),
-                    DIALOG_TYPE_SERDE_SIZE,
-                    name_of!(const Some in DialogTypeOption),
-                    c
-                ),
-            }
-        }
-    }
-}
-
-struct DialogTypeOptionHRDeserializer;
-
-impl<'de> de::Visitor<'de> for DialogTypeOptionHRDeserializer {
-    type Value = DialogTypeOption;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "32-bit unsigned integer or NPC stats")
-    }
-
-    fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E> where E: de::Error {
-        Ok(DialogTypeOption::None(v))
-    }
-
-    fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let c = DialogType::deserialize(StructSeqProxyDeserializer::new(seq))?;
-        Ok(DialogTypeOption::Some(c))
-    }
-
-    fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let c = DialogType::deserialize(StructMapProxyDeserializer::new(map))?;
-        Ok(DialogTypeOption::Some(c))
-    }
-}
-
-struct DialogTypeOptionNHRDeserializer;
-
-impl<'de> de::Visitor<'de> for DialogTypeOptionNHRDeserializer {
-    type Value = DialogTypeOption;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "32-bit unsigned integer or dialog type")
-    }
-
-    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
-        let (variant_index, variant) = data.variant::<u32>()?;
-        match variant_index {
-            U32_SERDE_SIZE => Ok(DialogTypeOption::None(variant.newtype_variant()?)),
-            DIALOG_TYPE_SERDE_SIZE => Ok(DialogTypeOption::Some(variant.newtype_variant()?)),
-            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for DialogTypeOption {
-    fn deserialize<D>(deserializer: D) -> Result<DialogTypeOption, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            deserializer.deserialize_any(DialogTypeOptionHRDeserializer)
-        } else {
-            deserializer.deserialize_enum(
-                name_of!(type DialogTypeOption),
-                &[name_of!(const None in DialogTypeOption), name_of!(const Some in DialogTypeOption)],
-                DialogTypeOptionNHRDeserializer
-            )
-        }
-    }
 }
 
 macro_attr! {
@@ -1426,10 +1251,40 @@ pub struct Position {
     pub z_rot: f32,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Derivative)]
-#[derivative(PartialEq="feature_allow_slow_enum", Eq)]
-pub enum Field {
+pub_bitflags_display!(CellFlags, u32,
+    INTERIOR = 0x01,
+    HAS_WATER = 0x02,
+    ILLEGAL_TO_SLEEP = 0x04,
+    BEHAVE_LIKE_EXTERIOR = 0x80
+);
+
+enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Cell {
+    pub flags: CellFlags,
+    pub x: i32,
+    pub y: i32,
+}
+
+macro_rules! define_field {
+    ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
+        #[derive(Debug, Clone)]
+        #[derive(Derivative)]
+        #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
+        pub enum Field {
+            $($variant($(#[derivative(PartialEq(compare_with=$a))])? $from)),*
+        }
+        
+        $(
+        impl From<$from> for Field {
+            fn from(v: $from) -> Self { Field::$variant(v) }
+        }
+        )*
+    }
+}
+
+define_field!(
     Binary(Vec<u8>),
     String(String),
     StringZ(StringZ),
@@ -1443,7 +1298,7 @@ pub enum Field {
     Byte(u8),
     Ingredient(Ingredient),
     ScriptMetadata(ScriptMetadata),
-    DialogMetadata(DialogTypeOption),
+    DialogType(DialogType),
     FileMetadata(FileMetadata),
     NpcState(NpcState),
     Npc(Npc),
@@ -1470,7 +1325,8 @@ pub enum Field {
     Enchantment(Enchantment),
     Tool(Tool),
     Position(Position),
-}
+    Cell(Cell),
+);
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
     match (record_tag, field_tag) {

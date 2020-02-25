@@ -178,4 +178,18 @@ mod tests {
         assert!(!yaml.contains("^"));
         assert!(!yaml.contains("\\u"));
     }
+
+//    #[test]
+//    fn read_empty_file() {
+//        let file = File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
+//        let mut file = BufReader::new(file);
+//        let records = Records::new(CodePage::Russian, 0, &mut file);
+//        let records = records.map(|x| {
+//            let mut x = x.unwrap();
+//            x.coerce();
+//            x
+//        }).collect::<Vec<_>>();
+//        let o = File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
+//        serde_yaml::to_writer(BufWriter::new(o), &records).unwrap();
+//    }
 }

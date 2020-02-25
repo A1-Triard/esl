@@ -13,6 +13,7 @@ use std::fmt::{self};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use either::{Right, Left};
 
 use crate::strings::*;
 use crate::field::*;
@@ -128,20 +129,10 @@ macro_rules! impl_parse_error {
 }
 
 #[derive(Debug, Clone)]
-enum FieldBaseError {
-    UnknownValue(Unknown, u32),
-    UnexpectedNpcFieldSize(u32),
-    UnexpectedDialogMetadataFieldSize(u32),
-}
-
-#[derive(Debug, Clone)]
 enum FieldBodyError {
     UnexpectedEndOfField(u32),
-    Base(FieldBaseError)
-}
-
-impl From<FieldBaseError> for FieldBodyError {
-    fn from(e: FieldBaseError) -> FieldBodyError { FieldBodyError::Base(e) }
+    UnknownValue(Unknown, u32),
+    UnexpectedFieldSize(u32)
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
@@ -208,7 +199,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::FileType(w), 4).into()))
+                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(w), 4).into()))
             ),
             set_err(
                 tuple((
@@ -245,9 +236,7 @@ fn multiline_field<'a, E>(code_page: CodePage, linebreaks: Newline)
     )
 }
 
-fn item_field<'a>(code_page: CodePage)
-                  -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
-
+fn item_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
     set_err(
         map(
             pair(
@@ -338,17 +327,35 @@ fn npc_state_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
     )(input)
 }
 
+fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| CellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CellFlags(w), 0).into()))
+            ),
+            set_err(
+                pair(le_i32, le_i32),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            )
+        ),
+        |(flags, (x, y))| Cell {
+            flags, x, y
+        }
+    )(input)
+}
+
 fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBodyError> {
     map(
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::SpellType(w), 0).into()))
+                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellType(w), 0).into()))
             ),
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::SpellFlags(w), 8).into()))
+                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellFlags(w), 8).into()))
             ),
         )),
         |(spell_type, cost, flags)| SpellMetadata {
@@ -370,7 +377,7 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| LightFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::LightFlags(w), 20).into()))
+                |w, _| LightFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::LightFlags(w), 20).into()))
             )
         )),
         |((weight, value, time, radius), color, flags)| Light {
@@ -396,7 +403,7 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ApparatusType(w), 0).into()))
+                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0).into()))
             ),
             set_err(
                 tuple((le_f32, le_f32, le_u32)),
@@ -414,7 +421,7 @@ fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::EnchantmentType(w), 0).into()))
+                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0).into()))
             ),
             set_err(
                 tuple((le_u32, le_u32, le_u32)),
@@ -432,7 +439,7 @@ fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ArmorType(w), 0).into()))
+                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0).into()))
             ),
             set_err(
                 tuple((le_f32, le_u32, le_u32, le_u32, le_u32)),
@@ -450,7 +457,7 @@ fn clothing_field(input: &[u8]) -> IResult<&[u8], Clothing, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ClothingType(w), 0).into()))
+                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0).into()))
             ),
             set_err(
                 tuple((le_f32, le_u16, le_u16)),
@@ -472,7 +479,7 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::WeaponType(w), 8).into()))
+                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8).into()))
             ),
             set_err(
                 tuple((le_u16, le_f32, le_f32, le_u16, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
@@ -480,7 +487,7 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponFlags::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::WeaponFlags(w), 28).into()))
+                |w, _| WeaponFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponFlags(w), 28).into()))
             )
         )),
         |((weight, value), weapon_type, (health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max), flags)| Weapon {
@@ -494,7 +501,7 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| MeshType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::MeshType(b), 0).into()))
+                |b, _| MeshType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::MeshType(b), 0).into()))
             ),
             set_err(
                 le_u8,
@@ -502,11 +509,11 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BodyPartFlags(b), 2).into()))
+                |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BodyPartType(b), 3).into()))
+                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3).into()))
             )
         )),
         |(mesh_type, vampire, flags, body_part_type)| BodyPart {
@@ -524,7 +531,7 @@ fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiServices(w), 8).into()))
+                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 8).into()))
             )
         ),
         |((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
@@ -565,7 +572,7 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
+                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
             )
         ),
         |((x, y, z), flags)| AiTravel {
@@ -625,11 +632,11 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
+                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
+                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -646,11 +653,11 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<Cre
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
+                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
+                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -665,14 +672,14 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<Cre
 fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBodyError> {
     map_res(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
+        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
     )(input)
 }
 
 fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::BipedObject(b), 0).into()))
+        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0).into()))
     )(input)
 }
 
@@ -746,7 +753,7 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(96)),
-                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::CreatureType(w), 0).into()))
+                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0).into()))
             ),
             set_err(
                 tuple((
@@ -779,9 +786,9 @@ fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
             tuple((le_u16, npc_stats, le_i8, le_i8, le_i8, le_u8, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(52)
         ),
-        |(level, stats, disposition, reputation, rank, padding, gold)| Npc52 {
+        |(level, stats, disposition, reputation, rank, padding, gold)| Npc {
             level, disposition, reputation, rank, gold,
-            stats, padding
+            stats: Right(stats), padding
         }.into()
     )(input)
 }
@@ -792,9 +799,9 @@ fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
             tuple((le_u16, le_i8, le_i8, le_i8, le_u8, le_u16, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(12)
         ),
-        |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc12 {
+        |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc {
             level, disposition, reputation, rank, gold,
-            padding_8, padding_16
+            padding: padding_8, stats: Left(padding_16)
         }.into()
     )(input)
 }
@@ -808,7 +815,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
             map_res(
                 set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::EffectRange(d), 4).into()))
+                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4).into()))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -826,21 +833,12 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     )(input)
 }
 
-fn dialog_metadata_1_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, FieldBodyError> {
-    map(
-        map_res(
-            set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-            |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBaseError::UnknownValue(Unknown::DialogType(b), 0).into()))
-        ),
-        DialogTypeOption::Some
-    )(input)
-}
-
-fn dialog_metadata_4_field(input: &[u8]) -> IResult<&[u8], DialogTypeOption, FieldBodyError> {
-    map(
-        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        DialogTypeOption::None
-    )(input)
+fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError> {
+    map_res(
+        set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
+        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b), 0).into()))
+    )
+    (input)
 }
 
 fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_size: u32)
@@ -892,13 +890,18 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
-                x => Err(nom::Err::Error(FieldBaseError::UnexpectedNpcFieldSize(x).into())),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
-                4 => map(dialog_metadata_4_field, Field::DialogMetadata)(input),
-                1 => map(dialog_metadata_1_field, Field::DialogMetadata)(input),
-                x => Err(nom::Err::Error(FieldBaseError::UnexpectedDialogMetadataFieldSize(x).into())),
+                4 => map(int_field, Field::Int)(input),
+                1 => map(dialog_type_field, Field::DialogType)(input),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+            },
+            FieldType::PositionOrCell => match field_size {
+                24 => map(position_field, Field::Position)(input),
+                12 => map(cell_field, Field::Cell)(input),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
         }
     }
@@ -912,7 +915,8 @@ fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
 enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
-    Base(FieldBaseError, Tag)
+    UnknownValue(Tag, Unknown, u32),
+    UnexpectedFieldSize(Tag, u32)
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -940,7 +944,8 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                 field_body(code_page, record_tag, field_tag, field_size),
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
-                    FieldBodyError::Base(d) => FieldError::Base(d, field_tag),
+                    FieldBodyError::UnknownValue(t, v) => FieldError::UnknownValue(field_tag, t, v),
+                    FieldBodyError::UnexpectedFieldSize(s) => FieldError::UnexpectedFieldSize(field_tag, s),
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
@@ -1102,6 +1107,7 @@ pub enum Unknown {
     ClothingType(u32),
     AiTravelFlags(u32),
     EnchantmentType(u32),
+    CellFlags(u32),
 }
 
 impl fmt::Display for Unknown {
@@ -1130,6 +1136,7 @@ impl fmt::Display for Unknown {
             Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
             Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
+            Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
         }
     }
 }
@@ -1281,21 +1288,15 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_offset, record_tag, field_tag, expected_size, actual_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
                 }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnknownValue(value, value_offset), field_tag), field) =>
+            RecordBodyError(FieldError::UnknownValue(field_tag, value, value_offset), field) =>
                 RecordError::UnknownValue(UnknownValue {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
                 }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedNpcFieldSize(field_size), field_tag), field) =>
+            RecordBodyError(FieldError::UnexpectedFieldSize(field_tag, field_size), field) =>
                 RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
                     record_offset, field_size,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag
-                }),
-            RecordBodyError(FieldError::Base(FieldBaseError::UnexpectedDialogMetadataFieldSize(field_size), field_tag), field) =>
-                RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
-                    record_offset,  field_size,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag
                 }),
@@ -1534,6 +1535,7 @@ mod tests {
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
+    use either::{Right, Left};
     use crate::code::*;
 
     fn string(s: &str) -> Vec<u8> {
@@ -1688,7 +1690,7 @@ mod tests {
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
         let result = field_body(CodePage::English, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::Base(FieldBaseError::UnknownValue(Unknown::FileType(val), offset))) = error {
+        if let nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
             assert_eq!(val, 0x100000);
             assert_eq!(offset, 4);
         } else {
@@ -1885,9 +1887,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            stats: NpcStatsOption::Some(npc_stats.clone())
+            stats: Right(npc_stats.clone())
         };
-        let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
+        let bin: Vec<u8> = serialize(&Npc::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1895,7 +1897,7 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcStatsOption::Some(stats) = res.stats {
+        if let Right(stats) = res.stats {
             assert_eq!(stats.enchant, npc_stats.enchant);
         } else {
             panic!()
@@ -1911,9 +1913,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            stats: NpcStatsOption::None(30001)
+            stats: Left(30001)
         };
-        let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
+        let bin: Vec<u8> = serialize(&Npc::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -1921,7 +1923,7 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcStatsOption::None(padding) = res.stats {
+        if let Left(padding) = res.stats {
             assert_eq!(padding, 30001);
         } else {
             panic!()
