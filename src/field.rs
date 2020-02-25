@@ -137,6 +137,7 @@ pub(crate) enum FieldType {
     RepairItem,
     Position,
     PositionOrCell,
+    Grid,
 }
 
 impl FieldType {
@@ -213,7 +214,7 @@ impl FieldType {
             (CLOT, INDX) => FieldType::BipedObject,
             (_, INDX) => FieldType::Int,
             (CELL, INTV) => FieldType::Float,
-            (LAND, INTV) => FieldType::Long,
+            (LAND, INTV) => FieldType::Grid,
             (LEVC, INTV) => FieldType::Short,
             (LEVI, INTV) => FieldType::Short,
             (_, INTV) => FieldType::Int,
@@ -1264,6 +1265,11 @@ enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Cell {
     pub flags: CellFlags,
+    pub grid: Grid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Grid {
     pub x: i32,
     pub y: i32,
 }
@@ -1327,6 +1333,7 @@ define_field!(
     Tool(Tool),
     Position(Position),
     Cell(Cell),
+    Grid(Grid),
 );
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

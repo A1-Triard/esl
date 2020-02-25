@@ -340,8 +340,15 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
             )
         ),
         |(flags, (x, y))| Cell {
-            flags, x, y
+            flags, grid: Grid { x, y }
         }
+    )(input)
+}
+
+fn grid_field(input: &[u8]) -> IResult<&[u8], Grid, FieldBodyError> {
+    map(
+        pair(le_i32, le_i32),
+        |(x, y)| Grid { x, y }
     )(input)
 }
 
@@ -879,6 +886,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Enchantment => map(enchantment_field, Field::Enchantment)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
+            FieldType::Grid => map(grid_field, Field::Grid)(input),
             FieldType::Int => map(int_field, Field::Int)(input),
             FieldType::Short => map(short_field, Field::Short)(input),
             FieldType::Long => map(long_field, Field::Long)(input),
