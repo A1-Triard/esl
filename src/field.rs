@@ -257,6 +257,8 @@ impl FieldType {
             (_, NPCS) => FieldType::String(Some(32)),
             (_, ONAM) => FieldType::StringZ,
             (PROB, PBDT) => FieldType::Tool,
+            (_, PGRC) => FieldType::Compressed,
+            (_, PGRP) => FieldType::Compressed,
             (PCDT, PNAM) => FieldType::Binary,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,

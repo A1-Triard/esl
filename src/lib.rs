@@ -178,6 +178,33 @@ mod tests {
         assert!(!yaml.contains("^"));
         assert!(!yaml.contains("\\u"));
     }
+    
+    #[test]
+    fn cell() {
+        let record = Record {
+            tag: CELL,
+            flags: RecordFlags::empty(),
+            fields: vec![
+                (NAME, Field::StringZ("".into())),
+                (DATA, Field::Cell(Cell { flags:CellFlags::HAS_WATER, grid: Grid { x: 20, y: 4} })),
+                (RGNN, Field::StringZ("Coast Region".into())),
+                (FRMR, Field::Int(347140)),
+                (NAME, Field::StringZ("crab".into())),
+                (DATA, Field::Position(Position { x: 165898.0, y: 38710.484375, z: 198.8867950439453, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
+            ]
+        };
+        let bytes = code::serialize(&record, CodePage::English, false).unwrap();
+        let read = {
+            let mut bytes = &bytes[..];
+            let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
+            let read = records.next().unwrap().unwrap();
+            assert!(records.next().is_none());
+            read
+        };
+        assert_eq!(record, read);
+        let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
+        assert_eq!(record, deserialized);
+    }
 
 //    #[test]
 //    fn read_test_file() {
