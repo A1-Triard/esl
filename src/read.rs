@@ -858,7 +858,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
-            FieldType::RepairItem => map(repair_item_field, Field::RepairItem)(input),
+            FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
             FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
             FieldType::Clothing => map(clothing_field, Field::Clothing)(input),

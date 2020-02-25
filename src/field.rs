@@ -1378,7 +1378,7 @@ pub struct Tool {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
-pub struct RepairItem {
+pub(crate) struct RepairItem {
     #[derivative(PartialEq(compare_with = "eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
@@ -1387,6 +1387,18 @@ pub struct RepairItem {
     #[derivative(PartialEq(compare_with = "eq_f32"))]
     #[serde(with = "float_32")]
     pub quality: f32,
+}
+
+impl From<RepairItem> for Tool {
+    fn from(t: RepairItem)-> Tool {
+        Tool { weight: t.weight, value: t.value, quality: t.quality, uses: t.uses }
+    }
+}
+
+impl From<Tool> for RepairItem {
+    fn from(t: Tool)-> RepairItem {
+        RepairItem { weight: t.weight, value: t.value, quality: t.quality, uses: t.uses }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1432,7 +1444,6 @@ pub enum Field {
     Clothing(Clothing),
     Enchantment(Enchantment),
     Tool(Tool),
-    RepairItem(RepairItem),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
