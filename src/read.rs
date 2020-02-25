@@ -324,13 +324,13 @@ fn script_metadata_field<'a>(code_page: CodePage)
     )
 }
 
-fn saved_npc_field(input: &[u8]) -> IResult<&[u8], SavedNpc, FieldBodyError> {
+fn saved_npc_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
     map(
         set_err(
             tuple((le_i16, le_i16, le_u32)),
             |_| FieldBodyError::UnexpectedEndOfField(8)
         ),
-        |(disposition, reputation, index)| SavedNpc {
+        |(disposition, reputation, index)| NpcState {
             disposition,
             reputation,
             index
@@ -766,7 +766,7 @@ fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
         ),
         |(level, characteristics, disposition, reputation, rank, padding, gold)| Npc52 {
             level, disposition, reputation, rank, gold,
-            characteristics, padding
+            stats: characteristics, padding
         }.into()
     )(input)
 }
@@ -872,7 +872,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Float => map(float_field, Field::Float)(input),
             FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
             FieldType::ScriptMetadata => map(script_metadata_field(code_page), Field::ScriptMetadata)(input),
-            FieldType::SavedNpc => map(saved_npc_field, Field::SavedNpc)(input),
+            FieldType::NpcState => map(saved_npc_field, Field::NpcState)(input),
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
@@ -1785,7 +1785,7 @@ mod tests {
 
     #[test]
     fn serialize_saved_npc() {
-        let saved_npc = SavedNpc {
+        let saved_npc = NpcState {
             disposition: -100,
             reputation: -200,
             index: 129

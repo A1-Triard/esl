@@ -110,7 +110,7 @@ pub enum FieldType {
     DialogMetadata,
     FileMetadata,
     Npc,
-    SavedNpc,
+    NpcState,
     Effect,
     SpellMetadata,
     Ai,
@@ -247,7 +247,7 @@ impl FieldType {
             (_, NPCO) => FieldType::Item,
             (CREA, NPDT) => FieldType::Creature,
             (NPC_, NPDT) => FieldType::Npc,
-            (NPCC, NPDT) => FieldType::SavedNpc,
+            (NPCC, NPDT) => FieldType::NpcState,
             (_, NPCS) => FieldType::String(Some(32)),
             (_, ONAM) => FieldType::StringZ,
             (PROB, PBDT) => FieldType::Tool,
@@ -385,7 +385,7 @@ pub struct Effect {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SavedNpc {
+pub struct NpcState {
     pub disposition: i16,
     pub reputation: i16,
     pub index: u32,
@@ -610,7 +610,7 @@ impl From<Npc> for Npc12Or52 {
                 reputation: npc.reputation, rank: npc.rank,
                 padding: npc.padding,
                 gold: npc.gold,
-                characteristics
+                stats: characteristics
             }),
             NpcStatsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
                 level: npc.level, disposition: npc.disposition,
@@ -645,7 +645,7 @@ impl From<Npc12Or52> for Npc {
             Npc12Or52::Npc52(npc) => Npc {
                 level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
                 rank: npc.rank, gold: npc.gold, padding: npc.padding,
-                characteristics: NpcStatsOption::Some(npc.characteristics)
+                characteristics: NpcStatsOption::Some(npc.stats)
             }
         }
     }
@@ -677,7 +677,7 @@ pub struct Npc12 {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Npc52 {
     pub level: u16,
-    pub characteristics: NpcStats,
+    pub stats: NpcStats,
     pub disposition: i8,
     pub reputation: i8,
     pub rank: i8,
@@ -733,7 +733,7 @@ impl<'de> de::Visitor<'de> for DialogTypeOptionHRDeserializer {
     type Value = DialogTypeOption;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "32-bit unsigned integer or NPC characteristics")
+        write!(f, "32-bit unsigned integer or NPC stats")
     }
 
     fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E> where E: de::Error {
@@ -1420,7 +1420,7 @@ pub enum Field {
     ScriptMetadata(ScriptMetadata),
     DialogMetadata(DialogTypeOption),
     FileMetadata(FileMetadata),
-    SavedNpc(SavedNpc),
+    NpcState(NpcState),
     Npc(Npc),
     Effect(Effect),
     SpellMetadata(SpellMetadata),

@@ -104,7 +104,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have file metadata type", self.record_tag, self.field_tag)))
             },
-            FieldType::SavedNpc => if let Field::SavedNpc(v) = self.field {
+            FieldType::NpcState => if let Field::NpcState(v) = self.field {
                 v.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have saved npc type", self.record_tag, self.field_tag)))
@@ -360,7 +360,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
                 FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
                 FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
-                FieldType::SavedNpc => SavedNpc::deserialize(deserializer).map(Field::SavedNpc),
+                FieldType::NpcState => NpcState::deserialize(deserializer).map(Field::NpcState),
                 FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
                 FieldType::Npc => if deserializer.is_human_readable() {
                     Npc::deserialize(deserializer)
