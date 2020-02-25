@@ -1788,7 +1788,7 @@ mod tests {
             file_type: FileType::ESS,
             author: "Some author".into(),
             description: vec!["descr line1".into(), "descr line2".into()],
-            records_count: 1333
+            records: 1333
         };
         let bin: Vec<u8> = serialize(&file_metadata, CodePage::English, false).unwrap();
         let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
@@ -1796,7 +1796,7 @@ mod tests {
         assert_eq!(res.file_type, file_metadata.file_type);
         assert_eq!(res.author, file_metadata.author);
         assert_eq!(res.description, file_metadata.description);
-        assert_eq!(res.records_count, file_metadata.records_count);
+        assert_eq!(res.records, file_metadata.records);
     }
 
     #[test]

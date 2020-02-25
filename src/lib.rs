@@ -123,7 +123,7 @@ mod tests {
                         file_type: FileType::ESS,
                         author: "test author".into(),
                         description: vec!["test description".into(), "AAA".into(), "".into()],
-                        records_count: 1
+                        records: 1
                     })),
                     (MAST, Field::StringZ("Mo__o_in_.esm".into())),
                     (DATA, Field::Long(137))
