@@ -222,6 +222,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
             },
+            FieldType::Position => if let Field::Position(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have position type", self.record_tag, self.field_tag)))
+            },
             FieldType::BipedObject => if let Field::BipedObject(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -369,6 +374,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 }.map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(Field::DialogMetadata),
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
+                FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),

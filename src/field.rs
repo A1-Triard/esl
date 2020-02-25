@@ -134,6 +134,7 @@ pub(crate) enum FieldType {
     Enchantment,
     Tool,
     RepairItem,
+    Position,
 }
 
 impl FieldType {
@@ -184,6 +185,7 @@ impl FieldType {
             (BSGN, DESC) => FieldType::StringZ,
             (_, DESC) => FieldType::String(None),
             (_, DNAM) => FieldType::StringZ,
+            (_, DODT) => FieldType::Position,
             (ALCH, ENAM) => FieldType::Effect,
             (ENCH, ENAM) => FieldType::Effect,
             (PCDT, ENAM) => FieldType::Long,
@@ -1401,6 +1403,29 @@ impl From<Tool> for RepairItem {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Position {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub x: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub y: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub z: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub x_rot: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub y_rot: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub z_rot: f32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1444,6 +1469,7 @@ pub enum Field {
     Clothing(Clothing),
     Enchantment(Enchantment),
     Tool(Tool),
+    Position(Position),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {

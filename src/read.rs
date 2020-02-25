@@ -605,6 +605,21 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
     )
 }
 
+fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32, le_f32, le_f32,
+                le_f32, le_f32, le_f32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(24)
+        ),
+        |(x, y, z, x_rot, y_rot, z_rot)| Position {
+            x, y, z, x_rot, y_rot, z_rot
+        }
+    )(input)
+}
+
 fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
     map(
         tuple((
@@ -857,6 +872,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
+            FieldType::Position => map(position_field, Field::Position)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
