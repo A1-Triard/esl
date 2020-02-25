@@ -133,6 +133,7 @@ pub enum FieldType {
     Clothing,
     Enchantment,
     Tool,
+    RepairItem,
 }
 
 impl FieldType {
@@ -254,6 +255,7 @@ impl FieldType {
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
             (_, RGNN) => FieldType::StringZ,
+            (REPA, RIDT) => FieldType::RepairItem,
             (FACT, RNAM) => FieldType::String(Some(32)),
             (SCPT, RNAM) => FieldType::Int,
             (_, RNAM) => FieldType::StringZ,
@@ -1374,6 +1376,19 @@ pub struct Tool {
     pub uses: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct RepairItem {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub uses: u32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub quality: f32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1417,6 +1432,7 @@ pub enum Field {
     Clothing(Clothing),
     Enchantment(Enchantment),
     Tool(Tool),
+    RepairItem(RepairItem),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
