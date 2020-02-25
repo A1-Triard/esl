@@ -324,7 +324,7 @@ fn script_metadata_field<'a>(code_page: CodePage)
     )
 }
 
-fn saved_npc_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
+fn npc_state_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
     map(
         set_err(
             tuple((le_i16, le_i16, le_u32)),
@@ -872,7 +872,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Float => map(float_field, Field::Float)(input),
             FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
             FieldType::ScriptMetadata => map(script_metadata_field(code_page), Field::ScriptMetadata)(input),
-            FieldType::NpcState => map(saved_npc_field, Field::NpcState)(input),
+            FieldType::NpcState => map(npc_state_field, Field::NpcState)(input),
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
@@ -1784,17 +1784,17 @@ mod tests {
     }
 
     #[test]
-    fn serialize_saved_npc() {
-        let saved_npc = NpcState {
+    fn serialize_npc_state() {
+        let npc_state = NpcState {
             disposition: -100,
             reputation: -200,
             index: 129
         };
-        let bin: Vec<u8> = serialize(&saved_npc, CodePage::English, false).unwrap();
-        let res = saved_npc_field(&bin).unwrap().1;
-        assert_eq!(res.disposition, saved_npc.disposition);
-        assert_eq!(res.reputation, saved_npc.reputation);
-        assert_eq!(res.index, saved_npc.index);
+        let bin: Vec<u8> = serialize(&npc_state, CodePage::English, false).unwrap();
+        let res = npc_state_field(&bin).unwrap().1;
+        assert_eq!(res.disposition, npc_state.disposition);
+        assert_eq!(res.reputation, npc_state.reputation);
+        assert_eq!(res.index, npc_state.index);
     }
 
     #[test]
