@@ -673,6 +673,18 @@ fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     )(input)
 }
 
+fn tool_field(input: &[u8]) -> IResult<&[u8], Tool, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_f32, le_u32, le_f32, le_u32)),
+            |_| FieldBodyError::UnexpectedEndOfField(16)
+        ),
+        |(weight, value, quality, uses)| Tool {
+            weight, value, quality, uses
+        }
+    )(input)
+}
+
 fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
     map(
         tuple((
@@ -833,6 +845,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
+            FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
             FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
             FieldType::Clothing => map(clothing_field, Field::Clothing)(input),

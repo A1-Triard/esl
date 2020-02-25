@@ -132,6 +132,7 @@ pub enum FieldType {
     BodyPart,
     Clothing,
     Enchantment,
+    Tool,
 }
 
 impl FieldType {
@@ -216,6 +217,7 @@ impl FieldType {
             (_, KNAM) => FieldType::StringZ,
             (LIGH, LHDT) => FieldType::Light,
             (PCDT, LNAM) => FieldType::Long,
+            (LOCK, LKDT) => FieldType::Tool,
             (CELL, LSHN) => FieldType::String(None),
             (CELL, LSTN) => FieldType::String(None),
             (_, LVCR) => FieldType::Byte,
@@ -247,6 +249,7 @@ impl FieldType {
             (NPCC, NPDT) => FieldType::SavedNpc,
             (_, NPCS) => FieldType::String(Some(32)),
             (_, ONAM) => FieldType::StringZ,
+            (PROB, PBDT) => FieldType::Tool,
             (PCDT, PNAM) => FieldType::Binary,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
@@ -275,7 +278,7 @@ impl FieldType {
             (_, WIDX) => FieldType::Long,
             (_, WNAM) => FieldType::Compressed,
             (WEAP, WPDT) => FieldType::Weapon,
-            (_, XCHG) => FieldType::Int,
+            (_, XCHG) => FieldType::Float,
             (_, XHLT) => FieldType::Int,
             (_, XIDX) => FieldType::Int,
             (SPLM, XNAM) => FieldType::Byte,
@@ -1358,6 +1361,19 @@ pub struct Enchantment {
     pub auto_calculate: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Tool {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub quality: f32,
+    pub uses: u32,
+}
+
 #[derive(Debug, Clone)]
 #[derive(Derivative)]
 #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
@@ -1400,6 +1416,7 @@ pub enum Field {
     BodyPart(BodyPart),
     Clothing(Clothing),
     Enchantment(Enchantment),
+    Tool(Tool),
 }
 
 fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
