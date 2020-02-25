@@ -392,7 +392,7 @@ pub struct SavedNpc {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct NpcCharacteristics {
+pub struct NpcStats {
     pub strength: u8,
     pub intelligence: u8,
     pub willpower: u8,
@@ -435,33 +435,33 @@ pub struct NpcCharacteristics {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum NpcCharacteristicsOption {
+pub enum NpcStatsOption {
     None(u16),
-    Some(NpcCharacteristics)
+    Some(NpcStats)
 }
 
 const U16_SERDE_SIZE: u32 = 12;
-const NPC_CHARACTERISTICS_SERDE_SIZE: u32 = 42;
+const NPC_STATS_SERDE_SIZE: u32 = 42;
 
-impl Serialize for NpcCharacteristicsOption {
+impl Serialize for NpcStatsOption {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
             match self {
-                &NpcCharacteristicsOption::None(padding) => serializer.serialize_u16(padding),
-                NpcCharacteristicsOption::Some(c) => c.serialize(serializer)
+                &NpcStatsOption::None(padding) => serializer.serialize_u16(padding),
+                NpcStatsOption::Some(c) => c.serialize(serializer)
             }
         } else {
             match self {
-                NpcCharacteristicsOption::None(padding) => serializer.serialize_newtype_variant(
-                    name_of!(type NpcCharacteristicsOption), 
+                NpcStatsOption::None(padding) => serializer.serialize_newtype_variant(
+                    name_of!(type NpcStatsOption), 
                     U16_SERDE_SIZE,
-                    name_of!(const None in NpcCharacteristicsOption),
+                    name_of!(const None in NpcStatsOption),
                     padding
                 ),
-                NpcCharacteristicsOption::Some(c) => serializer.serialize_newtype_variant(
-                    name_of!(type NpcCharacteristicsOption),
-                    NPC_CHARACTERISTICS_SERDE_SIZE,
-                    name_of!(const Some in NpcCharacteristicsOption),
+                NpcStatsOption::Some(c) => serializer.serialize_newtype_variant(
+                    name_of!(type NpcStatsOption),
+                    NPC_STATS_SERDE_SIZE,
+                    name_of!(const Some in NpcStatsOption),
                     c
                 ),
             }
@@ -469,34 +469,34 @@ impl Serialize for NpcCharacteristicsOption {
     }
 }
 
-struct NpcCharacteristicsOptionHRDeserializer;
+struct NpcStatsOptionHRDeserializer;
 
-impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionHRDeserializer {
-    type Value = NpcCharacteristicsOption;
+impl<'de> de::Visitor<'de> for NpcStatsOptionHRDeserializer {
+    type Value = NpcStatsOption;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "16-bit unsigned integer or NPC characteristics")
     }
 
     fn visit_u16<E>(self, v: u16) -> Result<Self::Value, E> where E: de::Error {
-        Ok(NpcCharacteristicsOption::None(v))
+        Ok(NpcStatsOption::None(v))
     }
 
     fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let c = NpcCharacteristics::deserialize(StructSeqProxyDeserializer::new(seq))?;
-        Ok(NpcCharacteristicsOption::Some(c))
+        let c = NpcStats::deserialize(StructSeqProxyDeserializer::new(seq))?;
+        Ok(NpcStatsOption::Some(c))
     }
 
     fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let c = NpcCharacteristics::deserialize(StructMapProxyDeserializer::new(map))?;
-        Ok(NpcCharacteristicsOption::Some(c))
+        let c = NpcStats::deserialize(StructMapProxyDeserializer::new(map))?;
+        Ok(NpcStatsOption::Some(c))
     }
 }
 
-struct NpcCharacteristicsOptionNHRDeserializer;
+struct NpcStatsOptionNHRDeserializer;
 
-impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionNHRDeserializer {
-    type Value = NpcCharacteristicsOption;
+impl<'de> de::Visitor<'de> for NpcStatsOptionNHRDeserializer {
+    type Value = NpcStatsOption;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "16-bit unsigned integer or NPC characteristics")
@@ -505,22 +505,22 @@ impl<'de> de::Visitor<'de> for NpcCharacteristicsOptionNHRDeserializer {
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            U16_SERDE_SIZE => Ok(NpcCharacteristicsOption::None(variant.newtype_variant()?)),
-            NPC_CHARACTERISTICS_SERDE_SIZE => Ok(NpcCharacteristicsOption::Some(variant.newtype_variant()?)),
+            U16_SERDE_SIZE => Ok(NpcStatsOption::None(variant.newtype_variant()?)),
+            NPC_STATS_SERDE_SIZE => Ok(NpcStatsOption::Some(variant.newtype_variant()?)),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
 }
 
-impl<'de> Deserialize<'de> for NpcCharacteristicsOption {
-    fn deserialize<D>(deserializer: D) -> Result<NpcCharacteristicsOption, D::Error> where D: Deserializer<'de> {
+impl<'de> Deserialize<'de> for NpcStatsOption {
+    fn deserialize<D>(deserializer: D) -> Result<NpcStatsOption, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_any(NpcCharacteristicsOptionHRDeserializer)
+            deserializer.deserialize_any(NpcStatsOptionHRDeserializer)
         } else {
             deserializer.deserialize_enum(
-                name_of!(type NpcCharacteristicsOption),
-                &[name_of!(const None in NpcCharacteristicsOption), name_of!(const Some in NpcCharacteristicsOption)],
-                NpcCharacteristicsOptionNHRDeserializer
+                name_of!(type NpcStatsOption),
+                &[name_of!(const None in NpcStatsOption), name_of!(const Some in NpcStatsOption)],
+                NpcStatsOptionNHRDeserializer
             )
         }
     }
@@ -599,20 +599,20 @@ pub struct Npc {
     pub rank: i8,
     pub gold: i32,
     pub padding: u8,
-    pub characteristics: NpcCharacteristicsOption
+    pub characteristics: NpcStatsOption
 }
 
 impl From<Npc> for Npc12Or52 {
     fn from(npc: Npc) -> Npc12Or52 {
         match npc.characteristics {
-            NpcCharacteristicsOption::Some(characteristics) => Npc12Or52::Npc52(Npc52 {
+            NpcStatsOption::Some(characteristics) => Npc12Or52::Npc52(Npc52 {
                 level: npc.level, disposition: npc.disposition,
                 reputation: npc.reputation, rank: npc.rank,
                 padding: npc.padding,
                 gold: npc.gold,
                 characteristics
             }),
-            NpcCharacteristicsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
+            NpcStatsOption::None(padding_16) => Npc12Or52::Npc12(Npc12 {
                 level: npc.level, disposition: npc.disposition,
                 reputation: npc.reputation, rank: npc.rank,
                 padding_8: npc.padding, padding_16,
@@ -640,12 +640,12 @@ impl From<Npc12Or52> for Npc {
             Npc12Or52::Npc12(npc) => Npc {
                 level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
                 rank: npc.rank, gold: npc.gold, padding: npc.padding_8,
-                characteristics: NpcCharacteristicsOption::None(npc.padding_16)
+                characteristics: NpcStatsOption::None(npc.padding_16)
             },
             Npc12Or52::Npc52(npc) => Npc {
                 level: npc.level, disposition: npc.disposition, reputation: npc.reputation,
                 rank: npc.rank, gold: npc.gold, padding: npc.padding,
-                characteristics: NpcCharacteristicsOption::Some(npc.characteristics)
+                characteristics: NpcStatsOption::Some(npc.characteristics)
             }
         }
     }
@@ -677,7 +677,7 @@ pub struct Npc12 {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Npc52 {
     pub level: u16,
-    pub characteristics: NpcCharacteristics,
+    pub characteristics: NpcStats,
     pub disposition: i8,
     pub reputation: i8,
     pub rank: i8,

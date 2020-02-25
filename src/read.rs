@@ -697,7 +697,7 @@ fn repair_item_field(input: &[u8]) -> IResult<&[u8], RepairItem, FieldBodyError>
     )(input)
 }
 
-fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
+fn npc_stats(input: &[u8]) -> IResult<&[u8], NpcStats, ()> {
     map(
         tuple((
             tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
@@ -712,7 +712,7 @@ fn npc_characteristics(input: &[u8]) -> IResult<&[u8], NpcCharacteristics, ()> {
             (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
             (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand, faction),
             (health, magicka, fatigue)
-        )| NpcCharacteristics {
+        )| NpcStats {
             strength, intelligence, willpower, agility, speed,
             endurance, personality, luck, block,
             armorer, medium_armor, heavy_armor, blunt_weapon,
@@ -761,7 +761,7 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
 fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
     map(
         set_err(
-            tuple((le_u16, npc_characteristics, le_i8, le_i8, le_i8, le_u8, le_i32)),
+            tuple((le_u16, npc_stats, le_i8, le_i8, le_i8, le_u8, le_i32)),
             |_| FieldBodyError::UnexpectedEndOfField(52)
         ),
         |(level, characteristics, disposition, reputation, rank, padding, gold)| Npc52 {
@@ -1799,7 +1799,7 @@ mod tests {
 
     #[test]
     fn serialize_npc_characteristics() {
-        let npc_char = NpcCharacteristics {
+        let npc_char = NpcStats {
             strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
             personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1809,7 +1809,7 @@ mod tests {
             hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
         };
         let bin: Vec<u8> = serialize(&npc_char, CodePage::English, false).unwrap();
-        let res = npc_characteristics(&bin).unwrap().1;
+        let res = npc_stats(&bin).unwrap().1;
         assert_eq!(res.strength, npc_char.strength);
         assert_eq!(res.intelligence, npc_char.intelligence);
         assert_eq!(res.willpower, npc_char.willpower);
@@ -1853,7 +1853,7 @@ mod tests {
 
     #[test]
     fn serialize_npc_52() {
-        let npc_characteristics = NpcCharacteristics {
+        let npc_characteristics = NpcStats {
             strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
             personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
@@ -1869,7 +1869,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: NpcCharacteristicsOption::Some(npc_characteristics.clone())
+            characteristics: NpcStatsOption::Some(npc_characteristics.clone())
         };
         let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
@@ -1879,7 +1879,7 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcCharacteristicsOption::Some(characteristics) = res.characteristics {
+        if let NpcStatsOption::Some(characteristics) = res.characteristics {
             assert_eq!(characteristics.enchant, npc_characteristics.enchant);
         } else {
             panic!()
@@ -1895,7 +1895,7 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            characteristics: NpcCharacteristicsOption::None(30001)
+            characteristics: NpcStatsOption::None(30001)
         };
         let bin: Vec<u8> = serialize(&Npc12Or52::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
@@ -1905,7 +1905,7 @@ mod tests {
         assert_eq!(res.rank, npc.rank);
         assert_eq!(res.gold, npc.gold);
         assert_eq!(res.padding, npc.padding);
-        if let NpcCharacteristicsOption::None(padding) = res.characteristics {
+        if let NpcStatsOption::None(padding) = res.characteristics {
             assert_eq!(padding, 30001);
         } else {
             panic!()
