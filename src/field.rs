@@ -14,7 +14,7 @@ pub use crate::tag::*;
 include!(concat!(env!("OUT_DIR"), "/tags.rs"));
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
-pub enum Newline {
+pub(crate) enum Newline {
     Unix,
     Dos
 }
@@ -59,7 +59,7 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug)]
-    #[repr(i32)]
+    #[repr(u32)]
     pub enum EffectRange {
         Self_ = 0,
         Touch = 1,
@@ -90,7 +90,7 @@ impl FromStr for EffectRange {
     }
 }
 
-enum_serde!(EffectRange, "effect range", i32, to_i32, as from_i32);
+enum_serde!(EffectRange, "effect range", u32, to_u32, as from_u32);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FieldType {
@@ -361,12 +361,13 @@ mod string_32 {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FileMetadata {
     pub version: u32,
+    #[serde(rename="type")]
     pub file_type: FileType,
     #[serde(with = "string_32")]
     pub author: String,
     #[serde(with = "multiline_256_dos")]
     pub description: Vec<String>,
-    pub records_count: u32
+    pub records: u32
 }
 
 mod multiline_256_dos {
@@ -633,12 +634,13 @@ macro_attr! {
 
 enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32);
 
-pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE = 1, PC_START = 2, ALWAYS_SUCCEEDS = 4);
+pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE_COST = 1, PC_START = 2, ALWAYS_SUCCEEDS = 4);
 
 enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SpellMetadata {
+    #[serde(rename="type")]
     pub spell_type: SpellType,
     pub cost: u32,
     pub flags: SpellFlags
@@ -744,14 +746,14 @@ macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
     #[repr(u8)]
-    pub enum BloodTexture {
+    pub enum Blood {
         Default = 0,
         Skeleton = 4,
         MetalSparks = 8,
     }
 }
 
-enum_serde!(BloodTexture, "blood texture", u8, to_u8, as from_u8);
+enum_serde!(Blood, "blood", u8, to_u8, as from_u8);
 
 pub_bitflags_display!(NpcFlags, u8,
     FEMALE = 0x01,
@@ -775,9 +777,9 @@ pub_bitflags_display!(CreatureFlags, u8,
 enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct FlagsAndBloodTexture<Flags> {
+pub struct FlagsAndBlood<Flags> {
     pub flags: Flags,
-    pub blood_texture: BloodTexture,
+    pub blood: Blood,
     pub padding: u16,
 }
 
@@ -817,6 +819,7 @@ enum_serde!(CreatureType, "creature type", u32, to_u32, as from_u32);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Creature {
+    #[serde(rename="type")]
     pub creature_type: CreatureType,
     pub level: u32,
     pub strength: u32,
@@ -945,6 +948,7 @@ enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32);
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct Apparatus {
+    #[serde(rename="type")]
     pub apparatus_type: ApparatusType,
     #[derivative(PartialEq(compare_with = "eq_f32"))]
     #[serde(with = "float_32")]
@@ -980,6 +984,7 @@ enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32);
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct Armor {
+    #[serde(rename="type")]
     pub armor_type: ArmorType,
     #[derivative(PartialEq(compare_with = "eq_f32"))]
     #[serde(with = "float_32")]
@@ -1029,6 +1034,7 @@ pub struct Weapon {
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
+    #[serde(rename="type")]
     pub weapon_type: WeaponType,
     pub health: u16,
     #[derivative(PartialEq(compare_with = "eq_f32"))]
@@ -1052,7 +1058,7 @@ macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
     #[repr(u8)]
-    pub enum MeshType {
+    pub enum BodyPartKind {
         Head = 0,
         Hair = 1,
         Neck = 2,
@@ -1071,7 +1077,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(MeshType, "mesh type", u8, to_u8, as from_u8);
+enum_serde!(BodyPartKind, "body part kind", u8, to_u8, as from_u8);
 
 pub_bitflags_display!(BodyPartFlags, u8,
     FEMALE = 0x01,
@@ -1155,15 +1161,17 @@ enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BodyPart {
-    pub mesh_type: MeshType,
+    pub kind: BodyPartKind,
     pub vampire: u8,
     pub flags: BodyPartFlags,
+    #[serde(rename="type")]
     pub body_part_type: BodyPartType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct Clothing {
+    #[serde(rename="type")]
     pub clothing_type: ClothingType,
     #[derivative(PartialEq(compare_with = "eq_f32"))]
     #[serde(with = "float_32")]
@@ -1189,6 +1197,7 @@ enum_serde!(EnchantmentType, "enchantment type", u32, to_u32, as from_u32);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Enchantment {
+    #[serde(rename="type")]
     pub enchantment_type: EnchantmentType,
     pub cost: u32,
     pub charge_amount: u32,
@@ -1327,8 +1336,8 @@ define_field!(
     AiTravel(AiTravel),
     AiTarget(AiTarget),
     AiActivate(AiActivate),
-    NpcFlags(FlagsAndBloodTexture<NpcFlags>),
-    CreatureFlags(FlagsAndBloodTexture<CreatureFlags>),
+    NpcFlags(FlagsAndBlood<NpcFlags>),
+    CreatureFlags(FlagsAndBlood<CreatureFlags>),
     Book(Book),
     ContainerFlags(ContainerFlags),
     Creature(Creature),
@@ -1348,7 +1357,7 @@ define_field!(
     PathGrid(PathGrid),
 );
 
-fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
+fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
     match (record_tag, field_tag) {
         (_, AI_A) => true,
         (_, AI_E) => true,
@@ -1370,8 +1379,8 @@ fn allow_coerce(record_tag: Tag, field_tag: Tag) -> bool {
 }
 
 impl Field {
-    pub fn coerce(&mut self, record_tag: Tag, field_tag: Tag) {
-        if !allow_coerce(record_tag, field_tag) { return; }
+    pub fn fit(&mut self, record_tag: Tag, field_tag: Tag) {
+        if !allow_fit(record_tag, field_tag) { return; }
         match FieldType::from_tags(record_tag, field_tag) {
             FieldType::String(_) => {
                 if let Field::String(v) = self {

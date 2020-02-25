@@ -213,8 +213,8 @@ fn file_metadata_field<'a>(code_page: CodePage)
                 |_| FieldBodyError::UnexpectedEndOfField(300)
             )
         )),
-        |(version, file_type, (author, description, records_count))| FileMetadata {
-            version, file_type, author, description, records_count
+        |(version, file_type, (author, description, records))| FileMetadata {
+            version, file_type, author, description, records
         }
     )
 }
@@ -521,7 +521,7 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| MeshType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::MeshType(b), 0).into()))
+                |b, _| BodyPartKind::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0).into()))
             ),
             set_err(
                 le_u8,
@@ -536,8 +536,8 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
                 |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3).into()))
             )
         )),
-        |(mesh_type, vampire, flags, body_part_type)| BodyPart {
-            mesh_type, vampire, flags, body_part_type
+        |(kind, vampire, flags, body_part_type)| BodyPart {
+            kind, vampire, flags, body_part_type
         }
     )(input)
 }
@@ -647,7 +647,7 @@ fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
     )(input)
 }
 
-fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags>, FieldBodyError> {
+fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<NpcFlags>, FieldBodyError> {
     map(
         tuple((
             map_res(
@@ -656,19 +656,19 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<NpcFlags
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
+                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
-        |(flags, blood_texture, padding)| FlagsAndBloodTexture {
+        |(flags, blood, padding)| FlagsAndBlood {
             flags,
-            blood_texture,
+            blood,
             padding
         }
     )(input)
 }
 
-fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<CreatureFlags>, FieldBodyError> {
+fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<CreatureFlags>, FieldBodyError> {
     map(
         tuple((
             map_res(
@@ -677,13 +677,13 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBloodTexture<Cre
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BloodTexture::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BloodTexture(b), 1).into()))
+                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1).into()))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
-        |(flags, blood_texture, padding)| FlagsAndBloodTexture {
+        |(flags, blood, padding)| FlagsAndBlood {
             flags,
-            blood_texture,
+            blood,
             padding
         }
     )(input)
@@ -834,8 +834,8 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
             map_res(
-                set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_i32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4).into()))
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4).into()))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -1107,14 +1107,14 @@ impl Error for UnexpectedFieldSize {
 #[derive(Debug, Clone)]
 pub enum Unknown {
     FileType(u32),
-    EffectRange(i32),
+    EffectRange(u32),
     DialogType(u8),
     SpellType(u32),
     SpellFlags(u32),
     AiServices(u32),
     NpcFlags(u8),
     CreatureFlags(u8),
-    BloodTexture(u8),
+    Blood(u8),
     ContainerFlags(u32),
     CreatureType(u32),
     LightFlags(u32),
@@ -1122,7 +1122,7 @@ pub enum Unknown {
     WeaponFlags(u32),
     WeaponType(u16),
     ArmorType(u32),
-    MeshType(u8),
+    BodyPartKind(u8),
     BodyPartType(u8),
     BodyPartFlags(u8),
     BipedObject(u8),
@@ -1143,7 +1143,7 @@ impl fmt::Display for Unknown {
             Unknown::AiServices(v) => write!(f, "AI services {:08X}h", v),
             Unknown::NpcFlags(v) => write!(f, "NPC flags {:02X}h", v),
             Unknown::CreatureFlags(v) => write!(f, "creature flags {:02X}h", v),
-            Unknown::BloodTexture(v) => write!(f, "blood texture {}", v),
+            Unknown::Blood(v) => write!(f, "blood {}", v),
             Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
             Unknown::CreatureType(v) => write!(f, "creature type {}", v),
             Unknown::LightFlags(v) => write!(f, "light flags {:08X}h", v),
@@ -1151,7 +1151,7 @@ impl fmt::Display for Unknown {
             Unknown::WeaponFlags(v) => write!(f, "weapon flags {:08X}h", v),
             Unknown::WeaponType(v) => write!(f, "weapon type {}", v),
             Unknown::ArmorType(v) => write!(f, "armor type {}", v),
-            Unknown::MeshType(v) => write!(f, "mesh type {}", v),
+            Unknown::BodyPartKind(v) => write!(f, "body part kind {}", v),
             Unknown::BodyPartType(v) => write!(f, "body part type {}", v),
             Unknown::BodyPartFlags(v) => write!(f, "body part flags {:02X}h", v),
             Unknown::BipedObject(v) => write!(f, "biped object {}", v),

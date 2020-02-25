@@ -27,7 +27,7 @@ pub struct Record {
 impl Record {
     pub fn coerce(&mut self) {
         for &mut (field_tag, ref mut field) in self.fields.iter_mut() {
-            field.coerce(self.tag, field_tag);
+            field.fit(self.tag, field_tag);
         }
     }
 }
@@ -410,8 +410,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),
                 FieldType::AiTarget => AiTarget::deserialize(deserializer).map(Field::AiTarget),
                 FieldType::AiActivate => AiActivate::deserialize(deserializer).map(Field::AiActivate),
-                FieldType::NpcFlags => <FlagsAndBloodTexture<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
-                FieldType::CreatureFlags => <FlagsAndBloodTexture<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
+                FieldType::NpcFlags => <FlagsAndBlood<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
+                FieldType::CreatureFlags => <FlagsAndBlood<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::Tool => Tool::deserialize(deserializer).map(Field::Tool),
                 FieldType::RepairItem => if deserializer.is_human_readable() {
