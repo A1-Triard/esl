@@ -1255,6 +1255,7 @@ pub_bitflags_display!(CellFlags, u32,
     INTERIOR = 0x01,
     HAS_WATER = 0x02,
     ILLEGAL_TO_SLEEP = 0x04,
+    _40 = 0x40,
     BEHAVE_LIKE_EXTERIOR = 0x80
 );
 

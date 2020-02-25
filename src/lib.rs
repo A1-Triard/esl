@@ -180,16 +180,22 @@ mod tests {
     }
 
 //    #[test]
-//    fn read_empty_file() {
-//        let file = File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
-//        let mut file = BufReader::new(file);
+//    fn read_test_file() {
+//        let file = std::fs::File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
+//        let mut file = std::io::BufReader::new(file);
 //        let records = Records::new(CodePage::Russian, 0, &mut file);
 //        let records = records.map(|x| {
-//            let mut x = x.unwrap();
-//            x.coerce();
-//            x
+//            match x {
+//                Ok(mut x) => {
+//                    x.coerce();
+//                    x
+//                },
+//                Err(e) => {
+//                    panic!(format!("{}", e))
+//                }
+//            }
 //        }).collect::<Vec<_>>();
-//        let o = File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
-//        serde_yaml::to_writer(BufWriter::new(o), &records).unwrap();
+//        let o = std::fs::File::create("D:\\MFR\\Data Files\\Morrowind.esm.yaml").unwrap();
+//        serde_yaml::to_writer(std::io::BufWriter::new(o), &records).unwrap();
 //    }
 }
