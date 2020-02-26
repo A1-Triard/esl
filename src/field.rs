@@ -145,6 +145,7 @@ pub(crate) enum FieldType {
     F32List,
     Weather,
     Color,
+    SoundChance
 }
 
 impl FieldType {
@@ -295,7 +296,7 @@ impl FieldType {
             (_, SLLD) => FieldType::I32List,
             (_, SLSD) => FieldType::I16List,
             (PCDT, SNAM) => FieldType::U8ListZip,
-            (REGN, SNAM) => FieldType::U8List,
+            (REGN, SNAM) => FieldType::SoundChance,
             (_, SNAM) => FieldType::StringZ,
             (SPLM, SPDT) => FieldType::U8ListZip,
             (SPEL, SPDT) => FieldType::SpellMetadata,
@@ -895,7 +896,7 @@ impl Color {
         Color((r as u32) | ((g as u32) << 8) | ((b as u32) << 16) | ((a as u32) << 24))
     }
     pub fn rgb(r: u8, g: u8, b: u8) -> Color {
-        Color((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
+        Color((r as u32) | ((g as u32) << 8) | ((b as u32) << 16) | 0xFF000000)
     }
     
     pub fn r(self) -> u8 { (self.0 & 0xFF) as u8 }
@@ -1357,6 +1358,13 @@ pub struct WeatherEx {
     pub blizzard: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct SoundChance {
+    #[serde(with = "string_32")]
+    pub sound_id: String,
+    pub chance: u8,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -1414,6 +1422,7 @@ define_field!(
     Position(Position),
     ScriptMetadata(ScriptMetadata),
     ScriptVars(ScriptVars),
+    SoundChance(SoundChance),
     SpellMetadata(SpellMetadata),
     String(String),
     StringList(Vec<String>),
@@ -1442,6 +1451,7 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         (_, SCTX) => true,
         (BOOK, TEXT) => true,
         (FACT, RNAM) => true,
+        (REGN, SNAM) => true,
         // TODO (JOUR, NAME)
         _ => false
     }
@@ -1454,6 +1464,13 @@ impl Field {
             FieldType::String(_) => {
                 if let Field::String(v) = self {
                     v.find('\0').map(|i| v.truncate(i));
+                } else {
+                    panic!("invalid field type")
+                }
+            },
+            FieldType::SoundChance => {
+                if let Field::SoundChance(v) = self {
+                    v.sound_id.find('\0').map(|i| v.sound_id.truncate(i));
                 } else {
                     panic!("invalid field type")
                 }

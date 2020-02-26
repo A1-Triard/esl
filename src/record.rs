@@ -258,6 +258,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have weather type", self.record_tag, self.field_tag)))
             },
+            FieldType::SoundChance => if let Field::SoundChance(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have sound chance type", self.record_tag, self.field_tag)))
+            },
             FieldType::Color => if let Field::Color(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -443,6 +448,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::AiActivate => AiActivate::deserialize(deserializer).map(Field::AiActivate),
                 FieldType::NpcFlags => <FlagsAndBlood<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsAndBlood<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
+                FieldType::SoundChance => SoundChance::deserialize(deserializer).map(Field::SoundChance),
                 FieldType::Color => Color::deserialize(deserializer).map(Field::Color),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::Tool => Tool::deserialize(deserializer).map(Field::Tool),

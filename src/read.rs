@@ -314,6 +314,21 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
     )(input)
 }
 
+fn sound_chance_field<'a>(code_page: CodePage)
+    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], SoundChance, FieldBodyError> {
+
+    map(
+        set_err(
+            pair(
+                string_len(code_page, 32),
+                le_u8
+            ),
+            |_| FieldBodyError::UnexpectedEndOfField(32 + 1)
+        ),
+        |(sound_id, chance)| SoundChance { sound_id, chance }
+    )
+}
+
 fn script_metadata_field<'a>(code_page: CodePage)
     -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ScriptMetadata, FieldBodyError> {
 
@@ -989,6 +1004,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::I32List => map(i32_list_field, Field::I32List)(input),
             FieldType::I16List => map(i16_list_field, Field::I16List)(input),
             FieldType::F32List => map(f32_list_field, Field::F32List)(input),
+            FieldType::SoundChance => map(sound_chance_field(code_page), Field::SoundChance)(input),
             FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
             FieldType::ScriptMetadata => map(script_metadata_field(code_page), Field::ScriptMetadata)(input),
             FieldType::ScriptVars => map(script_vars_field, Field::ScriptVars)(input),
