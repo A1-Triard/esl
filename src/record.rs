@@ -268,6 +268,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have color type", self.record_tag, self.field_tag)))
             },
+            FieldType::Potion => if let Field::Potion(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have potion type", self.record_tag, self.field_tag)))
+            },
             FieldType::Grid => if let Field::Grid(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -436,6 +441,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
                 FieldType::NpcState => NpcState::deserialize(deserializer).map(Field::NpcState),
                 FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
+                FieldType::Potion => Potion::deserialize(deserializer).map(Field::Potion),
                 FieldType::Npc => Npc::deserialize(deserializer).map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
                 FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),

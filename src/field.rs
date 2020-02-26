@@ -145,7 +145,8 @@ pub(crate) enum FieldType {
     F32List,
     Weather,
     Color,
-    SoundChance
+    SoundChance,
+    Potion,
 }
 
 impl FieldType {
@@ -163,6 +164,7 @@ impl FieldType {
             (_, AI_T) => FieldType::AiTravel,
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
+            (ALCH, ALDT) => FieldType::Potion,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (ARMO, AODT) => FieldType::Armor,
@@ -731,14 +733,14 @@ pub struct AiWander {
 
 pub_bitflags_display!(AiTravelFlags, u32,
     RESET = 0x000100,
-    _400000 = 0x400000,
-    _40000 = 0x040000,
-    _20000 = 0x020000,
-    _10000 = 0x010000,
-    _4000 = 0x004000,
-    _1000 = 0x001000,
     _1 = 0x000001,
-    _800 = 0x000800
+    _800 = 0x000800,
+    _1000 = 0x001000,
+    _4000 = 0x004000,
+    _10000 = 0x010000,
+    _20000 = 0x020000,
+    _40000 = 0x040000,
+    _400000 = 0x400000
 );
 
 enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64, ^0x0001);
@@ -1311,11 +1313,11 @@ pub_bitflags_display!(CellFlags, u32,
     INTERIOR = 0x01,
     HAS_WATER = 0x02,
     ILLEGAL_TO_SLEEP = 0x04,
-    _40 = 0x40,
     BEHAVE_LIKE_EXTERIOR = 0x80,
     _8 = 0x08,
+    _10 = 0x10,
     _20 = 0x20,
-    _10 = 0x10
+    _40 = 0x40
 );
 
 enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
@@ -1363,6 +1365,16 @@ pub struct SoundChance {
     #[serde(with = "string_32")]
     pub sound_id: String,
     pub chance: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Potion {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub weight: f32,
+    pub value: u32,
+    pub auto_calculate_value: u32,
 }
 
 macro_rules! define_field {
@@ -1433,6 +1445,7 @@ define_field!(
     U8List(Vec<u8>),
     Weapon(Weapon),
     Weather(Weather),
+    Potion(Potion),
 );
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {

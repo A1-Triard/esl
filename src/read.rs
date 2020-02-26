@@ -810,6 +810,18 @@ fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     )(input)
 }
 
+fn potion_field(input: &[u8]) -> IResult<&[u8], Potion, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_f32, le_u32, le_u32)),
+            |_| FieldBodyError::UnexpectedEndOfField(12)
+        ),
+        |(weight, value, auto_calculate_value)| Potion {
+            weight, value, auto_calculate_value
+        }
+    )(input)
+}
+
 fn tool_field(input: &[u8]) -> IResult<&[u8], Tool, FieldBodyError> {
     map(
         set_err(
@@ -996,6 +1008,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Grid => map(grid_field, Field::Grid)(input),
             FieldType::Color => map(color_field, Field::Color)(input),
+            FieldType::Potion => map(potion_field, Field::Potion)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),
             FieldType::I64 => map(i64_field, Field::I64)(input),
