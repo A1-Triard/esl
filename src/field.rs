@@ -144,6 +144,7 @@ pub(crate) enum FieldType {
     I32List,
     F32List,
     Weather,
+    Color,
 }
 
 impl FieldType {
@@ -178,8 +179,8 @@ impl FieldType {
             (_, CHRD) => FieldType::U8ListZip,
             (ARMO, CNAM) => FieldType::String(None),
             (CLOT, CNAM) => FieldType::String(None),
-            (KLST, CNAM) => FieldType::I32,
-            (REGN, CNAM) => FieldType::I32,
+            (KLST, CNAM) => FieldType::Color,
+            (REGN, CNAM) => FieldType::Color,
             (_, CNAM) => FieldType::StringZ,
             (CONT, CNDT) => FieldType::F32,
             (CELL, CRED) => FieldType::U8ListZip,
@@ -931,7 +932,7 @@ impl FromStr for Color {
     }
 }
 
-enum_serde!(Color, "ARGB color", u32, ());
+enum_serde!(Color, "RGBA color", u32, ());
 
 pub_bitflags_display!(LightFlags, u32,
     DYNAMIC = 0x0001,
@@ -1386,6 +1387,7 @@ define_field!(
     Book(Book),
     Cell(Cell),
     Clothing(Clothing),
+    Color(Color),
     ContainerFlags(ContainerFlags),
     Creature(Creature),
     CreatureFlags(FlagsAndBlood<CreatureFlags>),

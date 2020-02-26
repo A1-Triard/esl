@@ -479,6 +479,13 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
     )(input)
 }
 
+fn color_field(input: &[u8]) -> IResult<&[u8], Color, FieldBodyError> {
+    map(
+        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
+        Color
+    )(input)
+}
+
 fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
     map(
         set_err(
@@ -973,6 +980,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Grid => map(grid_field, Field::Grid)(input),
+            FieldType::Color => map(color_field, Field::Color)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),
             FieldType::I64 => map(i64_field, Field::I64)(input),
