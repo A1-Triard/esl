@@ -98,7 +98,7 @@ pub(crate) enum FieldType {
     String(Option<u32>),
     StringZ,
     Multiline(Newline),
-    StringZList,
+    StringZs,
     Item,
     Float,
     Int,
@@ -139,6 +139,10 @@ pub(crate) enum FieldType {
     PositionOrCell,
     Grid,
     PathGrid,
+    ScriptVars,
+    Shorts,
+    Ints,
+    Floats,
 }
 
 impl FieldType {
@@ -272,8 +276,12 @@ impl FieldType {
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (_, SCRI) => FieldType::StringZ,
             (_, SCTX) => FieldType::Multiline(Newline::Dos),
-            (SCPT, SCVR) => FieldType::StringZList,
+            (SCPT, SCVR) => FieldType::StringZs,
             (_, SCVR) => FieldType::String(None),
+            (SCPT, SLCS) => FieldType::ScriptVars,
+            (SCPT, SLFD) => FieldType::Floats,
+            (SCPT, SLLD) => FieldType::Ints,
+            (SCPT, SLSD) => FieldType::Shorts,
             (PCDT, SNAM) => FieldType::Binary,
             (REGN, SNAM) => FieldType::Binary,
             (_, SNAM) => FieldType::StringZ,
@@ -335,12 +343,17 @@ mod float_32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct ScriptMetadata {
-    #[serde(with = "string_32")]
-    pub name: String,
+pub struct ScriptVars {
     pub shorts: u32,
     pub longs: u32,
     pub floats: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ScriptMetadata {
+    #[serde(with = "string_32")]
+    pub name: String,
+    pub vars: ScriptVars,
     pub data_size: u32,
     pub var_table_size: u32
 }
@@ -696,7 +709,15 @@ pub struct AiWander {
 }
 
 pub_bitflags_display!(AiTravelFlags, u32,
-    RESET = 0x0100
+    RESET = 0x000100,
+    _400000 = 0x400000,
+    _40000 = 0x040000,
+    _20000 = 0x020000,
+    _10000 = 0x010000,
+    _4000 = 0x004000,
+    _1000 = 0x001000,
+    _1 = 0x000001,
+    _800 = 0x000800
 );
 
 enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64, ^0x0001);
@@ -1270,7 +1291,10 @@ pub_bitflags_display!(CellFlags, u32,
     HAS_WATER = 0x02,
     ILLEGAL_TO_SLEEP = 0x04,
     _40 = 0x40,
-    BEHAVE_LIKE_EXTERIOR = 0x80
+    BEHAVE_LIKE_EXTERIOR = 0x80,
+    _8 = 0x08,
+    _20 = 0x20,
+    _10 = 0x10
 );
 
 enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
@@ -1315,8 +1339,8 @@ define_field!(
     Binary(Vec<u8>),
     String(String),
     StringZ(StringZ),
-    StringList(Vec<String>),
-    StringZList(StringZList),
+    Strings(Vec<String>),
+    StringZs(StringZList),
     Item(Item),
     Float(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
     Int(i32),
@@ -1355,6 +1379,10 @@ define_field!(
     Cell(Cell),
     Grid(Grid),
     PathGrid(PathGrid),
+    ScriptVars(ScriptVars),
+    Shorts(Vec<i16>),
+    Ints(Vec<i32>),
+    Floats(Vec<f32>),
 );
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
@@ -1390,7 +1418,7 @@ impl Field {
                 }
             },
             FieldType::Multiline(newline) => {
-                if let Field::StringList(v) = self {
+                if let Field::Strings(v) = self {
                     let mut s = v.join(newline.as_str());
                     s.find('\0').map(|i| s.truncate(i));
                     *v = s.split(newline.as_str()).map(String::from).collect();
@@ -1406,8 +1434,8 @@ impl Field {
                     panic!("invalid field type")
                 }
             },
-            FieldType::StringZList => {
-                if let Field::StringZList(v) = self {
+            FieldType::StringZs => {
+                if let Field::StringZs(v) = self {
                     v.has_tail_zero = true;
                 } else {
                     panic!("invalid field type")

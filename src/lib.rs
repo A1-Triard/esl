@@ -208,7 +208,7 @@ mod tests {
 
 //    #[test]
 //    fn read_test_file() {
-//        let file = std::fs::File::open("D:\\MFR\\Data Files\\Morrowind.esm").unwrap();
+//        let file = std::fs::File::open("D:\\MFR\\Saves\\quiksave.ess").unwrap();
 //        let mut file = std::io::BufReader::new(file);
 //        let records = Records::new(CodePage::Russian, 0, &mut file);
 //        let records = records.map(|x| {

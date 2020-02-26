@@ -55,12 +55,12 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
-            FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
+            FieldType::Multiline(newline) => if let Field::Strings(s) = self.field {
                 serialize_string_list(&s, newline.as_str(), None, serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
-            FieldType::StringZList => if let Field::StringZList(s) = self.field {
+            FieldType::StringZs => if let Field::StringZs(s) = self.field {
                 s.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
@@ -98,6 +98,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 v.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have script metadata type", self.record_tag, self.field_tag)))
+            },
+            FieldType::ScriptVars => if let Field::ScriptVars(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have script vars type", self.record_tag, self.field_tag)))
             },
             FieldType::FileMetadata => if let Field::FileMetadata(v) = self.field {
                 v.serialize(serializer)
@@ -278,6 +283,21 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have long type", self.record_tag, self.field_tag)))
             },
+            FieldType::Floats => if let Field::Floats(v) = self.field {
+                serialize_f32_s_as_is(v, serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have floats list type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Ints => if let Field::Ints(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have ints list type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Shorts => if let Field::Shorts(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have shorts list type", self.record_tag, self.field_tag)))
+            },
             FieldType::Byte => if let &Field::Byte(v) = self.field {
                 serializer.serialize_u8(v)
             } else {
@@ -385,9 +405,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
-                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::StringList),
-                FieldType::StringZList =>
-                    StringZList::deserialize(deserializer).map(Field::StringZList),
+                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::Strings),
+                FieldType::StringZs =>
+                    StringZList::deserialize(deserializer).map(Field::StringZs),
                 FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),
                 FieldType::Compressed => if deserializer.is_human_readable() {
                     deserializer.deserialize_str(Base64Deserializer)
@@ -397,6 +417,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
                 FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
+                FieldType::ScriptVars => ScriptVars::deserialize(deserializer).map(Field::ScriptVars),
                 FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
                 FieldType::NpcState => NpcState::deserialize(deserializer).map(Field::NpcState),
                 FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
@@ -436,6 +457,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
                 FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
                 FieldType::Long => i64::deserialize(deserializer).map(Field::Long),
+                FieldType::Floats => deserialize_f32_s_as_is(deserializer).map(Field::Floats),
+                FieldType::Ints => <Vec<i32>>::deserialize(deserializer).map(Field::Ints),
+                FieldType::Shorts => <Vec<i16>>::deserialize(deserializer).map(Field::Shorts),
                 FieldType::Byte => u8::deserialize(deserializer).map(Field::Byte),
             }.map(|x| Right((self.field_tag, x)))
         }
@@ -789,10 +813,10 @@ mod tests {
             fields: vec![
                 (SCHD, Field::ScriptMetadata(ScriptMetadata {
                     name: "Scr1".into(),
-                    shorts: 1, longs: 2, floats: 3,
+                    vars: ScriptVars { shorts: 1, longs: 2, floats: 3 },
                     data_size: 800, var_table_size: 35
                 })),
-                (SCTX, Field::StringList(vec![
+                (SCTX, Field::Strings(vec![
                     "Begin Scr1\\".into(),
                     "    short\u{7} i".into(),
                     "End Scr1".into(),
@@ -808,15 +832,15 @@ mod tests {
         assert_eq!(res.fields[1].0, SCTX);
         if let Field::ScriptMetadata(res) = &res.fields[0].1 {
             assert_eq!(res.name, "Scr1");
-            assert_eq!(res.shorts, 1);
-            assert_eq!(res.longs, 2);
-            assert_eq!(res.floats, 3);
+            assert_eq!(res.vars.shorts, 1);
+            assert_eq!(res.vars.longs, 2);
+            assert_eq!(res.vars.floats, 3);
             assert_eq!(res.data_size, 800);
             assert_eq!(res.var_table_size, 35);
         } else {
             panic!()
         }
-        if let Field::StringList(res) = &res.fields[1].1 {
+        if let Field::Strings(res) = &res.fields[1].1 {
             assert_eq!(res.len(), 3);
             assert_eq!(res[0], "Begin Scr1\\");
             assert_eq!(res[1], "    short\u{7} i");

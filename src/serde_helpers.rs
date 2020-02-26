@@ -1,10 +1,54 @@
 use std::fmt::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self, Unexpected};
+use serde::de::{self, Unexpected, SeqAccess};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeTuple, SerializeSeq};
 use std::mem::{transmute};
+
+struct FloatSurrogate(f32);
+
+impl Serialize for FloatSurrogate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serialize_f32_as_is(self.0, serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for FloatSurrogate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        Ok(FloatSurrogate(deserialize_f32_as_is(deserializer)?))
+    }
+}
+
+pub fn serialize_f32_s_as_is<S>(v: &[f32], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    let mut serializer = serializer.serialize_seq(Some(v.len()))?;
+    for &f in v.iter() {
+        serializer.serialize_element(&FloatSurrogate(f))?;
+    }
+    serializer.end()
+}
+
+struct FloatsDeserializer;
+
+impl<'de> de::Visitor<'de> for FloatsDeserializer {
+    type Value = Vec<f32>;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "list of floats")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+        let mut vec = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(f) = seq.next_element::<FloatSurrogate>()? {
+            vec.push(f.0);
+        }
+        Ok(vec)
+    }
+}
+
+pub fn deserialize_f32_s_as_is<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error> where D: Deserializer<'de> {
+    deserializer.deserialize_seq(FloatsDeserializer)
+}
 
 pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if v.is_nan() && serializer.is_human_readable() {
