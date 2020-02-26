@@ -126,15 +126,15 @@ mod tests {
                         records: 1
                     })),
                     (MAST, Field::StringZ("Mo__o_in_.esm".into())),
-                    (DATA, Field::Long(137))
+                    (DATA, Field::I64(137))
                 ]
             },
             Record {
                 tag: Tag::from_str("CLOH").unwrap(),
                 flags: RecordFlags::empty(),
                 fields: vec![
-                    (Tag::from_str("NAMF").unwrap(), Field::Binary(b"namename".iter().map(|&x| x).collect())),
-                    (Tag::from_str("IDID").unwrap(), Field::Binary(b"idid\0".iter().map(|&x| x).collect())),
+                    (Tag::from_str("NAMF").unwrap(), Field::U8List(b"namename".iter().map(|&x| x).collect())),
+                    (Tag::from_str("IDID").unwrap(), Field::U8List(b"idid\0".iter().map(|&x| x).collect())),
                 ]
             }
         ]
@@ -188,7 +188,7 @@ mod tests {
                 (NAME, Field::StringZ("".into())),
                 (DATA, Field::Cell(Cell { flags:CellFlags::HAS_WATER, grid: Grid { x: 20, y: 4} })),
                 (RGNN, Field::StringZ("Coast Region".into())),
-                (FRMR, Field::Int(347140)),
+                (FRMR, Field::I32(347140)),
                 (NAME, Field::StringZ("crab".into())),
                 (DATA, Field::Position(Position { x: 165898.0, y: 38710.484375, z: 198.8867950439453, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
             ]

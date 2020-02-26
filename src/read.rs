@@ -137,11 +137,11 @@ enum FieldBodyError {
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
 
-fn binary_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
+fn u8_list_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], input.into()))
 }
 
-fn compressed_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
+fn u8_list_zip_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
     encoder.write_all(input).unwrap();
     Ok((&input[input.len() .. ], encoder.finish().unwrap()))
@@ -176,7 +176,7 @@ fn string_z_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], St
     }
 }
 
-fn string_z_s_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) 
+fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) 
     -> IResult<&'a [u8], StringZList, E> {
     
     no_err(
@@ -249,11 +249,11 @@ fn item_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8],
     )
 }
 
-fn int_field(input: &[u8]) -> IResult<&[u8], i32, FieldBodyError> {
+fn i32_field(input: &[u8]) -> IResult<&[u8], i32, FieldBodyError> {
     set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
 }
 
-fn ints_field(input: &[u8]) -> IResult<&[u8], Vec<i32>, FieldBodyError> {
+fn i32_list_field(input: &[u8]) -> IResult<&[u8], Vec<i32>, FieldBodyError> {
     let m = input.len() % 4;
     if m != 0 {
         return Err(nom::Err::Error(FieldBodyError::UnexpectedEndOfField((input.len() - m + 4) as u32)));
@@ -261,11 +261,11 @@ fn ints_field(input: &[u8]) -> IResult<&[u8], Vec<i32>, FieldBodyError> {
     set_err(many0(le_i32), |_| unreachable!())(input)
 }
 
-fn short_field(input: &[u8]) -> IResult<&[u8], i16, FieldBodyError> {
+fn i16_field(input: &[u8]) -> IResult<&[u8], i16, FieldBodyError> {
     set_err(le_i16, |_| FieldBodyError::UnexpectedEndOfField(2))(input)
 }
 
-fn shorts_field(input: &[u8]) -> IResult<&[u8], Vec<i16>, FieldBodyError> {
+fn i16_list_field(input: &[u8]) -> IResult<&[u8], Vec<i16>, FieldBodyError> {
     let m = input.len() % 2;
     if m != 0 {
         return Err(nom::Err::Error(FieldBodyError::UnexpectedEndOfField((input.len() - m + 2) as u32)));
@@ -273,19 +273,19 @@ fn shorts_field(input: &[u8]) -> IResult<&[u8], Vec<i16>, FieldBodyError> {
     set_err(many0(le_i16), |_| unreachable!())(input)
 }
 
-fn long_field(input: &[u8]) -> IResult<&[u8], i64, FieldBodyError> {
+fn i64_field(input: &[u8]) -> IResult<&[u8], i64, FieldBodyError> {
     set_err(le_i64, |_| FieldBodyError::UnexpectedEndOfField(8))(input)
 }
 
-fn byte_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
+fn u8_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
     set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1))(input)
 }
 
-fn float_field(input: &[u8]) -> IResult<&[u8], f32, FieldBodyError> {
+fn f32_field(input: &[u8]) -> IResult<&[u8], f32, FieldBodyError> {
     set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
 }
 
-fn floats_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
+fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
     let m = input.len() % 4;
     if m != 0 {
         return Err(nom::Err::Error(FieldBodyError::UnexpectedEndOfField((input.len() - m + 4) as u32)));
@@ -909,14 +909,14 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
     move |input| {
         let field_type = FieldType::from_tags(record_tag, field_tag);
         match field_type {
-            FieldType::Binary => map(binary_field, Field::Binary)(input),
-            FieldType::Compressed => map(compressed_field, Field::Binary)(input),
-            FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::Strings)(input),
+            FieldType::U8List => map(u8_list_field, Field::U8List)(input),
+            FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
+            FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
             FieldType::Item => map(item_field(code_page), Field::Item)(input),
             FieldType::String(Some(len)) => map(string_len_field(code_page, len), Field::String)(input),
             FieldType::String(None) => map(string_field(code_page), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
-            FieldType::StringZs => map(string_z_s_field(code_page), Field::StringZs)(input),
+            FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
             FieldType::SpellMetadata => map(spell_metadata_field, Field::SpellMetadata)(input),
             FieldType::Ai => map(ai_field, Field::Ai)(input),
@@ -942,14 +942,14 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Grid => map(grid_field, Field::Grid)(input),
-            FieldType::Int => map(int_field, Field::Int)(input),
-            FieldType::Short => map(short_field, Field::Short)(input),
-            FieldType::Long => map(long_field, Field::Long)(input),
-            FieldType::Byte => map(byte_field, Field::Byte)(input),
-            FieldType::Float => map(float_field, Field::Float)(input),
-            FieldType::Ints => map(ints_field, Field::Ints)(input),
-            FieldType::Shorts => map(shorts_field, Field::Shorts)(input),
-            FieldType::Floats => map(floats_field, Field::Floats)(input),
+            FieldType::I32 => map(i32_field, Field::I32)(input),
+            FieldType::I16 => map(i16_field, Field::I16)(input),
+            FieldType::I64 => map(i64_field, Field::I64)(input),
+            FieldType::U8 => map(u8_field, Field::U8)(input),
+            FieldType::F32 => map(f32_field, Field::F32)(input),
+            FieldType::I32List => map(i32_list_field, Field::I32List)(input),
+            FieldType::I16List => map(i16_list_field, Field::I16List)(input),
+            FieldType::F32List => map(f32_list_field, Field::F32List)(input),
             FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
             FieldType::ScriptMetadata => map(script_metadata_field(code_page), Field::ScriptMetadata)(input),
             FieldType::ScriptVars => map(script_vars_field, Field::ScriptVars)(input),
@@ -962,7 +962,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
-                4 => map(int_field, Field::Int)(input),
+                4 => map(i32_field, Field::I32)(input),
                 1 => map(dialog_type_field, Field::DialogType)(input),
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
@@ -1700,7 +1700,7 @@ mod tests {
     #[test]
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
-        if let (remaining_input, Field::Strings(result)) =
+        if let (remaining_input, Field::StringList(result)) =
                 field_body(CodePage::Russian, INFO, BNAM, input.len() as u32)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
@@ -2035,7 +2035,7 @@ mod tests {
                     vars: ScriptVars { shorts: 1, longs: 2, floats: 3 },
                     data_size: 800, var_table_size: 35
                 })),
-                (SCTX, Field::Strings(vec![
+                (SCTX, Field::StringList(vec![
                     "Begin Scr1".into(),
                     "short i".into(),
                     "End Scr1".into(),

@@ -55,22 +55,22 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
-            FieldType::Multiline(newline) => if let Field::Strings(s) = self.field {
+            FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
                 serialize_string_list(&s, newline.as_str(), None, serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
-            FieldType::StringZs => if let Field::StringZs(s) = self.field {
+            FieldType::StringZList => if let Field::StringZList(s) = self.field {
                 s.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Binary => if let Field::Binary(v) = self.field {
+            FieldType::U8List => if let Field::U8List(v) = self.field {
                 serializer.serialize_bytes(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have binary type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Compressed => if let Field::Binary(v) = self.field {
+            FieldType::U8ListZip => if let Field::U8List(v) = self.field {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&base64::encode(v))
                 } else {
@@ -82,7 +82,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                     serializer.serialize_bytes(&uncompressed)
                 }
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have binary type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
             FieldType::Item => if let Field::Item(v) = self.field {
                 v.serialize(serializer)
@@ -126,8 +126,8 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             },
             FieldType::DialogMetadata => match self.field {
                 &Field::DialogType(v) => DialogTypeOption::Some(v).serialize(serializer),
-                &Field::Int(v) => DialogTypeOption::None(v).serialize(serializer),
-                _ => Err(S::Error::custom(&format!("{} {} field should have dialog or int type", self.record_tag, self.field_tag)))
+                &Field::I32(v) => DialogTypeOption::None(v).serialize(serializer),
+                _ => Err(S::Error::custom(&format!("{} {} field should have dialog or 32-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::PositionOrCell => match &self.field {
                 &Field::Position(v) => PositionOrCell::Position(v.clone()).serialize(serializer),
@@ -263,42 +263,42 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have path grid type", self.record_tag, self.field_tag)))
             },
-            FieldType::Float => if let &Field::Float(v) = self.field {
+            FieldType::F32 => if let &Field::F32(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have float type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
-            FieldType::Int => if let &Field::Int(v) = self.field {
+            FieldType::I32 => if let &Field::I32(v) = self.field {
                 serializer.serialize_i32(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have int type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 32-bit int type", self.record_tag, self.field_tag)))
             },
-            FieldType::Short => if let &Field::Short(v) = self.field {
+            FieldType::I16 => if let &Field::I16(v) = self.field {
                 serializer.serialize_i16(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have short type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 16-bit int type", self.record_tag, self.field_tag)))
             },
-            FieldType::Long => if let &Field::Long(v) = self.field {
+            FieldType::I64 => if let &Field::I64(v) = self.field {
                 serializer.serialize_i64(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have long type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
-            FieldType::Floats => if let Field::Floats(v) = self.field {
+            FieldType::F32List => if let Field::F32List(v) = self.field {
                 serialize_f32_s_as_is(v, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have floats list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Ints => if let Field::Ints(v) = self.field {
+            FieldType::I32List => if let Field::I32List(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have ints list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 32-bit int list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Shorts => if let Field::Shorts(v) = self.field {
+            FieldType::I16List => if let Field::I16List(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have shorts list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have 16-bit int list type", self.record_tag, self.field_tag)))
             },
-            FieldType::Byte => if let &Field::Byte(v) = self.field {
+            FieldType::U8 => if let &Field::U8(v) = self.field {
                 serializer.serialize_u8(v)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have byte type", self.record_tag, self.field_tag)))
@@ -405,15 +405,15 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
-                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::Strings),
-                FieldType::StringZs =>
-                    StringZList::deserialize(deserializer).map(Field::StringZs),
-                FieldType::Binary => <Vec<u8>>::deserialize(deserializer).map(Field::Binary),
-                FieldType::Compressed => if deserializer.is_human_readable() {
+                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::StringList),
+                FieldType::StringZList =>
+                    StringZList::deserialize(deserializer).map(Field::StringZList),
+                FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
+                FieldType::U8ListZip => if deserializer.is_human_readable() {
                     deserializer.deserialize_str(Base64Deserializer)
                 } else {
                     deserializer.deserialize_bytes(ZlibEncoderDeserializer)
-                }.map(Field::Binary),
+                }.map(Field::U8List),
                 FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
                 FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
@@ -453,14 +453,14 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
-                FieldType::Float => deserialize_f32_as_is(deserializer).map(Field::Float),
-                FieldType::Int => i32::deserialize(deserializer).map(Field::Int),
-                FieldType::Short => i16::deserialize(deserializer).map(Field::Short),
-                FieldType::Long => i64::deserialize(deserializer).map(Field::Long),
-                FieldType::Floats => deserialize_f32_s_as_is(deserializer).map(Field::Floats),
-                FieldType::Ints => <Vec<i32>>::deserialize(deserializer).map(Field::Ints),
-                FieldType::Shorts => <Vec<i16>>::deserialize(deserializer).map(Field::Shorts),
-                FieldType::Byte => u8::deserialize(deserializer).map(Field::Byte),
+                FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
+                FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
+                FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
+                FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
+                FieldType::F32List => deserialize_f32_s_as_is(deserializer).map(Field::F32List),
+                FieldType::I32List => <Vec<i32>>::deserialize(deserializer).map(Field::I32List),
+                FieldType::I16List => <Vec<i16>>::deserialize(deserializer).map(Field::I16List),
+                FieldType::U8 => u8::deserialize(deserializer).map(Field::U8),
             }.map(|x| Right((self.field_tag, x)))
         }
     }
@@ -585,7 +585,7 @@ enum DialogTypeOption {
 impl From<DialogTypeOption> for Field {
     fn from(v: DialogTypeOption) -> Self {
         match v {
-            DialogTypeOption::None(i) => Field::Int(i),
+            DialogTypeOption::None(i) => Field::I32(i),
             DialogTypeOption::Some(v) => Field::DialogType(v),
         }
     }
@@ -816,7 +816,7 @@ mod tests {
                     vars: ScriptVars { shorts: 1, longs: 2, floats: 3 },
                     data_size: 800, var_table_size: 35
                 })),
-                (SCTX, Field::Strings(vec![
+                (SCTX, Field::StringList(vec![
                     "Begin Scr1\\".into(),
                     "    short\u{7} i".into(),
                     "End Scr1".into(),
@@ -840,7 +840,7 @@ mod tests {
         } else {
             panic!()
         }
-        if let Field::Strings(res) = &res.fields[1].1 {
+        if let Field::StringList(res) = &res.fields[1].1 {
             assert_eq!(res.len(), 3);
             assert_eq!(res[0], "Begin Scr1\\");
             assert_eq!(res[1], "    short\u{7} i");
