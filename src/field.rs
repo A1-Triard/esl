@@ -1345,9 +1345,9 @@ macro_rules! define_field {
 
 define_field!(
     Ai(Ai),
+    AiActivate(AiActivate),
     AiTarget(AiTarget),
     AiTravel(AiTravel),
-    AiActivate(AiActivate),
     AiWander(AiWander),
     Apparatus(Apparatus),
     Armor(Armor),
