@@ -355,6 +355,21 @@ fn script_vars_field(input: &[u8]) -> IResult<&[u8], ScriptVars, FieldBodyError>
     )(input)
 }
 
+fn weather_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_u8, le_u8, le_u8, le_u8, le_u8,
+                le_u8, le_u8, le_u8, le_u8, le_u8
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(10)
+        ),
+        |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard)| Weather {
+            clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard
+        }
+    )(input)
+}
+
 fn npc_state_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
     map(
         set_err(
@@ -971,6 +986,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
                 12 => map(cell_field, Field::Cell)(input),
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
+            FieldType::Weather => map(weather_field, Field::Weather)(input),
         }
     }
 }

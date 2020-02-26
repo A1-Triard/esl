@@ -143,13 +143,17 @@ pub(crate) enum FieldType {
     I16List,
     I32List,
     F32List,
+    Weather,
 }
 
 impl FieldType {
     pub fn from_tags(record_tag: Tag, field_tag: Tag) -> FieldType {
         match (record_tag, field_tag) {
             (APPA, AADT) => FieldType::Apparatus,
-            (INFO, ACDT) => FieldType::String(None),
+            (INFO, ACDT) => FieldType::StringZ,
+            (_, ACDT) => FieldType::U8ListZip,
+            (_, ACSC) => FieldType::U8ListZip,
+            (_, ACSL) => FieldType::U8ListZip,
             (CELL, ACTN) => FieldType::I32,
             (_, AI_A) => FieldType::AiActivate,
             (_, AI_E) => FieldType::AiTarget,
@@ -167,17 +171,18 @@ impl FieldType {
             (BODY, BNAM) => FieldType::String(None),
             (CLOT, BNAM) => FieldType::String(None),
             (INFO, BNAM) => FieldType::Multiline(Newline::Dos),
-            (PCDT, BNAM) => FieldType::String(None),
             (_, BNAM) => FieldType::StringZ,
             (_, BSND) => FieldType::StringZ,
             (_, BVFX) => FieldType::StringZ,
             (BODY, BYDT) => FieldType::BodyPart,
+            (_, CHRD) => FieldType::U8ListZip,
             (ARMO, CNAM) => FieldType::String(None),
             (CLOT, CNAM) => FieldType::String(None),
             (KLST, CNAM) => FieldType::I32,
             (REGN, CNAM) => FieldType::I32,
             (_, CNAM) => FieldType::StringZ,
             (CONT, CNDT) => FieldType::F32,
+            (CELL, CRED) => FieldType::U8ListZip,
             (_, CSND) => FieldType::StringZ,
             (CLOT, CTDT) => FieldType::Clothing,
             (_, CVFX) => FieldType::StringZ,
@@ -188,10 +193,11 @@ impl FieldType {
             (LEVI, DATA) => FieldType::I32,
             (LTEX, DATA) => FieldType::StringZ,
             (PGRD, DATA) => FieldType::PathGrid,
+            (REFR, DATA) => FieldType::Position,
             (SSCR, DATA) => FieldType::String(None),
             (TES3, DATA) => FieldType::I64,
-            (QUES, DATA) => FieldType::String(None),
-            (DIAL, DELE) => FieldType::I32,
+            (QUES, DATA) => FieldType::StringZ,
+            (_, DELE) => FieldType::I32,
             (BSGN, DESC) => FieldType::StringZ,
             (_, DESC) => FieldType::String(None),
             (_, DNAM) => FieldType::StringZ,
@@ -211,8 +217,8 @@ impl FieldType {
             (GLOB, FNAM) => FieldType::String(None),
             (PCDT, FNAM) => FieldType::U8List,
             (_, FNAM) => FieldType::StringZ,
-            (CELL, FRMR) => FieldType::I32,
-            (TES3, GMDT) => FieldType::U8ListZip,
+            (_, FRMR) => FieldType::I32,
+            (_, GMDT) => FieldType::U8ListZip,
             (TES3, HEDR) => FieldType::FileMetadata,
             (_, HSND) => FieldType::StringZ,
             (_, HVFX) => FieldType::StringZ,
@@ -227,7 +233,7 @@ impl FieldType {
             (_, INTV) => FieldType::I32,
             (INGR, IRDT) => FieldType::Ingredient,
             (_, ITEX) => FieldType::StringZ,
-            (PCDT, KNAM) => FieldType::U8List,
+            (PCDT, KNAM) => FieldType::U8ListZip,
             (_, KNAM) => FieldType::StringZ,
             (LIGH, LHDT) => FieldType::Light,
             (PCDT, LNAM) => FieldType::I64,
@@ -245,6 +251,7 @@ impl FieldType {
             (CELL, NAM0) => FieldType::I32,
             (SPLM, NAM0) => FieldType::U8,
             (CELL, NAM5) => FieldType::I32,
+            (CELL, NAM8) => FieldType::U8ListZip,
             (CELL, NAM9) => FieldType::I32,
             (PCDT, NAM9) => FieldType::I32,
             (GMST, NAME) => FieldType::String(None),
@@ -259,6 +266,7 @@ impl FieldType {
             (_, NNAM) => FieldType::StringZ,
             (_, NPCO) => FieldType::Item,
             (CREA, NPDT) => FieldType::Creature,
+            (SPLM, NPDT) => FieldType::U8ListZip,
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::NpcState,
             (_, NPCS) => FieldType::String(Some(32)),
@@ -266,7 +274,7 @@ impl FieldType {
             (PROB, PBDT) => FieldType::Tool,
             (_, PGRC) => FieldType::U8ListZip,
             (_, PGRP) => FieldType::U8ListZip,
-            (PCDT, PNAM) => FieldType::U8List,
+            (PCDT, PNAM) => FieldType::U8ListZip,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
             (_, RGNN) => FieldType::StringZ,
@@ -285,10 +293,12 @@ impl FieldType {
             (_, SLFD) => FieldType::F32List,
             (_, SLLD) => FieldType::I32List,
             (_, SLSD) => FieldType::I16List,
-            (PCDT, SNAM) => FieldType::U8List,
+            (PCDT, SNAM) => FieldType::U8ListZip,
             (REGN, SNAM) => FieldType::U8List,
             (_, SNAM) => FieldType::StringZ,
+            (SPLM, SPDT) => FieldType::U8ListZip,
             (SPEL, SPDT) => FieldType::SpellMetadata,
+            (_, STPR) => FieldType::U8ListZip,
             (_, STRV) => FieldType::String(None),
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (_, TEXT) => FieldType::StringZ,
@@ -297,6 +307,7 @@ impl FieldType {
             (_, VHGT) => FieldType::U8ListZip,
             (_, VNML) => FieldType::U8ListZip,
             (_, VTEX) => FieldType::U8ListZip,
+            (REGN, WEAT) => FieldType::Weather,
             (_, WHGT) => FieldType::I32,
             (_, WIDX) => FieldType::I64,
             (_, WNAM) => FieldType::U8ListZip,
@@ -1326,6 +1337,20 @@ pub struct PathGrid {
     pub points: u16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Weather {
+    pub clear: u8,
+    pub cloudy: u8,
+    pub foggy: u8,
+    pub overcast: u8,
+    pub rain: u8,
+    pub thunder: u8,
+    pub ash: u8,
+    pub blight: u8,
+    pub snow: u8,
+    pub blizzard: u8,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -1391,6 +1416,7 @@ define_field!(
     U8(u8),
     U8List(Vec<u8>),
     Weapon(Weapon),
+    Weather(Weather),
 );
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {

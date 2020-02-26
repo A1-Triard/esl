@@ -253,6 +253,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have enchantment type", self.record_tag, self.field_tag)))
             },
+            FieldType::Weather => if let Field::Weather(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have weather type", self.record_tag, self.field_tag)))
+            },
             FieldType::Grid => if let Field::Grid(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -440,6 +445,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 } else {
                     RepairItem::deserialize(deserializer).map(|x| x.into())
                 }.map(Field::Tool),
+                FieldType::Weather => Weather::deserialize(deserializer).map(Field::Weather),
                 FieldType::Light => Light::deserialize(deserializer).map(Field::Light),
                 FieldType::MiscItem => MiscItem::deserialize(deserializer).map(Field::MiscItem),
                 FieldType::Apparatus => Apparatus::deserialize(deserializer).map(Field::Apparatus),
