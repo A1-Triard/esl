@@ -360,12 +360,28 @@ fn weather_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
         set_err(
             tuple((
                 le_u8, le_u8, le_u8, le_u8, le_u8,
+                le_u8, le_u8, le_u8
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(8)
+        ),
+        |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight)| Weather {
+            clear, cloudy, foggy, overcast, rain, thunder, ash, blight, ex: None
+        }
+    )(input)
+}
+
+fn weather_ex_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_u8, le_u8, le_u8, le_u8, le_u8,
                 le_u8, le_u8, le_u8, le_u8, le_u8
             )),
             |_| FieldBodyError::UnexpectedEndOfField(10)
         ),
         |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard)| Weather {
-            clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard
+            clear, cloudy, foggy, overcast, rain, thunder, ash, blight,
+            ex: Some(WeatherEx { snow, blizzard })
         }
     )(input)
 }
@@ -986,7 +1002,11 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
                 12 => map(cell_field, Field::Cell)(input),
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
-            FieldType::Weather => map(weather_field, Field::Weather)(input),
+            FieldType::Weather => match field_size {
+                8 => map(weather_field, Field::Weather)(input),
+                10 => map(weather_ex_field, Field::Weather)(input),
+                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+            },
         }
     }
 }

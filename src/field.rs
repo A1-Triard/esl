@@ -1347,6 +1347,11 @@ pub struct Weather {
     pub thunder: u8,
     pub ash: u8,
     pub blight: u8,
+    pub ex: Option<WeatherEx>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct WeatherEx {
     pub snow: u8,
     pub blizzard: u8,
 }
