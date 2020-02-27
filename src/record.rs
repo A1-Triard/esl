@@ -273,6 +273,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have potion type", self.record_tag, self.field_tag)))
             },
+            FieldType::Class => if let Field::Class(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have class type", self.record_tag, self.field_tag)))
+            },
             FieldType::Grid => if let Field::Grid(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -475,6 +480,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Enchantment => Enchantment::deserialize(deserializer).map(Field::Enchantment),
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
+                FieldType::Class => Class::deserialize(deserializer).map(Field::Class),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
                 FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),

@@ -727,6 +727,45 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
     )
 }
 
+fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
+    map(
+        tuple((
+            set_err(
+                pair(le_u32, le_u32),
+                |_| FieldBodyError::UnexpectedEndOfField(60)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
+                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8).into()))
+            ),
+            set_err(
+                tuple((
+                    le_u32, le_u32, le_u32, le_u32, le_u32,
+                    le_u32, le_u32, le_u32, le_u32, le_u32,
+                    le_u32
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(60)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
+                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 56).into()))
+            )
+        )),
+        |(
+            (primary_attribute_1, primary_attribute_2),
+            specialization,
+            (minor_skill_1, major_skill_1, minor_skill_2, major_skill_2, minor_skill_3, major_skill_3, minor_skill_4, major_skill_4, minor_skill_5, major_skill_5, playable),
+            auto_calc_services
+        )| Class {
+            primary_attribute_1, primary_attribute_2,
+            specialization,
+            minor_skill_1, minor_skill_2, minor_skill_3, minor_skill_4, minor_skill_5,
+            major_skill_1, major_skill_2, major_skill_3, major_skill_4, major_skill_5,
+            playable, auto_calc_services
+        }
+    )(input)
+}
+
 fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
     map(
         set_err(
@@ -1028,6 +1067,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
                 x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
+            FieldType::Class => map(class_field, Field::Class)(input),
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
                 4 => map(i32_field, Field::I32)(input),
@@ -1225,30 +1265,31 @@ impl Error for UnexpectedFieldSize {
 
 #[derive(Debug, Clone)]
 pub enum Unknown {
-    FileType(u32),
-    EffectRange(u32),
-    DialogType(u8),
-    SpellType(u32),
-    SpellFlags(u32),
     AiServices(u32),
-    NpcFlags(u8),
-    CreatureFlags(u8),
-    Blood(u8),
-    ContainerFlags(u32),
-    CreatureType(u32),
-    LightFlags(u32),
+    AiTravelFlags(u32),
     ApparatusType(u32),
-    WeaponFlags(u32),
-    WeaponType(u16),
     ArmorType(u32),
+    BipedObject(u8),
+    Blood(u8),
+    BodyPartFlags(u8),
     BodyPartKind(u8),
     BodyPartType(u8),
-    BodyPartFlags(u8),
-    BipedObject(u8),
-    ClothingType(u32),
-    AiTravelFlags(u32),
-    EnchantmentType(u32),
     CellFlags(u32),
+    ClothingType(u32),
+    ContainerFlags(u32),
+    CreatureFlags(u8),
+    CreatureType(u32),
+    DialogType(u8),
+    EffectRange(u32),
+    EnchantmentType(u32),
+    FileType(u32),
+    LightFlags(u32),
+    NpcFlags(u8),
+    Specialization(u32),
+    SpellFlags(u32),
+    SpellType(u32),
+    WeaponFlags(u32),
+    WeaponType(u16),
 }
 
 impl fmt::Display for Unknown {
@@ -1278,6 +1319,7 @@ impl fmt::Display for Unknown {
             Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
+            Unknown::Specialization(v) => write!(f, "specialization {}", v),
         }
     }
 }

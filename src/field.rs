@@ -147,6 +147,7 @@ pub(crate) enum FieldType {
     Color,
     SoundChance,
     Potion,
+    Class,
 }
 
 impl FieldType {
@@ -180,6 +181,7 @@ impl FieldType {
             (_, BVFX) => FieldType::StringZ,
             (BODY, BYDT) => FieldType::BodyPart,
             (_, CHRD) => FieldType::U8ListZip,
+            (CLAS, CLDT) => FieldType::Class,
             (ARMO, CNAM) => FieldType::String(None),
             (CLOT, CNAM) => FieldType::String(None),
             (KLST, CNAM) => FieldType::Color,
@@ -695,9 +697,9 @@ pub_bitflags_display!(AiServices, u32, [
     REPAIR_ITEMS = 0x00000200,
     MISCELLANEOUS  = 0x00000400
 ], [
-    POTIONS = 0x00002000,
     SPELLS = 0x00000800,
     MAGIC_ITEMS = 0x00001000,
+    POTIONS = 0x00002000,
     TRAINING = 0x00004000,
     SPELLMAKING = 0x00008000,
     ENCHANTING = 0x00010000,
@@ -1377,6 +1379,39 @@ pub struct Potion {
     pub auto_calculate_value: u32,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
+    pub enum Specialization {
+        Combat = 0,
+        Magic = 1,
+        Stealth = 2,
+    }
+}
+
+enum_serde!(Specialization, "specialization", u32, to_u32, as from_u32);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Class {
+    pub primary_attribute_1: u32,
+    pub primary_attribute_2: u32,
+    pub specialization: Specialization,
+    pub minor_skill_1: u32,
+    pub major_skill_1: u32,
+    pub minor_skill_2: u32,
+    pub major_skill_2: u32,
+    pub minor_skill_3: u32,
+    pub major_skill_3: u32,
+    pub minor_skill_4: u32,
+    pub major_skill_4: u32,
+    pub minor_skill_5: u32,
+    pub major_skill_5: u32,
+    pub playable: u32,
+    pub auto_calc_services: AiServices,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -1406,6 +1441,7 @@ define_field!(
     BodyPart(BodyPart),
     Book(Book),
     Cell(Cell),
+    Class(Class),
     Clothing(Clothing),
     Color(Color),
     ContainerFlags(ContainerFlags),
