@@ -295,7 +295,7 @@ fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
     set_err(many0(le_f32), |_| unreachable!())(input)
 }
 
-fn attribute_option_8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
+fn attribute_either_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
     map(
         le_i8,
         move |b| if b == -1 { 
@@ -308,7 +308,7 @@ fn attribute_option_8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribu
     )(input)
 }
 
-fn attribute_option_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
+fn attribute_option_i32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
     map_res(
         set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |b, _| if b == -1 {
@@ -321,6 +321,32 @@ fn attribute_option_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) ->
     )
 }
 
+fn skill_option_i32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Skill>, FieldBodyError> {
+    map_res(
+        set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |b, _| if b == -1 {
+            Ok(None)
+        } else if let Some(a) = Skill::from_i32(b) {
+            Ok(Some(a))
+        } else {
+            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SkillRef(b), offset)))
+        }
+    )
+}
+
+fn skill_either_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, ()> {
+    map(
+        le_i32,
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = Skill::from_i32(b) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
+    )(input)
+}
+
 fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
     map(
         tuple((
@@ -328,21 +354,24 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
                 tuple((
                     le_f32, le_u32,
                     le_i32, le_i32, le_i32, le_i32,
-                    le_i32, le_i32, le_i32, le_i32,
                 )),
                 |_| FieldBodyError::UnexpectedEndOfField(56)
             ),
-            attribute_option_32(56, 40),
-            attribute_option_32(56, 44),
-            attribute_option_32(56, 48),
-            attribute_option_32(56, 52)
+            skill_option_i32(56, 24),
+            skill_option_i32(56, 28),
+            skill_option_i32(56, 32),
+            skill_option_i32(56, 36),
+            attribute_option_i32(56, 40),
+            attribute_option_i32(56, 44),
+            attribute_option_i32(56, 48),
+            attribute_option_i32(56, 52)
         )),
         |(
             (
                 weight, value,
                 effect_1, effect_2, effect_3, effect_4,
-                skill_1, skill_2, skill_3, skill_4,
             ),
+            skill_1, skill_2, skill_3, skill_4,
             attribute_1, attribute_2, attribute_3, attribute_4
         )| Ingredient {
             weight, value,
@@ -547,7 +576,7 @@ fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
                 pair(le_f32, le_u32),
                 |_| FieldBodyError::UnexpectedEndOfField(12)
             ),
-            bool_32(12, 8)
+            bool_u32(12, 8)
         ),
         |((weight, value), is_key)| MiscItem {
             weight, value, is_key
@@ -666,7 +695,7 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
                 |b, _| BodyPartKind::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0)))
             ),
-            bool_8(4, 1),
+            bool_u8(4, 1),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
                 |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2)))
@@ -711,7 +740,7 @@ fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
                 )),
                 |_| FieldBodyError::UnexpectedEndOfField(14)
             ),
-            bool_8(14, 13)
+            bool_u8(14, 13)
         ),
         |((distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9), repeat)| AiWander {
             distance,
@@ -759,7 +788,7 @@ fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a 
     )
 }
 
-fn bool_8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+fn bool_u8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
     map_res(
         set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |b, _| match b {
@@ -770,7 +799,7 @@ fn bool_8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a 
     )
 }
 
-fn bool_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+fn bool_u32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |w, _| match w {
@@ -785,7 +814,7 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
     map(
         pair(
             set_err(string_len(code_page, 32), |_| FieldBodyError::UnexpectedEndOfField(33)),
-            bool_8(33, 32)
+            bool_u8(33, 32)
         ),
         |(object_id, reset)| AiActivate {
             object_id, reset
@@ -825,7 +854,7 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
                     skill(60, 12), skill(60, 16), skill(60, 20), skill(60, 24), skill(60, 28),
                     skill(60, 32), skill(60, 36), skill(60, 40), skill(60, 44), skill(60, 48),
                 )),
-                bool_32(60, 52)
+                bool_u32(60, 52)
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
@@ -922,7 +951,7 @@ fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyErro
 fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     map(
         set_err(
-            tuple((le_f32, le_u32, le_u32, le_i32, le_u32)),
+            tuple((le_f32, le_u32, le_u32, skill_either_i32, le_u32)),
             |_| FieldBodyError::UnexpectedEndOfField(20)
         ),
         |(weight, value, scroll, skill, enchantment)| Book {
@@ -938,7 +967,7 @@ fn potion_field(input: &[u8]) -> IResult<&[u8], Potion, FieldBodyError> {
                 pair(le_f32, le_u32),
                 |_| FieldBodyError::UnexpectedEndOfField(12)
             ),
-            bool_32(12, 8)
+            bool_u32(12, 8)
         ),
         |((weight, value), auto_calculate_value)| Potion {
             weight, value, auto_calculate_value
@@ -1068,7 +1097,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     map(
         tuple((
             set_err(
-                tuple((le_i16, le_i8, attribute_option_8)),
+                tuple((le_i16, le_i8, attribute_either_i8)),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
             map_res(
@@ -1385,6 +1414,7 @@ pub enum Unknown {
     LightFlags(u32),
     NpcFlags(u8),
     Skill(u32),
+    SkillRef(i32),
     Specialization(u32),
     SpellFlags(u32),
     SpellType(u32),
@@ -1423,6 +1453,7 @@ impl Display for Unknown {
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::AttributeRef(v) => write!(f, "attribute reference {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
+            Unknown::SkillRef(v) => write!(f, "skill reference {}", v),
         }
     }
 }
@@ -2050,7 +2081,8 @@ mod tests {
             weight: 10.0,
             value: 117,
             effect_1: 22, effect_2: 23, effect_3: 24, effect_4: 25,
-            skill_1: -1, skill_2: 0, skill_3: 17, skill_4: 19,
+            skill_1: None, skill_2: Some(Skill::Armorer),
+            skill_3: Some(Skill::Axe), skill_4: Some(Skill::Block),
             attribute_1: None, attribute_2: Some(Attribute::Luck),
             attribute_3: Some(Attribute::Endurance), attribute_4: Some(Attribute::Strength)
         };
