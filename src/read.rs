@@ -1422,8 +1422,8 @@ impl<T: Display + Debug> Error for InvalidBool<T> {
 #[derive(Debug, Clone)]
 pub enum RecordError {
     FieldSizeMismatch(FieldSizeMismatch),
-    InvalidBool8(InvalidBool<u8>),
-    InvalidBool32(InvalidBool<u32>),
+    InvalidBoolU8(InvalidBool<u8>),
+    InvalidBoolU32(InvalidBool<u32>),
     RecordSizeMismatch(RecordSizeMismatch),
     UnexpectedEof(UnexpectedEof),
     UnexpectedFieldSize(UnexpectedFieldSize),
@@ -1440,8 +1440,8 @@ impl Display for RecordError {
             RecordError::FieldSizeMismatch(x) => Display::fmt(x, f),
             RecordError::UnexpectedFieldSize(x) => Display::fmt(x, f),
             RecordError::UnknownValue(x) => Display::fmt(x, f),
-            RecordError::InvalidBool8(x) => Display::fmt(x, f),
-            RecordError::InvalidBool32(x) => Display::fmt(x, f),
+            RecordError::InvalidBoolU8(x) => Display::fmt(x, f),
+            RecordError::InvalidBoolU32(x) => Display::fmt(x, f),
         }
     }
 }
@@ -1455,8 +1455,8 @@ impl Error for RecordError {
             RecordError::FieldSizeMismatch(x) => x,
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::UnknownValue(x) => x,
-            RecordError::InvalidBool8(x) => x,
-            RecordError::InvalidBool32(x) => x,
+            RecordError::InvalidBoolU8(x) => x,
+            RecordError::InvalidBoolU32(x) => x,
         })
     }
 }
@@ -1551,13 +1551,13 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     record_tag, field_tag, value_offset
                 }),
             RecordBodyError(FieldError::InvalidBool8(field_tag, value, value_offset), field) =>
-                RecordError::InvalidBool8(InvalidBool {
+                RecordError::InvalidBoolU8(InvalidBool {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
                 }),
             RecordBodyError(FieldError::InvalidBool32(field_tag, value, value_offset), field) =>
-                RecordError::InvalidBool32(InvalidBool {
+                RecordError::InvalidBoolU32(InvalidBool {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
