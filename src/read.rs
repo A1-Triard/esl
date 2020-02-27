@@ -13,7 +13,7 @@ use std::fmt::{self, Display, Debug};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use either::{Right, Left};
+use either::{Right, Left, Either};
 
 use crate::strings::*;
 use crate::field::*;
@@ -295,17 +295,17 @@ fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
     set_err(many0(le_f32), |_| unreachable!())(input)
 }
 
-fn attribute_option_8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
-    map_res(
-        set_err(le_i8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |b, _| if b == -1 {
-            Ok(None)
+fn attribute_option_8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
+    map(
+        le_i8,
+        move |b| if b == -1 { 
+            Left(None)
         } else if let Some(a) = Attribute::from_i8(b) {
-            Ok(Some(a))
+            Right(a)
         } else {
-            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRefI8(b), offset)))
+            Left(Some(b))
         }
-    )
+    )(input)
 }
 
 fn attribute_option_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
@@ -316,7 +316,7 @@ fn attribute_option_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) ->
         } else if let Some(a) = Attribute::from_i32(b) {
             Ok(Some(a))
         } else {
-            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRefI32(b), offset)))
+            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRef(b), offset)))
         }
     )
 }
@@ -702,16 +702,18 @@ fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
 
 fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
     map(
-        set_err(
-            tuple((
-                le_u16, le_u16, le_u8,
-                le_u8, le_u8, le_u8, le_u8,
-                le_u8, le_u8, le_u8, le_u8,
-                le_u8
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(14)
+        pair(
+            set_err(
+                tuple((
+                    le_u16, le_u16, le_u8,
+                    le_u8, le_u8, le_u8, le_u8,
+                    le_u8, le_u8, le_u8, le_u8
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(14)
+            ),
+            bool_8(14, 13)
         ),
-        |(distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9, repeat)| AiWander {
+        |((distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9), repeat)| AiWander {
             distance,
             duration,
             time_of_day,
@@ -1057,10 +1059,9 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     map(
         tuple((
             set_err(
-                pair(le_i16, le_i8),
+                tuple((le_i16, le_i8, attribute_option_8)),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
-            attribute_option_8(24, 3),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
                 |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4)))
@@ -1071,8 +1072,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
         )),
         |(
-            (id, skill),
-            attribute,
+            (id, skill, attribute),
             range,
             (area, duration, magnitude_min, magnitude_max),
         )| Effect {
@@ -1357,8 +1357,7 @@ pub enum Unknown {
     ApparatusType(u32),
     ArmorType(u32),
     Attribute(u32),
-    AttributeRefI8(i8),
-    AttributeRefI32(i32),
+    AttributeRef(i32),
     BipedObject(u8),
     Blood(u8),
     BodyPartFlags(u8),
@@ -1411,8 +1410,7 @@ impl Display for Unknown {
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
-            Unknown::AttributeRefI8(v) => write!(f, "attribute reference {}", v),
-            Unknown::AttributeRefI32(v) => write!(f, "attribute reference {}", v),
+            Unknown::AttributeRef(v) => write!(f, "attribute reference {}", v),
         }
     }
 }
@@ -2094,7 +2092,7 @@ mod tests {
         let effect = Effect {
             id: 12700,
             skill: 127,
-            attribute: Some(Attribute::Agility),
+            attribute: Right(Attribute::Agility),
             range: EffectRange::Touch,
             area: 1333,
             duration: 200,
@@ -2118,7 +2116,7 @@ mod tests {
         let effect = Effect {
             id: 12700,
             skill: 127,
-            attribute: None,
+            attribute: Left(None),
             range: EffectRange::Touch,
             area: 1333,
             duration: 200,

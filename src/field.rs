@@ -432,7 +432,7 @@ mod bool_u8 {
     }
 }
 
-mod opt_bool_i16 {
+mod bool_option_i16 {
     use serde::{Serializer, Deserializer, Deserialize, Serialize};
     use serde::ser::Error as ser_Error;
     use either::{Either, Left, Right};
@@ -551,7 +551,7 @@ pub struct Effect {
     pub id: i16,
     pub skill: i8,
     #[serde(with="attribute_option_i8")]
-    pub attribute: Option<Attribute>,
+    pub attribute: Either<Option<i8>, Attribute>,
     pub range: EffectRange,
     pub area: i32,
     pub duration: i32,
@@ -848,7 +848,8 @@ pub struct AiWander {
     pub duration: u16,
     pub time_of_day: u8,
     pub idle: [u8; 8],
-    pub repeat: u8
+    #[serde(with="bool_u8")]
+    pub repeat: bool,
 }
 
 pub_bitflags_display!(AiTravelFlags, u32,
@@ -1018,32 +1019,107 @@ macro_attr! {
     }
 }
 
+/*
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum Skill {
+        Block = 0,
+        Armorer = 1,
+        MediumArmor = 2,
+        HeavyArmor = 3,
+        BluntWeapon = 4,
+        LongBlade = 5,
+        Axe = 6,
+        Spear = 7,
+        Athletics = 8,
+        Enchant = 9,
+        Destruction = 10,
+        Alteration = 11,
+        Illusion = 12,
+        Conjuration = 13,
+        Mysticism = 14,
+        Restoration = 15,
+        Alchemy = 16,
+        Unarmored = 17,
+        Security = 18,
+        Sneak = 19,
+        Acrobatics = 20,
+        Light_armor = 21,
+        ShortBlade = 22,
+        Marksman = 23,
+        Mercantile = 24,
+        Speechcraft = 25,
+        HandToHand = 26
+    }
+}
+*/
 enum_serde!(Attribute, "attribute", u32, to_u32, as from_u32, Unsigned, u64);
 
 mod attribute_option_i8 {
-    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::ser::Error as ser_Error;
+    use either::{Either, Left, Right};
     use crate::field::Attribute;
     use num_traits::cast::{ToPrimitive, FromPrimitive};
-    use serde::de::Unexpected;
-    use serde::de::Error as de_Error;
 
-    pub fn serialize<S>(&a: &Option<Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            a.serialize(serializer)
-        } else {
-            serializer.serialize_i8(a.map_or(-1, |x| x.to_i8().unwrap()))
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    #[serde(rename="AttributeOption")]
+    enum AttributeOptionHRSurrogate {
+        None(Option<i8>),
+        Some(Attribute)
+    }
+
+    impl From<Either<Option<i8>, Attribute>> for AttributeOptionHRSurrogate {
+        fn from(t: Either<Option<i8>, Attribute>) -> Self {
+            match t {
+                Left(i) => AttributeOptionHRSurrogate::None(i),
+                Right(v) => AttributeOptionHRSurrogate::Some(v),
+            }
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Attribute>, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            <Option<Attribute>>::deserialize(deserializer)
+    impl From<AttributeOptionHRSurrogate> for Either<Option<i8>, Attribute> {
+        fn from(t: AttributeOptionHRSurrogate) -> Self {
+            match t {
+                AttributeOptionHRSurrogate::None(i) => Left(i),
+                AttributeOptionHRSurrogate::Some(v) => Right(v),
+            }
+        }
+    }
+
+    pub fn serialize<S>(&v: &Either<Option<i8>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            AttributeOptionHRSurrogate::from(v).serialize(serializer)
         } else {
-            let v = i8::deserialize(deserializer)?;
-            if v == -1 { return Ok(None); }
-            Attribute::from_i8(v)
-                .ok_or_else(|| D::Error::invalid_value(Unexpected::Signed(v as i64), &"attribute or -1"))
-                .map(Some)
+            let v = match v {
+                Left(Some(i)) => {
+                    if i == -1 || Attribute::from_i8(i).is_some() {
+                        let err = format!("{} is not valid undefined attribute value", i);
+                        return Err(S::Error::custom(&err));
+                    }
+                    i
+                },
+                Left(None) => -1,
+                Right(a) => a.to_i8().unwrap()
+            };
+            serializer.serialize_i8(v)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Attribute>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            AttributeOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            let d = i8::deserialize(deserializer)?;
+            if d == -1 { return Ok(Left(None)); }
+            if let Some(a) = Attribute::from_i8(d) {
+                Ok(Right(a))
+            } else {
+                Ok(Left(Some(d)))
+            }
         }
     }
 }
@@ -1469,7 +1545,7 @@ pub struct Enchantment {
     pub enchantment_type: EnchantmentType,
     pub cost: u32,
     pub charge_amount: u32,
-    #[serde(with = "opt_bool_i16")]
+    #[serde(with = "bool_option_i16")]
     pub auto_calculate: Either<i16, bool>,
     pub padding: u16,
 }
