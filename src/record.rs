@@ -89,6 +89,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have item type", self.record_tag, self.field_tag)))
             },
+            FieldType::Skill => if let Field::Skill(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have skill type", self.record_tag, self.field_tag)))
+            },
             FieldType::Ingredient => if let Field::Ingredient(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -452,6 +457,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
+                FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),

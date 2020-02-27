@@ -146,6 +146,7 @@ pub(crate) enum FieldType {
     SoundChance,
     Potion,
     Class,
+    Skill,
 }
 
 impl FieldType {
@@ -229,6 +230,7 @@ impl FieldType {
             (_, INAM) => FieldType::StringZ,
             (ARMO, INDX) => FieldType::BipedObject,
             (CLOT, INDX) => FieldType::BipedObject,
+            (SKIL, INDX) => FieldType::Skill,
             (_, INDX) => FieldType::I32,
             (CELL, INTV) => FieldType::F32,
             (LAND, INTV) => FieldType::Grid,
@@ -1847,6 +1849,7 @@ define_field!(
     Position(Position),
     ScriptMetadata(ScriptMetadata),
     ScriptVars(ScriptVars),
+    Skill(Skill),
     SoundChance(SoundChance),
     SpellMetadata(SpellMetadata),
     String(String),

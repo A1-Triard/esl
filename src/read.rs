@@ -807,6 +807,10 @@ fn skill<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [
     )
 }
 
+fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
+    skill(4, 0)(input)
+}
+
 fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     map(
         tuple((
@@ -1125,6 +1129,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Position => map(position_field, Field::Position)(input),
+            FieldType::Skill => map(skill_field, Field::Skill)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
