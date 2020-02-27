@@ -695,7 +695,7 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12)))
+                |w, _| AiTravelFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12)))
             )
         ),
         |((x, y, z), flags)| AiTravel {

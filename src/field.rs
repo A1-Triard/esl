@@ -859,7 +859,7 @@ pub_bitflags_display!(AiTravelFlags, u32,
     _400000 = 0x400000
 );
 
-enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64, ^0x0001);
+enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
