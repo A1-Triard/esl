@@ -5,6 +5,7 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
 use either::{Either, Left, Right};
+use std::ops::{Index, IndexMut};
 
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -29,7 +30,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum FileType {
         ESP = 0,
         ESM = 1,
@@ -37,13 +37,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(FileType, "file type", u32, to_u32, as from_u32);
+enum_serde!(FileType, "file type", u32, to_u32, as from_u32, Unsigned, u64);
 
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum DialogType {
         Topic = 0,
         Voice = 1,
@@ -53,13 +52,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(DialogType, "dialog type", u8, to_u8, as from_u8);
+enum_serde!(DialogType, "dialog type", u8, to_u8, as from_u8, Unsigned, u64);
 
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug)]
-    #[repr(u32)]
     pub enum EffectRange {
         Self_ = 0,
         Touch = 1,
@@ -90,7 +88,7 @@ impl FromStr for EffectRange {
     }
 }
 
-enum_serde!(EffectRange, "effect range", u32, to_u32, as from_u32);
+enum_serde!(EffectRange, "effect range", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FieldType {
@@ -338,9 +336,22 @@ pub struct Ingredient {
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    pub effects: [i32; 4],
-    pub skills: [i32; 4],
-    pub attributes: [i32; 4]
+    pub effect_1: i32,
+    pub effect_2: i32,
+    pub effect_3: i32,
+    pub effect_4: i32,
+    pub skill_1: i32,
+    pub skill_2: i32,
+    pub skill_3: i32,
+    pub skill_4: i32,
+    #[serde(with="attribute_option_i32")]
+    pub attribute_1: Option<Attribute>,
+    #[serde(with="attribute_option_i32")]
+    pub attribute_2: Option<Attribute>,
+    #[serde(with="attribute_option_i32")]
+    pub attribute_3: Option<Attribute>,
+    #[serde(with="attribute_option_i32")]
+    pub attribute_4: Option<Attribute>,
 }
 
 fn eq_f32(a: &f32, b: &f32) -> bool {
@@ -537,9 +548,10 @@ mod multiline_256_dos {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Effect {
-    pub effect_id: i16,
+    pub id: i16,
     pub skill: i8,
-    pub attribute: i8,
+    #[serde(with="attribute_option_i8")]
+    pub attribute: Option<Attribute>,
     pub range: EffectRange,
     pub area: i32,
     pub duration: i32,
@@ -556,14 +568,7 @@ pub struct NpcState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct NpcStats {
-    pub strength: u8,
-    pub intelligence: u8,
-    pub willpower: u8,
-    pub agility: u8,
-    pub speed: u8,
-    pub endurance: u8,
-    pub personality: u8,
-    pub luck: u8,
+    pub attributes: Attributes<u8>,
     pub block: u8,
     pub armorer: u8,
     pub medium_armor: u8,
@@ -773,7 +778,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum SpellType {
         Spell = 0,
         Ability = 1,
@@ -784,7 +788,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32);
+enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32, Unsigned, u64);
 
 pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE_COST = 1, PC_START = 2, ALWAYS_SUCCEEDS = 4);
 
@@ -906,7 +910,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum Blood {
         Default = 0,
         Skeleton = 4,
@@ -914,7 +917,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(Blood, "blood", u8, to_u8, as from_u8);
+enum_serde!(Blood, "blood", u8, to_u8, as from_u8, Unsigned, u64);
 
 pub_bitflags_display!(NpcFlags, u8,
     FEMALE = 0x01,
@@ -967,7 +970,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum CreatureType {
         Creature = 0,
         Daedra  = 1,
@@ -976,21 +978,14 @@ macro_attr! {
     }
 }
 
-enum_serde!(CreatureType, "creature type", u32, to_u32, as from_u32);
+enum_serde!(CreatureType, "creature type", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Creature {
     #[serde(rename="type")]
     pub creature_type: CreatureType,
     pub level: u32,
-    pub strength: u32,
-    pub intelligence: u32,
-    pub willpower: u32,
-    pub agility: u32,
-    pub speed: u32,
-    pub endurance: u32,
-    pub personality: u32,
-    pub luck: u32,
+    pub attributes: Attributes<u32>,
     pub health: u32,
     pub magicka: u32,
     pub fatigue: u32,
@@ -1005,6 +1000,124 @@ pub struct Creature {
     pub attack_3_min: u32,
     pub attack_3_max: u32,
     pub gold: u32,
+}
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum Attribute {
+        Strength = 0,
+        Intelligence = 1,
+        Willpower = 2,
+        Agility = 3,
+        Speed = 4,
+        Endurance = 5,
+        Personality = 6,
+        Luck = 7,
+    }
+}
+
+enum_serde!(Attribute, "attribute", u32, to_u32, as from_u32, Unsigned, u64);
+
+mod attribute_option_i8 {
+    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use crate::field::Attribute;
+    use num_traits::cast::{ToPrimitive, FromPrimitive};
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+
+    pub fn serialize<S>(&a: &Option<Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            a.serialize(serializer)
+        } else {
+            serializer.serialize_i8(a.map_or(-1, |x| x.to_i8().unwrap()))
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Attribute>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            <Option<Attribute>>::deserialize(deserializer)
+        } else {
+            let v = i8::deserialize(deserializer)?;
+            if v == -1 { return Ok(None); }
+            Attribute::from_i8(v)
+                .ok_or_else(|| D::Error::invalid_value(Unexpected::Signed(v as i64), &"attribute or -1"))
+                .map(Some)
+        }
+    }
+}
+
+mod attribute_option_i32 {
+    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use crate::field::Attribute;
+    use num_traits::cast::{ToPrimitive, FromPrimitive};
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+
+    pub fn serialize<S>(&a: &Option<Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            a.serialize(serializer)
+        } else {
+            serializer.serialize_i32(a.map_or(-1, |x| x.to_i32().unwrap()))
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Attribute>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            <Option<Attribute>>::deserialize(deserializer)
+        } else {
+            let v = i32::deserialize(deserializer)?;
+            if v == -1 { return Ok(None); }
+            Attribute::from_i32(v)
+                .ok_or_else(|| D::Error::invalid_value(Unexpected::Signed(v as i64), &"attribute or -1"))
+                .map(Some)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Attributes<T> {
+    pub strength: T,
+    pub intelligence: T,
+    pub willpower: T,
+    pub agility: T,
+    pub speed: T,
+    pub endurance: T,
+    pub personality: T,
+    pub luck: T,
+}
+
+impl<T> Index<Attribute> for Attributes<T> {
+    type Output = T;
+
+    fn index(&self, index: Attribute) -> &Self::Output {
+        match index {
+            Attribute::Strength => &self.strength,
+            Attribute::Intelligence => &self.intelligence,
+            Attribute::Willpower => &self.willpower,
+            Attribute::Agility => &self.agility,
+            Attribute::Speed => &self.speed,
+            Attribute::Endurance => &self.endurance,
+            Attribute::Personality => &self.personality,
+            Attribute::Luck => &self.luck,
+        }
+    }
+}
+
+impl<T> IndexMut<Attribute> for Attributes<T> {
+    fn index_mut(&mut self, index: Attribute) -> &mut Self::Output {
+        match index {
+            Attribute::Strength => &mut self.strength,
+            Attribute::Intelligence => &mut self.intelligence,
+            Attribute::Willpower => &mut self.willpower,
+            Attribute::Agility => &mut self.agility,
+            Attribute::Speed => &mut self.speed,
+            Attribute::Endurance => &mut self.endurance,
+            Attribute::Personality => &mut self.personality,
+            Attribute::Luck => &mut self.luck,
+        }
+    }
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
@@ -1096,7 +1209,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum ApparatusType {
         MortarPestle = 0,
         Alembic  = 1,
@@ -1105,7 +1217,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32);
+enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
@@ -1125,7 +1237,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum ArmorType {
         Helmet = 0,
         Cuirass = 1,
@@ -1141,7 +1252,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32);
+enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
@@ -1161,7 +1272,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u16)]
     pub enum WeaponType {
         ShortBladeOneHand = 0,
         LongBladeOneHand = 1,
@@ -1180,7 +1290,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(WeaponType, "weapon type", u16, to_u16, as from_u16);
+enum_serde!(WeaponType, "weapon type", u16, to_u16, as from_u16, Unsigned, u64);
 
 pub_bitflags_display!(WeaponFlags, u32,
     MAGICAL = 0x01,
@@ -1219,7 +1329,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum BodyPartKind {
         Head = 0,
         Hair = 1,
@@ -1239,7 +1348,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(BodyPartKind, "body part kind", u8, to_u8, as from_u8);
+enum_serde!(BodyPartKind, "body part kind", u8, to_u8, as from_u8, Unsigned, u64);
 
 pub_bitflags_display!(BodyPartFlags, u8,
     FEMALE = 0x01,
@@ -1252,7 +1361,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum BodyPartType {
         Skin = 0,
         Clothing = 1,
@@ -1260,13 +1368,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(BodyPartType, "body part type", u8, to_u8, as from_u8);
+enum_serde!(BodyPartType, "body part type", u8, to_u8, as from_u8, Unsigned, u64);
 
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum BipedObject {
         Head = 0,
         Hair = 1,
@@ -1298,13 +1405,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(BipedObject, "biped object", u8, to_u8, as from_u8);
+enum_serde!(BipedObject, "biped object", u8, to_u8, as from_u8, Unsigned, u64);
 
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum ClothingType {
         Pants = 0,
         Shoes = 1,
@@ -1319,7 +1425,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32);
+enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BodyPart {
@@ -1347,7 +1453,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
     pub enum EnchantmentType {
         CastOnce = 0,
         WhenStrikes = 1,
@@ -1356,7 +1461,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(EnchantmentType, "enchantment type", u32, to_u32, as from_u32);
+enum_serde!(EnchantmentType, "enchantment type", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Enchantment {
@@ -1503,7 +1608,6 @@ macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    #[repr(u8)]
     pub enum Specialization {
         Combat = 0,
         Magic = 1,
@@ -1511,12 +1615,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(Specialization, "specialization", u32, to_u32, as from_u32);
+enum_serde!(Specialization, "specialization", u32, to_u32, as from_u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Class {
-    pub primary_attribute_1: u32,
-    pub primary_attribute_2: u32,
+    pub primary_attribute_1: Attribute,
+    pub primary_attribute_2: Attribute,
     pub specialization: Specialization,
     pub minor_skill_1: u32,
     pub major_skill_1: u32,
@@ -1528,7 +1632,7 @@ pub struct Class {
     pub major_skill_4: u32,
     pub minor_skill_5: u32,
     pub major_skill_5: u32,
-    #[serde(with = "bool_u32")]
+    #[serde(with="bool_u32")]
     pub playable: bool,
     pub auto_calc_services: Services,
 }

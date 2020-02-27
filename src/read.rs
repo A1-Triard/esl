@@ -295,23 +295,60 @@ fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
     set_err(many0(le_f32), |_| unreachable!())(input)
 }
 
+fn attribute_option_8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
+    map_res(
+        set_err(le_i8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |b, _| if b == -1 {
+            Ok(None)
+        } else if let Some(a) = Attribute::from_i8(b) {
+            Ok(Some(a))
+        } else {
+            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRefI8(b), offset)))
+        }
+    )
+}
+
+fn attribute_option_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
+    map_res(
+        set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |b, _| if b == -1 {
+            Ok(None)
+        } else if let Some(a) = Attribute::from_i32(b) {
+            Ok(Some(a))
+        } else {
+            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRefI32(b), offset)))
+        }
+    )
+}
+
 fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
     map(
-        set_err(
-            tuple((
-                le_f32, le_u32,
-                le_i32, le_i32, le_i32, le_i32,
-                le_i32, le_i32, le_i32, le_i32,
-                le_i32, le_i32, le_i32, le_i32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(56)
-        ),
-        |(weight, value, e1, e2, e3, e4, s1, s2, s3, s4, a1, a2, a3, a4)| Ingredient {
-            weight,
-            value,
-            effects: [e1, e2, e3, e4],
-            skills: [s1, s2, s3, s4],
-            attributes: [a1, a2, a3, a4]
+        tuple((
+            set_err(
+                tuple((
+                    le_f32, le_u32,
+                    le_i32, le_i32, le_i32, le_i32,
+                    le_i32, le_i32, le_i32, le_i32,
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(56)
+            ),
+            attribute_option_32(56, 40),
+            attribute_option_32(56, 44),
+            attribute_option_32(56, 48),
+            attribute_option_32(56, 52)
+        )),
+        |(
+            (
+                weight, value,
+                effect_1, effect_2, effect_3, effect_4,
+                skill_1, skill_2, skill_3, skill_4,
+            ),
+            attribute_1, attribute_2, attribute_3, attribute_4
+        )| Ingredient {
+            weight, value,
+            effect_1, effect_2, effect_3, effect_4,
+            skill_1, skill_2, skill_3, skill_4,
+            attribute_1, attribute_2, attribute_3, attribute_4
         }
     )(input)
 }
@@ -757,9 +794,13 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
 fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     map(
         tuple((
-            set_err(
-                pair(le_u32, le_u32),
-                |_| FieldBodyError::UnexpectedEndOfField(60)
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
+                |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), 0)))
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
+                |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), 4)))
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
@@ -781,16 +822,14 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
             )
         )),
         |(
-            (primary_attribute_1, primary_attribute_2),
-            specialization,
+            primary_attribute_1, primary_attribute_2, specialization,
             (
                 (minor_skill_1, major_skill_1, minor_skill_2, major_skill_2, minor_skill_3, major_skill_3, minor_skill_4, major_skill_4, minor_skill_5, major_skill_5),
                 playable
             ),
             auto_calc_services
         )| Class {
-            primary_attribute_1, primary_attribute_2,
-            specialization,
+            primary_attribute_1, primary_attribute_2, specialization,
             minor_skill_1, minor_skill_2, minor_skill_3, minor_skill_4, minor_skill_5,
             major_skill_1, major_skill_2, major_skill_3, major_skill_4, major_skill_5,
             playable, auto_calc_services
@@ -936,9 +975,12 @@ fn npc_stats(input: &[u8]) -> IResult<&[u8], NpcStats, ()> {
             (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand, faction),
             (health, magicka, fatigue)
         )| NpcStats {
-            strength, intelligence, willpower, agility, speed,
-            endurance, personality, luck, block,
-            armorer, medium_armor, heavy_armor, blunt_weapon,
+            attributes: Attributes {
+                strength, intelligence, willpower,
+                agility, speed, endurance,
+                personality, luck
+            },
+            block, armorer, medium_armor, heavy_armor, blunt_weapon,
             long_blade, axe, spear, athletics,
             enchant, destruction, alteration, illusion,
             conjuration, mysticism, restoration, alchemy,
@@ -973,9 +1015,13 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
                 (attack_1_min, attack_1_max, attack_2_min, attack_2_max, attack_3_min, attack_3_max, gold)
             )
         )| Creature {
-            creature_type,
-            level, strength, intelligence, willpower, agility, speed, endurance, personality,
-            luck, health, magicka, fatigue, soul, combat, magic, stealth,
+            creature_type, level,
+            attributes: Attributes {
+                strength, intelligence, willpower,
+                agility, speed, endurance,
+                personality, luck
+            },
+            health, magicka, fatigue, soul, combat, magic, stealth,
             attack_1_min, attack_1_max, attack_2_min, attack_2_max, attack_3_min, attack_3_max, gold
         }
     )(input)
@@ -1011,9 +1057,10 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     map(
         tuple((
             set_err(
-                tuple((le_i16, le_i8, le_i8)),
+                pair(le_i16, le_i8),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
+            attribute_option_8(24, 3),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
                 |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4)))
@@ -1024,11 +1071,12 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
         )),
         |(
-            (id, skill, attribute),
+            (id, skill),
+            attribute,
             range,
             (area, duration, magnitude_min, magnitude_max),
         )| Effect {
-            effect_id: id, skill, attribute, range,
+            id, skill, attribute, range,
             area, duration, magnitude_min, magnitude_max
         }
     )(input)
@@ -1308,6 +1356,9 @@ pub enum Unknown {
     AiTravelFlags(u32),
     ApparatusType(u32),
     ArmorType(u32),
+    Attribute(u32),
+    AttributeRefI8(i8),
+    AttributeRefI32(i32),
     BipedObject(u8),
     Blood(u8),
     BodyPartFlags(u8),
@@ -1359,6 +1410,9 @@ impl Display for Unknown {
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
+            Unknown::Attribute(v) => write!(f, "attribute {}", v),
+            Unknown::AttributeRefI8(v) => write!(f, "attribute reference {}", v),
+            Unknown::AttributeRefI32(v) => write!(f, "attribute reference {}", v),
         }
     }
 }
@@ -1985,26 +2039,14 @@ mod tests {
         let ingredient = Ingredient {
             weight: 10.0,
             value: 117,
-            effects: [22, 23, 24, 25],
-            skills: [-1, 0, 17, 19],
-            attributes: [-1, 1, 10, 14]
+            effect_1: 22, effect_2: 23, effect_3: 24, effect_4: 25,
+            skill_1: -1, skill_2: 0, skill_3: 17, skill_4: 19,
+            attribute_1: None, attribute_2: Some(Attribute::Luck),
+            attribute_3: Some(Attribute::Endurance), attribute_4: Some(Attribute::Strength)
         };
         let bin: Vec<u8> = serialize(&ingredient, CodePage::English, false).unwrap();
         let res = ingredient_field(&bin).unwrap().1;
-        assert_eq!(res.weight, ingredient.weight);
-        assert_eq!(res.value, ingredient.value);
-        assert_eq!(res.effects[0], ingredient.effects[0]);
-        assert_eq!(res.effects[1], ingredient.effects[1]);
-        assert_eq!(res.effects[2], ingredient.effects[2]);
-        assert_eq!(res.effects[3], ingredient.effects[3]);
-        assert_eq!(res.skills[0], ingredient.skills[0]);
-        assert_eq!(res.skills[1], ingredient.skills[1]);
-        assert_eq!(res.skills[2], ingredient.skills[2]);
-        assert_eq!(res.skills[3], ingredient.skills[3]);
-        assert_eq!(res.attributes[0], ingredient.attributes[0]);
-        assert_eq!(res.attributes[1], ingredient.attributes[1]);
-        assert_eq!(res.attributes[2], ingredient.attributes[2]);
-        assert_eq!(res.attributes[3], ingredient.attributes[3]);
+        assert_eq!(res, ingredient);
     }
 
     #[test]
@@ -2050,9 +2092,9 @@ mod tests {
     #[test]
     fn serialize_effect() {
         let effect = Effect {
-            effect_id: 12700,
+            id: 12700,
             skill: 127,
-            attribute: -128,
+            attribute: Some(Attribute::Agility),
             range: EffectRange::Touch,
             area: 1333,
             duration: 200,
@@ -2061,7 +2103,31 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
-        assert_eq!(res.effect_id, effect.effect_id);
+        assert_eq!(res.id, effect.id);
+        assert_eq!(res.skill, effect.skill);
+        assert_eq!(res.attribute, effect.attribute);
+        assert_eq!(res.range, effect.range);
+        assert_eq!(res.area, effect.area);
+        assert_eq!(res.duration, effect.duration);
+        assert_eq!(res.magnitude_min, effect.magnitude_min);
+        assert_eq!(res.magnitude_max, effect.magnitude_max);
+    }
+
+    #[test]
+    fn serialize_effect_no_attribute() {
+        let effect = Effect {
+            id: 12700,
+            skill: 127,
+            attribute: None,
+            range: EffectRange::Touch,
+            area: 1333,
+            duration: 200,
+            magnitude_min: 1,
+            magnitude_max: 300
+        };
+        let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
+        let res = effect_field(&bin).unwrap().1;
+        assert_eq!(res.id, effect.id);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
         assert_eq!(res.range, effect.range);
@@ -2088,8 +2154,11 @@ mod tests {
     #[test]
     fn serialize_npc_stats() {
         let stats = NpcStats {
-            strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
-            personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+            attributes: Attributes {
+                strength: 1, intelligence: 2, willpower: 3, agility: 4,
+                speed: 5, endurance: 6, personality: 7, luck: 8
+            },
+            block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
             destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
             restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
@@ -2098,14 +2167,7 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&stats, CodePage::English, false).unwrap();
         let res = npc_stats(&bin).unwrap().1;
-        assert_eq!(res.strength, stats.strength);
-        assert_eq!(res.intelligence, stats.intelligence);
-        assert_eq!(res.willpower, stats.willpower);
-        assert_eq!(res.agility, stats.agility);
-        assert_eq!(res.speed, stats.speed);
-        assert_eq!(res.endurance, stats.endurance);
-        assert_eq!(res.personality, stats.personality);
-        assert_eq!(res.luck, stats.luck);
+        assert_eq!(res.attributes, stats.attributes);
         assert_eq!(res.block, stats.block);
         assert_eq!(res.armorer, stats.armorer);
         assert_eq!(res.medium_armor, stats.medium_armor);
@@ -2142,8 +2204,11 @@ mod tests {
     #[test]
     fn serialize_npc_52() {
         let npc_stats = NpcStats {
-            strength: 1, intelligence: 2, willpower: 3, agility: 4, speed: 5, endurance: 6,
-            personality: 7, luck: 8, block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+            attributes: Attributes {
+                strength: 1, intelligence: 2, willpower: 3, agility: 4,
+                speed: 5, endurance: 6, personality: 7, luck: 8    
+            },
+            block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
             blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
             destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
             restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
