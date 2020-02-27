@@ -569,33 +569,7 @@ pub struct NpcState {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct NpcStats {
     pub attributes: Attributes<u8>,
-    pub block: u8,
-    pub armorer: u8,
-    pub medium_armor: u8,
-    pub heavy_armor: u8,
-    pub blunt_weapon: u8,
-    pub long_blade: u8,
-    pub axe: u8,
-    pub spear: u8,
-    pub athletics: u8,
-    pub enchant: u8,
-    pub destruction: u8,
-    pub alteration: u8,
-    pub illusion: u8,
-    pub conjuration: u8,
-    pub mysticism: u8,
-    pub restoration: u8,
-    pub alchemy: u8,
-    pub unarmored: u8,
-    pub security: u8,
-    pub sneak: u8,
-    pub acrobatics: u8,
-    pub light_armor: u8,
-    pub short_blade: u8,
-    pub marksman: u8,
-    pub mercantile: u8,
-    pub speechcraft: u8,
-    pub hand_to_hand: u8,
+    pub skills: Skills,
     pub faction: u8,
     pub health: i16,
     pub magicka: i16,
@@ -1019,42 +993,6 @@ macro_attr! {
     }
 }
 
-/*
-macro_attr! {
-    #[derive(Primitive)]
-    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
-    pub enum Skill {
-        Block = 0,
-        Armorer = 1,
-        MediumArmor = 2,
-        HeavyArmor = 3,
-        BluntWeapon = 4,
-        LongBlade = 5,
-        Axe = 6,
-        Spear = 7,
-        Athletics = 8,
-        Enchant = 9,
-        Destruction = 10,
-        Alteration = 11,
-        Illusion = 12,
-        Conjuration = 13,
-        Mysticism = 14,
-        Restoration = 15,
-        Alchemy = 16,
-        Unarmored = 17,
-        Security = 18,
-        Sneak = 19,
-        Acrobatics = 20,
-        Light_armor = 21,
-        ShortBlade = 22,
-        Marksman = 23,
-        Mercantile = 24,
-        Speechcraft = 25,
-        HandToHand = 26
-    }
-}
-*/
 enum_serde!(Attribute, "attribute", u32, to_u32, as from_u32, Unsigned, u64);
 
 mod attribute_option_i8 {
@@ -1192,6 +1130,144 @@ impl<T> IndexMut<Attribute> for Attributes<T> {
             Attribute::Endurance => &mut self.endurance,
             Attribute::Personality => &mut self.personality,
             Attribute::Luck => &mut self.luck,
+        }
+    }
+}
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum Skill {
+        Block = 0,
+        Armorer = 1,
+        MediumArmor = 2,
+        HeavyArmor = 3,
+        BluntWeapon = 4,
+        LongBlade = 5,
+        Axe = 6,
+        Spear = 7,
+        Athletics = 8,
+        Enchant = 9,
+        Destruction = 10,
+        Alteration = 11,
+        Illusion = 12,
+        Conjuration = 13,
+        Mysticism = 14,
+        Restoration = 15,
+        Alchemy = 16,
+        Unarmored = 17,
+        Security = 18,
+        Sneak = 19,
+        Acrobatics = 20,
+        LightArmor = 21,
+        ShortBlade = 22,
+        Marksman = 23,
+        Mercantile = 24,
+        Speechcraft = 25,
+        HandToHand = 26
+    }
+}
+
+enum_serde!(Skill, "skill", u32, to_u32, as from_u32, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Skills {
+    pub block: u8,
+    pub armorer: u8,
+    pub medium_armor: u8,
+    pub heavy_armor: u8,
+    pub blunt_weapon: u8,
+    pub long_blade: u8,
+    pub axe: u8,
+    pub spear: u8,
+    pub athletics: u8,
+    pub enchant: u8,
+    pub destruction: u8,
+    pub alteration: u8,
+    pub illusion: u8,
+    pub conjuration: u8,
+    pub mysticism: u8,
+    pub restoration: u8,
+    pub alchemy: u8,
+    pub unarmored: u8,
+    pub security: u8,
+    pub sneak: u8,
+    pub acrobatics: u8,
+    pub light_armor: u8,
+    pub short_blade: u8,
+    pub marksman: u8,
+    pub mercantile: u8,
+    pub speechcraft: u8,
+    pub hand_to_hand: u8,
+}
+
+impl Index<Skill> for Skills {
+    type Output = u8;
+
+    fn index(&self, index: Skill) -> &Self::Output {
+        match index {
+            Skill::Block => &self.block,
+            Skill::Armorer => &self.armorer,
+            Skill::MediumArmor => &self.medium_armor,
+            Skill::HeavyArmor => &self.heavy_armor,
+            Skill::BluntWeapon => &self.blunt_weapon,
+            Skill::LongBlade => &self.long_blade,
+            Skill::Axe => &self.axe,
+            Skill::Spear => &self.spear,
+            Skill::Athletics => &self.athletics,
+            Skill::Enchant => &self.enchant,
+            Skill::Destruction => &self.destruction,
+            Skill::Alteration => &self.alteration,
+            Skill::Illusion => &self.illusion,
+            Skill::Conjuration => &self.conjuration,
+            Skill::Mysticism => &self.mysticism,
+            Skill::Restoration => &self.restoration,
+            Skill::Alchemy => &self.alchemy,
+            Skill::Unarmored => &self.unarmored,
+            Skill::Security => &self.security,
+            Skill::Sneak => &self.sneak,
+            Skill::Acrobatics => &self.acrobatics,
+            Skill::LightArmor => &self.light_armor,
+            Skill::ShortBlade => &self.short_blade,
+            Skill::Marksman => &self.marksman,
+            Skill::Mercantile => &self.mercantile,
+            Skill::Speechcraft => &self.speechcraft,
+            Skill::HandToHand => &self.hand_to_hand,
+        }
+    }
+}
+
+impl IndexMut<Skill> for Skills {
+    fn index_mut(&mut self, index: Skill) -> &mut Self::Output {
+        match index {
+            Skill::Block => &mut self.block,
+            Skill::Armorer => &mut self.armorer,
+            Skill::MediumArmor => &mut self.medium_armor,
+            Skill::HeavyArmor => &mut self.heavy_armor,
+            Skill::BluntWeapon => &mut self.blunt_weapon,
+            Skill::LongBlade => &mut self.long_blade,
+            Skill::Axe => &mut self.axe,
+            Skill::Spear => &mut self.spear,
+            Skill::Athletics => &mut self.athletics,
+            Skill::Enchant => &mut self.enchant,
+            Skill::Destruction => &mut self.destruction,
+            Skill::Alteration => &mut self.alteration,
+            Skill::Illusion => &mut self.illusion,
+            Skill::Conjuration => &mut self.conjuration,
+            Skill::Mysticism => &mut self.mysticism,
+            Skill::Restoration => &mut self.restoration,
+            Skill::Alchemy => &mut self.alchemy,
+            Skill::Unarmored => &mut self.unarmored,
+            Skill::Security => &mut self.security,
+            Skill::Sneak => &mut self.sneak,
+            Skill::Acrobatics => &mut self.acrobatics,
+            Skill::LightArmor => &mut self.light_armor,
+            Skill::ShortBlade => &mut self.short_blade,
+            Skill::Marksman => &mut self.marksman,
+            Skill::Mercantile => &mut self.mercantile,
+            Skill::Speechcraft => &mut self.speechcraft,
+            Skill::HandToHand => &mut self.hand_to_hand,
         }
     }
 }
@@ -1698,16 +1774,16 @@ pub struct Class {
     pub primary_attribute_1: Attribute,
     pub primary_attribute_2: Attribute,
     pub specialization: Specialization,
-    pub minor_skill_1: u32,
-    pub major_skill_1: u32,
-    pub minor_skill_2: u32,
-    pub major_skill_2: u32,
-    pub minor_skill_3: u32,
-    pub major_skill_3: u32,
-    pub minor_skill_4: u32,
-    pub major_skill_4: u32,
-    pub minor_skill_5: u32,
-    pub major_skill_5: u32,
+    pub minor_skill_1: Skill,
+    pub major_skill_1: Skill,
+    pub minor_skill_2: Skill,
+    pub major_skill_2: Skill,
+    pub minor_skill_3: Skill,
+    pub major_skill_3: Skill,
+    pub minor_skill_4: Skill,
+    pub major_skill_4: Skill,
+    pub minor_skill_5: Skill,
+    pub major_skill_5: Skill,
     #[serde(with="bool_u32")]
     pub playable: bool,
     pub auto_calc_services: Services,

@@ -793,29 +793,34 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
     )
 }
 
+fn attribute<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Attribute, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset)))
+    )
+}
+
+fn skill<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Skill, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |w, _| Skill::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Skill(w), offset)))
+    )
+}
+
 fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     map(
         tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), 0)))
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), 4)))
-            ),
+            attribute(60, 0),
+            attribute(60, 4),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
                 |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8)))
             ),
             pair(
-                set_err(
-                    tuple((
-                        le_u32, le_u32, le_u32, le_u32, le_u32,
-                        le_u32, le_u32, le_u32, le_u32, le_u32
-                    )),
-                    |_| FieldBodyError::UnexpectedEndOfField(60)
-                ),
+                tuple((
+                    skill(60, 12), skill(60, 16), skill(60, 20), skill(60, 24), skill(60, 28),
+                    skill(60, 32), skill(60, 36), skill(60, 40), skill(60, 44), skill(60, 48),
+                )),
                 bool_32(60, 52)
             ),
             map_res(
@@ -982,13 +987,13 @@ fn npc_stats(input: &[u8]) -> IResult<&[u8], NpcStats, ()> {
                 agility, speed, endurance,
                 personality, luck
             },
-            block, armorer, medium_armor, heavy_armor, blunt_weapon,
-            long_blade, axe, spear, athletics,
-            enchant, destruction, alteration, illusion,
-            conjuration, mysticism, restoration, alchemy,
-            unarmored, security, sneak, acrobatics, light_armor,
-            short_blade, marksman, mercantile, speechcraft,
-            hand_to_hand, faction, health, magicka, fatigue
+            skills: Skills {
+                block, armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear,
+                athletics, enchant, destruction, alteration, illusion, conjuration, mysticism,
+                restoration, alchemy, unarmored, security, sneak, acrobatics, light_armor,
+                short_blade, marksman, mercantile, speechcraft, hand_to_hand
+            },
+            faction, health, magicka, fatigue
         }
     )(input)
 }
@@ -1374,6 +1379,7 @@ pub enum Unknown {
     FileType(u32),
     LightFlags(u32),
     NpcFlags(u8),
+    Skill(u32),
     Specialization(u32),
     SpellFlags(u32),
     SpellType(u32),
@@ -1411,6 +1417,7 @@ impl Display for Unknown {
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::AttributeRef(v) => write!(f, "attribute reference {}", v),
+            Unknown::Skill(v) => write!(f, "skill {}", v),
         }
     }
 }
@@ -2156,47 +2163,19 @@ mod tests {
                 strength: 1, intelligence: 2, willpower: 3, agility: 4,
                 speed: 5, endurance: 6, personality: 7, luck: 8
             },
-            block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
-            blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
-            destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
-            restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
-            light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
-            hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
+            skills: Skills {
+                block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
+                blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
+                destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
+                restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
+                light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
+                hand_to_hand: 35
+            },
+            faction: 36, health: -37, magicka: -38, fatigue: 39
         };
         let bin: Vec<u8> = serialize(&stats, CodePage::English, false).unwrap();
         let res = npc_stats(&bin).unwrap().1;
-        assert_eq!(res.attributes, stats.attributes);
-        assert_eq!(res.block, stats.block);
-        assert_eq!(res.armorer, stats.armorer);
-        assert_eq!(res.medium_armor, stats.medium_armor);
-        assert_eq!(res.heavy_armor, stats.heavy_armor);
-        assert_eq!(res.blunt_weapon, stats.blunt_weapon);
-        assert_eq!(res.long_blade, stats.long_blade);
-        assert_eq!(res.axe, stats.axe);
-        assert_eq!(res.spear, stats.spear);
-        assert_eq!(res.athletics, stats.athletics);
-        assert_eq!(res.enchant, stats.enchant);
-        assert_eq!(res.destruction, stats.destruction);
-        assert_eq!(res.alteration, stats.alteration);
-        assert_eq!(res.illusion, stats.illusion);
-        assert_eq!(res.conjuration, stats.conjuration);
-        assert_eq!(res.mysticism, stats.mysticism);
-        assert_eq!(res.restoration, stats.restoration);
-        assert_eq!(res.alchemy, stats.alchemy);
-        assert_eq!(res.unarmored, stats.unarmored);
-        assert_eq!(res.security, stats.security);
-        assert_eq!(res.sneak, stats.sneak);
-        assert_eq!(res.acrobatics, stats.acrobatics);
-        assert_eq!(res.light_armor, stats.light_armor);
-        assert_eq!(res.short_blade, stats.short_blade);
-        assert_eq!(res.marksman, stats.marksman);
-        assert_eq!(res.mercantile, stats.mercantile);
-        assert_eq!(res.speechcraft, stats.speechcraft);
-        assert_eq!(res.hand_to_hand, stats.hand_to_hand);
-        assert_eq!(res.faction, stats.faction);
-        assert_eq!(res.health, stats.health);
-        assert_eq!(res.magicka, stats.magicka);
-        assert_eq!(res.fatigue, stats.fatigue);
+        assert_eq!(res, stats);
     }
 
     #[test]
@@ -2206,12 +2185,14 @@ mod tests {
                 strength: 1, intelligence: 2, willpower: 3, agility: 4,
                 speed: 5, endurance: 6, personality: 7, luck: 8    
             },
-            block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12,
-            blunt_weapon: 13, long_blade: 14, axe: 15, spear: 16, athletics: 17, enchant: 18,
-            destruction: 19, alteration: 20, illusion: 21, conjuration: 22, mysticism: 23,
-            restoration: 24, alchemy: 25, unarmored: 26, security: 27, sneak: 28, acrobatics: 29,
-            light_armor: 30, short_blade: 31, marksman: 32, mercantile: 33, speechcraft: 34,
-            hand_to_hand: 35, faction: 36, health: -37, magicka: -38, fatigue: 39
+            skills: Skills {
+                block: 9, armorer: 10, medium_armor: 11, heavy_armor: 12, blunt_weapon: 13, long_blade: 14,
+                axe: 15, spear: 16, athletics: 17, enchant: 18, destruction: 19, alteration: 20,
+                illusion: 21, conjuration: 22, mysticism: 23, restoration: 24, alchemy: 25, unarmored: 26,
+                security: 27, sneak: 28, acrobatics: 29, light_armor: 30, short_blade: 31,
+                marksman: 32, mercantile: 33, speechcraft: 34, hand_to_hand: 35
+            },
+            faction: 36, health: -37, magicka: -38, fatigue: 39
         };
         let npc = Npc {
             level: 100,
@@ -2224,17 +2205,7 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&Npc::from(npc.clone()), CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
-        assert_eq!(res.level, npc.level);
-        assert_eq!(res.disposition, npc.disposition);
-        assert_eq!(res.reputation, npc.reputation);
-        assert_eq!(res.rank, npc.rank);
-        assert_eq!(res.gold, npc.gold);
-        assert_eq!(res.padding, npc.padding);
-        if let Right(stats) = res.stats {
-            assert_eq!(stats.enchant, npc_stats.enchant);
-        } else {
-            panic!()
-        }
+        assert_eq!(res, npc);
     }
 
     #[test]
