@@ -367,6 +367,120 @@ mod float_32 {
     }
 }
 
+mod bool_u32 {
+    use serde::{Serializer, Deserializer, Deserialize};
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+
+    pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            serializer.serialize_bool(v)
+        } else {
+            serializer.serialize_u32(if v { 1 } else { 0 })
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            bool::deserialize(deserializer)
+        } else {
+            let d = u32::deserialize(deserializer)?;
+            match d {
+                0 => Ok(false),
+                1 => Ok(true),
+                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+            }
+        }
+    }
+}
+
+mod bool_u8 {
+    use serde::{Serializer, Deserializer, Deserialize};
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+
+    pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            serializer.serialize_bool(v)
+        } else {
+            serializer.serialize_u8(if v { 1 } else { 0 })
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            bool::deserialize(deserializer)
+        } else {
+            let d = u8::deserialize(deserializer)?;
+            match d {
+                0 => Ok(false),
+                1 => Ok(true),
+                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+            }
+        }
+    }
+}
+
+mod opt_bool_i16 {
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::ser::Error as ser_Error;
+    use either::{Either, Left, Right};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    #[serde(rename="BoolOption")]
+    enum BoolOptionHRSurrogate {
+        None(i16),
+        Some(bool)
+    }
+
+    impl From<Either<i16, bool>> for BoolOptionHRSurrogate {
+        fn from(t: Either<i16, bool>) -> Self {
+            match t {
+                Left(i) => BoolOptionHRSurrogate::None(i),
+                Right(v) => BoolOptionHRSurrogate::Some(v),
+            }
+        }
+    }
+
+    impl From<BoolOptionHRSurrogate> for Either<i16, bool> {
+        fn from(t: BoolOptionHRSurrogate) -> Self {
+            match t {
+                BoolOptionHRSurrogate::None(i) => Left(i),
+                BoolOptionHRSurrogate::Some(v) => Right(v),
+            }
+        }
+    }
+    
+    pub fn serialize<S>(&v: &Either<i16, bool>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            BoolOptionHRSurrogate::from(v).serialize(serializer)
+        } else {
+            let v = match v {
+                Left(i) => {
+                    if i == 0 || i == 1 { return Err(S::Error::custom(&"0 and 1 are not valid undefined boolean values")) }
+                    i
+                },
+                Right(b) => if b { 1 } else { 0 }
+            };
+            serializer.serialize_i16(v)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<i16, bool>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            BoolOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            let d = i16::deserialize(deserializer)?;
+            Ok(match d {
+                0 => Right(false),
+                1 => Right(true),
+                d => Left(d)
+            })
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ScriptVars {
     pub shorts: u32,
@@ -684,7 +798,7 @@ pub struct SpellMetadata {
     pub flags: SpellFlags
 }
 
-pub_bitflags_display!(AiServices, u32, [
+pub_bitflags_display!(Services, u32, [
     WEAPON = 0x00000001,
     ARMOR = 0x00000002,
     CLOTHING = 0x00000004,
@@ -711,7 +825,7 @@ pub_bitflags_display!(AiServices, u32, [
     _1000000 = 0x01000000
 ]);
 
-enum_serde!(AiServices, "AI services", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(Services, "services", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Ai {
@@ -721,7 +835,7 @@ pub struct Ai {
     pub alarm: u8,
     pub padding_8: u8,
     pub padding_16: u16,
-    pub services: AiServices
+    pub services: Services
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -784,7 +898,8 @@ pub struct AiTarget {
 pub struct AiActivate {
     #[serde(with = "string_32")]
     pub object_id: String,
-    pub reset: u8
+    #[serde(with = "bool_u8")]
+    pub reset: bool
 }
 
 macro_attr! {
@@ -973,7 +1088,8 @@ pub struct MiscItem {
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
-    pub is_key: u32,
+    #[serde(with = "bool_u32")]
+    pub is_key: bool,
 }
 
 macro_attr! {
@@ -1208,7 +1324,8 @@ enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BodyPart {
     pub kind: BodyPartKind,
-    pub vampire: u8,
+    #[serde(with = "bool_u8")]
+    pub vampire: bool,
     pub flags: BodyPartFlags,
     #[serde(rename="type")]
     pub body_part_type: BodyPartType,
@@ -1247,7 +1364,9 @@ pub struct Enchantment {
     pub enchantment_type: EnchantmentType,
     pub cost: u32,
     pub charge_amount: u32,
-    pub auto_calculate: u32,
+    #[serde(with = "opt_bool_i16")]
+    pub auto_calculate: Either<i16, bool>,
+    pub padding: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
@@ -1376,7 +1495,8 @@ pub struct Potion {
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
-    pub auto_calculate_value: u32,
+    #[serde(with = "bool_u32")]
+    pub auto_calculate_value: bool,
 }
 
 macro_attr! {
@@ -1408,8 +1528,9 @@ pub struct Class {
     pub major_skill_4: u32,
     pub minor_skill_5: u32,
     pub major_skill_5: u32,
-    pub playable: u32,
-    pub auto_calc_services: AiServices,
+    #[serde(with = "bool_u32")]
+    pub playable: bool,
+    pub auto_calc_services: Services,
 }
 
 macro_rules! define_field {

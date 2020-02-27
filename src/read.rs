@@ -9,7 +9,7 @@ use num_traits::cast::FromPrimitive;
 use nom::multi::many0;
 use std::io::{self, Read, Write};
 use std::error::Error;
-use std::fmt::{self};
+use std::fmt::{self, Display, Debug};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
@@ -132,7 +132,9 @@ macro_rules! impl_parse_error {
 enum FieldBodyError {
     UnexpectedEndOfField(u32),
     UnknownValue(Unknown, u32),
-    UnexpectedFieldSize(u32)
+    UnexpectedFieldSize(u32),
+    InvalidBool8(u8, u32),
+    InvalidBool32(u32, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
@@ -199,7 +201,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(w), 4).into()))
+                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(w), 4)))
             ),
             set_err(
                 tuple((
@@ -420,7 +422,7 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| CellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CellFlags(w), 0).into()))
+                |w, _| CellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CellFlags(w), 0)))
             ),
             set_err(
                 pair(le_i32, le_i32),
@@ -458,12 +460,12 @@ fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBody
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellType(w), 0).into()))
+                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellType(w), 0)))
             ),
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellFlags(w), 8).into()))
+                |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellFlags(w), 8)))
             ),
         )),
         |(spell_type, cost, flags)| SpellMetadata {
@@ -485,7 +487,7 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| LightFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::LightFlags(w), 20).into()))
+                |w, _| LightFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::LightFlags(w), 20)))
             )
         )),
         |((weight, value, time, radius), color, flags)| Light {
@@ -503,11 +505,14 @@ fn color_field(input: &[u8]) -> IResult<&[u8], Color, FieldBodyError> {
 
 fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
     map(
-        set_err(
-            tuple((le_f32, le_u32, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
+        pair(
+            set_err(
+                pair(le_f32, le_u32),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            ),
+            bool_32(12, 8)
         ),
-        |(weight, value, is_key)| MiscItem {
+        |((weight, value), is_key)| MiscItem {
             weight, value, is_key
         }
     )(input)
@@ -518,7 +523,7 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0).into()))
+                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_f32, le_u32)),
@@ -536,15 +541,21 @@ fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0).into()))
+                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0)))
             ),
             set_err(
-                tuple((le_u32, le_u32, le_u32)),
+                tuple((le_u32, le_u32, le_i16, le_u16)),
                 |_| FieldBodyError::UnexpectedEndOfField(16)
-            ),
+            )
         ),
-        |(enchantment_type, (cost, charge_amount, auto_calculate))| Enchantment {
-            enchantment_type, cost, charge_amount, auto_calculate
+        |(enchantment_type, (cost, charge_amount, auto_calculate, padding))| Enchantment {
+            enchantment_type, cost, charge_amount,
+            auto_calculate: match auto_calculate {
+                0 => Right(false),
+                1 => Right(true),
+                i => Left(i)
+            },
+            padding
         }
     )(input)
 }
@@ -554,7 +565,7 @@ fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0).into()))
+                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_u32, le_u32, le_u32, le_u32)),
@@ -572,7 +583,7 @@ fn clothing_field(input: &[u8]) -> IResult<&[u8], Clothing, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0).into()))
+                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_u16, le_u16)),
@@ -594,7 +605,7 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8).into()))
+                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8)))
             ),
             set_err(
                 tuple((le_u16, le_f32, le_f32, le_u16, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
@@ -602,7 +613,7 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponFlags(w), 28).into()))
+                |w, _| WeaponFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponFlags(w), 28)))
             )
         )),
         |((weight, value), weapon_type, (health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max), flags)| Weapon {
@@ -616,19 +627,16 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartKind::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0).into()))
+                |b, _| BodyPartKind::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0)))
             ),
-            set_err(
-                le_u8,
-                |_| FieldBodyError::UnexpectedEndOfField(4)
+            bool_8(4, 1),
+            map_res(
+                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
+                |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2)))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2).into()))
-            ),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3).into()))
+                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3)))
             )
         )),
         |(kind, vampire, flags, body_part_type)| BodyPart {
@@ -646,7 +654,7 @@ fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 8).into()))
+                |w, _| Services::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 8)))
             )
         ),
         |((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
@@ -687,7 +695,7 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12).into()))
+                |w, _| AiTravelFlags::from_bits(w ^ 0x01).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12)))
             )
         ),
         |((x, y, z), flags)| AiTravel {
@@ -712,14 +720,33 @@ fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a 
     )
 }
 
+fn bool_8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+    map_res(
+        set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |b, _| match b {
+            0 => Ok(false),
+            1 => Ok(true),
+            b => Err(nom::Err::Error(FieldBodyError::InvalidBool8(b, offset)))
+        }
+    )
+}
+
+fn bool_32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |w, _| match w {
+            0 => Ok(false),
+            1 => Ok(true),
+            w => Err(nom::Err::Error(FieldBodyError::InvalidBool32(w, offset)))
+        }
+    )
+}
+
 fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
     map(
-        set_err(
-            pair(
-                string_len(code_page, 32),
-                le_u8
-            ),
-            |_| FieldBodyError::UnexpectedEndOfField(33)
+        pair(
+            set_err(string_len(code_page, 32), |_| FieldBodyError::UnexpectedEndOfField(33)),
+            bool_8(33, 32)
         ),
         |(object_id, reset)| AiActivate {
             object_id, reset
@@ -736,25 +763,30 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8).into()))
+                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8)))
             ),
-            set_err(
-                tuple((
-                    le_u32, le_u32, le_u32, le_u32, le_u32,
-                    le_u32, le_u32, le_u32, le_u32, le_u32,
-                    le_u32
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(60)
+            pair(
+                set_err(
+                    tuple((
+                        le_u32, le_u32, le_u32, le_u32, le_u32,
+                        le_u32, le_u32, le_u32, le_u32, le_u32
+                    )),
+                    |_| FieldBodyError::UnexpectedEndOfField(60)
+                ),
+                bool_32(60, 52)
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| AiServices::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 56).into()))
+                |w, _| Services::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiServices(w), 56)))
             )
         )),
         |(
             (primary_attribute_1, primary_attribute_2),
             specialization,
-            (minor_skill_1, major_skill_1, minor_skill_2, major_skill_2, minor_skill_3, major_skill_3, minor_skill_4, major_skill_4, minor_skill_5, major_skill_5, playable),
+            (
+                (minor_skill_1, major_skill_1, minor_skill_2, major_skill_2, minor_skill_3, major_skill_3, minor_skill_4, major_skill_4, minor_skill_5, major_skill_5),
+                playable
+            ),
             auto_calc_services
         )| Class {
             primary_attribute_1, primary_attribute_2,
@@ -786,11 +818,11 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<NpcFlags>, Fiel
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::NpcFlags(b), 0).into()))
+                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::NpcFlags(b), 0)))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1).into()))
+                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -807,11 +839,11 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<CreatureFl
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureFlags(b), 0).into()))
+                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureFlags(b), 0)))
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1).into()))
+                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -826,14 +858,14 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<CreatureFl
 fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBodyError> {
     map_res(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ContainerFlags(w), 0).into()))
+        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ContainerFlags(w), 0)))
     )(input)
 }
 
 fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0).into()))
+        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0)))
     )(input)
 }
 
@@ -851,11 +883,14 @@ fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
 
 fn potion_field(input: &[u8]) -> IResult<&[u8], Potion, FieldBodyError> {
     map(
-        set_err(
-            tuple((le_f32, le_u32, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
+        pair(
+            set_err(
+                pair(le_f32, le_u32),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            ),
+            bool_32(12, 8)
         ),
-        |(weight, value, auto_calculate_value)| Potion {
+        |((weight, value), auto_calculate_value)| Potion {
             weight, value, auto_calculate_value
         }
     )(input)
@@ -919,7 +954,7 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(96)),
-                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0).into()))
+                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0)))
             ),
             set_err(
                 tuple((
@@ -981,7 +1016,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4).into()))
+                |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4)))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -1002,7 +1037,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
 fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b), 0).into()))
+        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b), 0)))
     )
     (input)
 }
@@ -1097,7 +1132,9 @@ enum FieldError {
     UnexpectedEndOfRecord(u32),
     FieldSizeMismatch(Tag, u32, u32),
     UnknownValue(Tag, Unknown, u32),
-    UnexpectedFieldSize(Tag, u32)
+    UnexpectedFieldSize(Tag, u32),
+    InvalidBool8(Tag, u8, u32),
+    InvalidBool32(Tag, u32, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -1125,7 +1162,9 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                 field_body(code_page, record_tag, field_tag, field_size),
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
-                    FieldBodyError::UnknownValue(t, v) => FieldError::UnknownValue(field_tag, t, v),
+                    FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
+                    FieldBodyError::InvalidBool8(v, o) => FieldError::InvalidBool8(field_tag, v, o),
+                    FieldBodyError::InvalidBool32(v, o) => FieldError::InvalidBool32(field_tag, v, o),
                     FieldBodyError::UnexpectedFieldSize(s) => FieldError::UnexpectedFieldSize(field_tag, s),
                 }
             )(field_bytes)?;
@@ -1144,7 +1183,7 @@ pub struct UnexpectedEof {
     pub actual_size: u32
 }
 
-impl fmt::Display for UnexpectedEof {
+impl Display for UnexpectedEof {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "unexpected EOF at {:X}h in record started at {:X}h, {} bytes missing",
@@ -1160,13 +1199,13 @@ impl Error for UnexpectedEof {
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidRecordFlags {
+pub struct UnknownRecordFlags {
     pub record_offset: u64,
     pub record_tag: Tag,
     pub value: u64
 }
 
-impl fmt::Display for InvalidRecordFlags {
+impl Display for UnknownRecordFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "invalid record flags value {:016X}h at {:X}h in {} record started at {:X}h",
@@ -1178,7 +1217,7 @@ impl fmt::Display for InvalidRecordFlags {
     }
 }
 
-impl Error for InvalidRecordFlags {
+impl Error for UnknownRecordFlags {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
@@ -1190,7 +1229,7 @@ pub struct RecordSizeMismatch {
     pub actual_size: u32
 }
 
-impl fmt::Display for RecordSizeMismatch {
+impl Display for RecordSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "record size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} record started at {:X}h",
@@ -1217,7 +1256,7 @@ pub struct FieldSizeMismatch {
     pub actual_size: u32
 }
 
-impl fmt::Display for FieldSizeMismatch {
+impl Display for FieldSizeMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "field size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
@@ -1245,7 +1284,7 @@ pub struct UnexpectedFieldSize {
     pub field_size: u32
 }
 
-impl fmt::Display for UnexpectedFieldSize {
+impl Display for UnexpectedFieldSize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "found {} field at {:X}h with unexpected size {} at {:X}h in {} record started at {:X}h",
@@ -1292,7 +1331,7 @@ pub enum Unknown {
     WeaponType(u16),
 }
 
-impl fmt::Display for Unknown {
+impl Display for Unknown {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Unknown::FileType(v) => write!(f, "file type {:08X}h", v),
@@ -1334,7 +1373,7 @@ pub struct UnknownValue {
     pub value: Unknown,
 }
 
-impl fmt::Display for UnknownValue {
+impl Display for UnknownValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f, "Unknown {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
@@ -1353,24 +1392,56 @@ impl Error for UnknownValue {
 }
 
 #[derive(Debug, Clone)]
+pub struct InvalidBool<T> {
+    pub record_offset: u64,
+    pub record_tag: Tag,
+    pub field_offset: u32,
+    pub field_tag: Tag,
+    pub value_offset: u32,
+    pub value: T,
+}
+
+impl<T: Display> Display for InvalidBool<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f, "Invalid boolean {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            self.value,
+            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
+            self.field_tag,
+            self.record_offset + 16 + self.field_offset as u64,
+            self.record_tag,
+            self.record_offset
+        )
+    }
+}
+
+impl<T: Display + Debug> Error for InvalidBool<T> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
+}
+
+#[derive(Debug, Clone)]
 pub enum RecordError {
-    UnexpectedEof(UnexpectedEof),
-    InvalidRecordFlags(InvalidRecordFlags),
-    RecordSizeMismatch(RecordSizeMismatch),
     FieldSizeMismatch(FieldSizeMismatch),
+    InvalidBool8(InvalidBool<u8>),
+    InvalidBool32(InvalidBool<u32>),
+    RecordSizeMismatch(RecordSizeMismatch),
+    UnexpectedEof(UnexpectedEof),
     UnexpectedFieldSize(UnexpectedFieldSize),
+    UnknownRecordFlags(UnknownRecordFlags),
     UnknownValue(UnknownValue),
 }
 
-impl fmt::Display for RecordError {
+impl Display for RecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecordError::UnexpectedEof(x) => x.fmt(f),
-            RecordError::InvalidRecordFlags(x) => x.fmt(f),
-            RecordError::RecordSizeMismatch(x) => x.fmt(f),
-            RecordError::FieldSizeMismatch(x) => x.fmt(f),
-            RecordError::UnexpectedFieldSize(x) => x.fmt(f),
-            RecordError::UnknownValue(x) => x.fmt(f),
+            RecordError::UnexpectedEof(x) => Display::fmt(x, f),
+            RecordError::UnknownRecordFlags(x) => Display::fmt(x, f),
+            RecordError::RecordSizeMismatch(x) => Display::fmt(x, f),
+            RecordError::FieldSizeMismatch(x) => Display::fmt(x, f),
+            RecordError::UnexpectedFieldSize(x) => Display::fmt(x, f),
+            RecordError::UnknownValue(x) => Display::fmt(x, f),
+            RecordError::InvalidBool8(x) => Display::fmt(x, f),
+            RecordError::InvalidBool32(x) => Display::fmt(x, f),
         }
     }
 }
@@ -1379,11 +1450,13 @@ impl Error for RecordError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(match self {
             RecordError::UnexpectedEof(x) => x,
-            RecordError::InvalidRecordFlags(x) => x,
+            RecordError::UnknownRecordFlags(x) => x,
             RecordError::RecordSizeMismatch(x) => x,
             RecordError::FieldSizeMismatch(x) => x,
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::UnknownValue(x) => x,
+            RecordError::InvalidBool8(x) => x,
+            RecordError::InvalidBool32(x) => x,
         })
     }
 }
@@ -1412,7 +1485,7 @@ fn record_head<'a>(record_offset: u64) -> impl Fn(&'a [u8])
                 ),
                 move |value, _| {
                     let record_flags = RecordFlags::from_bits(value)
-                        .ok_or(nom::Err::Error(RecordError::InvalidRecordFlags(InvalidRecordFlags { record_offset, record_tag, value })))?;
+                        .ok_or(nom::Err::Error(RecordError::UnknownRecordFlags(UnknownRecordFlags { record_offset, record_tag, value })))?;
                     Ok((record_tag, record_size, record_flags))
                 }
             )
@@ -1473,6 +1546,18 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                 }),
             RecordBodyError(FieldError::UnknownValue(field_tag, value, value_offset), field) =>
                 RecordError::UnknownValue(UnknownValue {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag, field_tag, value_offset
+                }),
+            RecordBodyError(FieldError::InvalidBool8(field_tag, value, value_offset), field) =>
+                RecordError::InvalidBool8(InvalidBool {
+                    record_offset, value,
+                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                    record_tag, field_tag, value_offset
+                }),
+            RecordBodyError(FieldError::InvalidBool32(field_tag, value, value_offset), field) =>
+                RecordError::InvalidBool32(InvalidBool {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
@@ -1552,14 +1637,14 @@ impl ReadRecordError {
     }
 }
 
-impl fmt::Display for ReadRecordError {
+impl Display for ReadRecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(io_error) = &self.io_error {
             if io_error.kind() != io::ErrorKind::UnexpectedEof {
-                return io_error.fmt(f);
+                return Display::fmt(io_error, f);
             }
         }
-        self.record_error.fmt(f)
+        Display::fmt(&self.record_error, f)
     }
 }
 
@@ -1755,7 +1840,7 @@ mod tests {
         input.extend(0x70000u64.to_le_bytes().iter());
         let result = RecordReader::new().read(CodePage::English, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
-        if let RecordError::InvalidRecordFlags(error) = error.into_record_error() { 
+        if let RecordError::UnknownRecordFlags(error) = error.into_record_error() { 
             assert_eq!(error.value, 0x70000);
             assert_eq!(error.record_offset, 0x11);
             assert_eq!(error.record_tag, TES3);
