@@ -227,6 +227,46 @@ mod tests {
     }
 
     #[test]
+    fn read_test_file_tr_esm() {
+        let file = std::fs::File::open("D:\\MFR\\Data Files\\Tribunal.esm").unwrap();
+        let mut file = std::io::BufReader::new(file);
+        let records = Records::new(CodePage::Russian, 0, &mut file);
+        let records = records.map(|x| {
+            match x {
+                Ok(mut x) => {
+                    x.coerce();
+                    x
+                },
+                Err(e) => {
+                    panic!(format!("{}", e))
+                }
+            }
+        }).collect::<Vec<_>>();
+        let o = std::fs::File::create("D:\\MFR\\Data Files\\Tribunal.esm.yaml").unwrap();
+        serde_yaml::to_writer(std::io::BufWriter::new(o), &records).unwrap();
+    }
+
+    #[test]
+    fn read_test_file_bl_esm() {
+        let file = std::fs::File::open("D:\\MFR\\Data Files\\Bloodmoon.esm").unwrap();
+        let mut file = std::io::BufReader::new(file);
+        let records = Records::new(CodePage::Russian, 0, &mut file);
+        let records = records.map(|x| {
+            match x {
+                Ok(mut x) => {
+                    x.coerce();
+                    x
+                },
+                Err(e) => {
+                    panic!(format!("{}", e))
+                }
+            }
+        }).collect::<Vec<_>>();
+        let o = std::fs::File::create("D:\\MFR\\Data Files\\Bloodmoon.esm.yaml").unwrap();
+        serde_yaml::to_writer(std::io::BufWriter::new(o), &records).unwrap();
+    }
+
+    #[test]
     fn read_test_file_ess() {
         let file = std::fs::File::open("D:\\Inst\\mor_test\\ForAnton0000.ess").unwrap();
         let mut file = std::io::BufReader::new(file);

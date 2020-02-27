@@ -343,21 +343,21 @@ pub struct Ingredient {
     pub effect_3: i32,
     pub effect_4: i32,
     #[serde(with="skill_option_i32")]
-    pub skill_1: Option<Skill>,
+    pub skill_1: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_2: Option<Skill>,
+    pub skill_2: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_3: Option<Skill>,
+    pub skill_3: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_4: Option<Skill>,
+    pub skill_4: Either<Option<i32>, Skill>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_1: Option<Attribute>,
+    pub attribute_1: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_2: Option<Attribute>,
+    pub attribute_2: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_3: Option<Attribute>,
+    pub attribute_3: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_4: Option<Attribute>,
+    pub attribute_4: Either<Option<i32>, Attribute>,
 }
 
 fn eq_f32(a: &f32, b: &f32) -> bool {
@@ -555,8 +555,9 @@ mod multiline_256_dos {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Effect {
     pub id: i16,
-    pub skill: i8,
-    #[serde(with="attribute_either_i8")]
+    #[serde(with="skill_option_i8")]
+    pub skill: Either<Option<i8>, Skill>,
+    #[serde(with="attribute_option_i8")]
     pub attribute: Either<Option<i8>, Attribute>,
     pub range: EffectRange,
     pub area: i32,
@@ -936,7 +937,7 @@ pub struct Book {
     pub weight: f32,
     pub value: u32,
     pub scroll: u32,
-    #[serde(with="skill_either_i32")]
+    #[serde(with="skill_option_i32")]
     pub skill: Either<Option<i32>, Skill>,
     pub enchantment: u32
 }
@@ -1002,7 +1003,7 @@ macro_attr! {
 
 enum_serde!(Attribute, "attribute", u32, to_u32, as from_u32, Unsigned, u64);
 
-mod attribute_either_i8 {
+mod attribute_option_i8 {
     use serde::{Serializer, Deserializer, Deserialize, Serialize};
     use serde::ser::Error as ser_Error;
     use either::{Either, Left, Right};
@@ -1070,29 +1071,68 @@ mod attribute_either_i8 {
 }
 
 mod attribute_option_i32 {
-    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::ser::Error as ser_Error;
+    use either::{Either, Left, Right};
     use crate::field::Attribute;
     use num_traits::cast::{ToPrimitive, FromPrimitive};
-    use serde::de::Unexpected;
-    use serde::de::Error as de_Error;
 
-    pub fn serialize<S>(&a: &Option<Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            a.serialize(serializer)
-        } else {
-            serializer.serialize_i32(a.map_or(-1, |x| x.to_i32().unwrap()))
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    #[serde(rename="AttributeOption")]
+    enum AttributeOptionHRSurrogate {
+        None(Option<i32>),
+        Some(Attribute)
+    }
+
+    impl From<Either<Option<i32>, Attribute>> for AttributeOptionHRSurrogate {
+        fn from(t: Either<Option<i32>, Attribute>) -> Self {
+            match t {
+                Left(i) => AttributeOptionHRSurrogate::None(i),
+                Right(v) => AttributeOptionHRSurrogate::Some(v),
+            }
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Attribute>, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            <Option<Attribute>>::deserialize(deserializer)
+    impl From<AttributeOptionHRSurrogate> for Either<Option<i32>, Attribute> {
+        fn from(t: AttributeOptionHRSurrogate) -> Self {
+            match t {
+                AttributeOptionHRSurrogate::None(i) => Left(i),
+                AttributeOptionHRSurrogate::Some(v) => Right(v),
+            }
+        }
+    }
+
+    pub fn serialize<S>(&v: &Either<Option<i32>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            AttributeOptionHRSurrogate::from(v).serialize(serializer)
         } else {
-            let v = i32::deserialize(deserializer)?;
-            if v == -1 { return Ok(None); }
-            Attribute::from_i32(v)
-                .ok_or_else(|| D::Error::invalid_value(Unexpected::Signed(v as i64), &"attribute or -1"))
-                .map(Some)
+            let v = match v {
+                Left(Some(i)) => {
+                    if i == -1 || Attribute::from_i32(i).is_some() {
+                        let err = format!("{} is not valid undefined attribute value", i);
+                        return Err(S::Error::custom(&err));
+                    }
+                    i
+                },
+                Left(None) => -1,
+                Right(a) => a.to_i32().unwrap()
+            };
+            serializer.serialize_i32(v)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Attribute>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            AttributeOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            let d = i32::deserialize(deserializer)?;
+            if d == -1 { return Ok(Left(None)); }
+            if let Some(a) = Attribute::from_i32(d) {
+                Ok(Right(a))
+            } else {
+                Ok(Left(Some(d)))
+            }
         }
     }
 }
@@ -1179,34 +1219,6 @@ macro_attr! {
 enum_serde!(Skill, "skill", u32, to_u32, as from_u32, Unsigned, u64);
 
 mod skill_option_i32 {
-    use serde::{Serializer, Deserializer, Serialize, Deserialize};
-    use crate::field::Skill;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
-    use serde::de::Unexpected;
-    use serde::de::Error as de_Error;
-
-    pub fn serialize<S>(&a: &Option<Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            a.serialize(serializer)
-        } else {
-            serializer.serialize_i32(a.map_or(-1, |x| x.to_i32().unwrap()))
-        }
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Skill>, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            <Option<Skill>>::deserialize(deserializer)
-        } else {
-            let v = i32::deserialize(deserializer)?;
-            if v == -1 { return Ok(None); }
-            Skill::from_i32(v)
-                .ok_or_else(|| D::Error::invalid_value(Unexpected::Signed(v as i64), &"skill or -1"))
-                .map(Some)
-        }
-    }
-}
-
-mod skill_either_i32 {
     use serde::{Serializer, Deserializer, Deserialize, Serialize};
     use serde::ser::Error as ser_Error;
     use either::{Either, Left, Right};
@@ -1265,6 +1277,73 @@ mod skill_either_i32 {
             let d = i32::deserialize(deserializer)?;
             if d == -1 { return Ok(Left(None)); }
             if let Some(a) = Skill::from_i32(d) {
+                Ok(Right(a))
+            } else {
+                Ok(Left(Some(d)))
+            }
+        }
+    }
+}
+
+mod skill_option_i8 {
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::ser::Error as ser_Error;
+    use either::{Either, Left, Right};
+    use crate::field::Skill;
+    use num_traits::cast::{ToPrimitive, FromPrimitive};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    #[serde(rename="SkillOption")]
+    enum SkillOptionHRSurrogate {
+        None(Option<i8>),
+        Some(Skill)
+    }
+
+    impl From<Either<Option<i8>, Skill>> for SkillOptionHRSurrogate {
+        fn from(t: Either<Option<i8>, Skill>) -> Self {
+            match t {
+                Left(i) => SkillOptionHRSurrogate::None(i),
+                Right(v) => SkillOptionHRSurrogate::Some(v),
+            }
+        }
+    }
+
+    impl From<SkillOptionHRSurrogate> for Either<Option<i8>, Skill> {
+        fn from(t: SkillOptionHRSurrogate) -> Self {
+            match t {
+                SkillOptionHRSurrogate::None(i) => Left(i),
+                SkillOptionHRSurrogate::Some(v) => Right(v),
+            }
+        }
+    }
+
+    pub fn serialize<S>(&v: &Either<Option<i8>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            SkillOptionHRSurrogate::from(v).serialize(serializer)
+        } else {
+            let v = match v {
+                Left(Some(i)) => {
+                    if i == -1 || Skill::from_i8(i).is_some() {
+                        let err = format!("{} is not valid undefined skill value", i);
+                        return Err(S::Error::custom(&err));
+                    }
+                    i
+                },
+                Left(None) => -1,
+                Right(a) => a.to_i8().unwrap()
+            };
+            serializer.serialize_i8(v)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Skill>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            SkillOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+        } else {
+            let d = i8::deserialize(deserializer)?;
+            if d == -1 { return Ok(Left(None)); }
+            if let Some(a) = Skill::from_i8(d) {
                 Ok(Right(a))
             } else {
                 Ok(Left(Some(d)))

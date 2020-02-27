@@ -295,7 +295,7 @@ fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
     set_err(many0(le_f32), |_| unreachable!())(input)
 }
 
-fn attribute_either_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
+fn attribute_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
     map(
         le_i8,
         move |b| if b == -1 { 
@@ -308,33 +308,20 @@ fn attribute_either_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attrib
     )(input)
 }
 
-fn attribute_option_i32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Attribute>, FieldBodyError> {
-    map_res(
-        set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |b, _| if b == -1 {
-            Ok(None)
+fn attribute_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Attribute>, ()> {
+    map(
+        le_i32,
+        move |b| if b == -1 {
+            Left(None)
         } else if let Some(a) = Attribute::from_i32(b) {
-            Ok(Some(a))
+            Right(a)
         } else {
-            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AttributeRef(b), offset)))
+            Left(Some(b))
         }
-    )
+    )(input)
 }
 
-fn skill_option_i32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Option<Skill>, FieldBodyError> {
-    map_res(
-        set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |b, _| if b == -1 {
-            Ok(None)
-        } else if let Some(a) = Skill::from_i32(b) {
-            Ok(Some(a))
-        } else {
-            Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SkillRef(b), offset)))
-        }
-    )
-}
-
-fn skill_either_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, ()> {
+fn skill_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, ()> {
     map(
         le_i32,
         move |b| if b == -1 {
@@ -347,32 +334,33 @@ fn skill_either_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, 
     )(input)
 }
 
+fn skill_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Skill>, ()> {
+    map(
+        le_i8,
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = Skill::from_i8(b) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
+    )(input)
+}
+
 fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
     map(
-        tuple((
-            set_err(
-                tuple((
-                    le_f32, le_u32,
-                    le_i32, le_i32, le_i32, le_i32,
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(56)
-            ),
-            skill_option_i32(56, 24),
-            skill_option_i32(56, 28),
-            skill_option_i32(56, 32),
-            skill_option_i32(56, 36),
-            attribute_option_i32(56, 40),
-            attribute_option_i32(56, 44),
-            attribute_option_i32(56, 48),
-            attribute_option_i32(56, 52)
-        )),
+        set_err(
+            tuple((
+                tuple((le_f32, le_u32, le_i32, le_i32, le_i32, le_i32)),
+                tuple((skill_option_i32, skill_option_i32, skill_option_i32, skill_option_i32)),
+                tuple((attribute_option_i32, attribute_option_i32, attribute_option_i32, attribute_option_i32))
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(56)
+        ),
         |(
-            (
-                weight, value,
-                effect_1, effect_2, effect_3, effect_4,
-            ),
-            skill_1, skill_2, skill_3, skill_4,
-            attribute_1, attribute_2, attribute_3, attribute_4
+            (weight, value, effect_1, effect_2, effect_3, effect_4),
+            (skill_1, skill_2, skill_3, skill_4),
+            (attribute_1, attribute_2, attribute_3, attribute_4)
         )| Ingredient {
             weight, value,
             effect_1, effect_2, effect_3, effect_4,
@@ -951,7 +939,7 @@ fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyErro
 fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     map(
         set_err(
-            tuple((le_f32, le_u32, le_u32, skill_either_i32, le_u32)),
+            tuple((le_f32, le_u32, le_u32, skill_option_i32, le_u32)),
             |_| FieldBodyError::UnexpectedEndOfField(20)
         ),
         |(weight, value, scroll, skill, enchantment)| Book {
@@ -1097,7 +1085,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     map(
         tuple((
             set_err(
-                tuple((le_i16, le_i8, attribute_either_i8)),
+                tuple((le_i16, skill_option_i8, attribute_option_i8)),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
             map_res(
@@ -1396,7 +1384,6 @@ pub enum Unknown {
     ApparatusType(u32),
     ArmorType(u32),
     Attribute(u32),
-    AttributeRef(i32),
     BipedObject(u8),
     Blood(u8),
     BodyPartFlags(u8),
@@ -1414,7 +1401,6 @@ pub enum Unknown {
     LightFlags(u32),
     NpcFlags(u8),
     Skill(u32),
-    SkillRef(i32),
     Specialization(u32),
     SpellFlags(u32),
     SpellType(u32),
@@ -1451,9 +1437,7 @@ impl Display for Unknown {
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
-            Unknown::AttributeRef(v) => write!(f, "attribute reference {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
-            Unknown::SkillRef(v) => write!(f, "skill reference {}", v),
         }
     }
 }
@@ -2081,10 +2065,10 @@ mod tests {
             weight: 10.0,
             value: 117,
             effect_1: 22, effect_2: 23, effect_3: 24, effect_4: 25,
-            skill_1: None, skill_2: Some(Skill::Armorer),
-            skill_3: Some(Skill::Axe), skill_4: Some(Skill::Block),
-            attribute_1: None, attribute_2: Some(Attribute::Luck),
-            attribute_3: Some(Attribute::Endurance), attribute_4: Some(Attribute::Strength)
+            skill_1: Left(None), skill_2: Right(Skill::Armorer),
+            skill_3: Right(Skill::Axe), skill_4: Right(Skill::Block),
+            attribute_1: Left(None), attribute_2: Right(Attribute::Luck),
+            attribute_3: Right(Attribute::Endurance), attribute_4: Right(Attribute::Strength)
         };
         let bin: Vec<u8> = serialize(&ingredient, CodePage::English, false).unwrap();
         let res = ingredient_field(&bin).unwrap().1;
@@ -2135,7 +2119,7 @@ mod tests {
     fn serialize_effect() {
         let effect = Effect {
             id: 12700,
-            skill: 127,
+            skill: Right(Skill::Enchant),
             attribute: Right(Attribute::Agility),
             range: EffectRange::Touch,
             area: 1333,
@@ -2159,7 +2143,7 @@ mod tests {
     fn serialize_effect_no_attribute() {
         let effect = Effect {
             id: 12700,
-            skill: 127,
+            skill: Left(Some(-10)),
             attribute: Left(None),
             range: EffectRange::Touch,
             area: 1333,
