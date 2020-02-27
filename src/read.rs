@@ -592,24 +592,29 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
 
 fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError> {
     map(
-        pair(
+        tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
                 |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0)))
             ),
             set_err(
-                tuple((le_u32, le_u32, le_i16, le_u16)),
+                pair(le_u32, le_u32),
                 |_| FieldBodyError::UnexpectedEndOfField(16)
-            )
-        ),
-        |(enchantment_type, (cost, charge_amount, auto_calculate, padding))| Enchantment {
-            enchantment_type, cost, charge_amount,
-            auto_calculate: match auto_calculate {
-                0 => Right(false),
-                1 => Right(true),
-                i => Left(i)
-            },
-            padding
+            ),
+            map_res(
+                set_err(le_i16, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| match w {
+                    0 => Ok(Right(false)),
+                    1 => Ok(Right(true)),
+                    -1 => Ok(Left(true)),
+                    -2 => Ok(Left(false)),
+                    w => Err(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentAutoCalculate(w), 12)))   
+                }
+            ),
+            set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(16))
+        )),
+        |(enchantment_type, (cost, charge_amount), auto_calculate, padding)| Enchantment {
+            enchantment_type, cost, charge_amount, auto_calculate, padding
         }
     )(input)
 }
@@ -1396,6 +1401,7 @@ pub enum Unknown {
     CreatureType(u32),
     DialogType(u8),
     EffectRange(u32),
+    EnchantmentAutoCalculate(i16),
     EnchantmentType(u32),
     FileType(u32),
     LightFlags(u32),
@@ -1434,6 +1440,7 @@ impl Display for Unknown {
             Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
             Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
+            Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),

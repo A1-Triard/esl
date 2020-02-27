@@ -438,62 +438,38 @@ mod bool_u8 {
     }
 }
 
-mod bool_option_i16 {
+mod bool_either_i16 {
     use serde::{Serializer, Deserializer, Deserialize, Serialize};
-    use serde::ser::Error as ser_Error;
+    use serde::de::Error as de_Error;
     use either::{Either, Left, Right};
+    use serde::de::Unexpected;
 
-    #[derive(Serialize, Deserialize)]
-    #[serde(untagged)]
-    #[serde(rename="BoolOption")]
-    enum BoolOptionHRSurrogate {
-        None(i16),
-        Some(bool)
-    }
-
-    impl From<Either<i16, bool>> for BoolOptionHRSurrogate {
-        fn from(t: Either<i16, bool>) -> Self {
-            match t {
-                Left(i) => BoolOptionHRSurrogate::None(i),
-                Right(v) => BoolOptionHRSurrogate::Some(v),
-            }
-        }
-    }
-
-    impl From<BoolOptionHRSurrogate> for Either<i16, bool> {
-        fn from(t: BoolOptionHRSurrogate) -> Self {
-            match t {
-                BoolOptionHRSurrogate::None(i) => Left(i),
-                BoolOptionHRSurrogate::Some(v) => Right(v),
-            }
-        }
-    }
-    
-    pub fn serialize<S>(&v: &Either<i16, bool>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    pub fn serialize<S>(&v: &Either<bool, bool>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            BoolOptionHRSurrogate::from(v).serialize(serializer)
+            v.serialize(serializer)
         } else {
             let v = match v {
-                Left(i) => {
-                    if i == 0 || i == 1 { return Err(S::Error::custom(&"0 and 1 are not valid undefined boolean values")) }
-                    i
-                },
-                Right(b) => if b { 1 } else { 0 }
+                Left(false) => -2,
+                Left(true) => -1,
+                Right(false) => 0,
+                Right(true) => 1
             };
             serializer.serialize_i16(v)
         }
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<i16, bool>, D::Error> where D: Deserializer<'de> {
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<bool, bool>, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            BoolOptionHRSurrogate::deserialize(deserializer).map(|x| x.into())
+            <Either<bool, bool>>::deserialize(deserializer)
         } else {
             let d = i16::deserialize(deserializer)?;
-            Ok(match d {
-                0 => Right(false),
-                1 => Right(true),
-                d => Left(d)
-            })
+            match d {
+                0 => Ok(Right(false)),
+                1 => Ok(Right(true)),
+                -1 => Ok(Left(true)),
+                -2 => Ok(Left(false)),
+                d => Err(D::Error::invalid_value(Unexpected::Signed(d as i64), &"-2, -1, 0, or 1"))
+            }
         }
     }
 }
@@ -1802,8 +1778,8 @@ pub struct Enchantment {
     pub enchantment_type: EnchantmentType,
     pub cost: u32,
     pub charge_amount: u32,
-    #[serde(with = "bool_option_i16")]
-    pub auto_calculate: Either<i16, bool>,
+    #[serde(with = "bool_either_i16")]
+    pub auto_calculate: Either<bool, bool>,
     pub padding: u16,
 }
 
