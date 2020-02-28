@@ -6,6 +6,7 @@ use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
 use either::{Either, Left, Right};
 use std::ops::{Index, IndexMut};
+use std::convert::TryFrom;
 
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -1228,6 +1229,51 @@ impl IndexMut<Skill> for Skills {
             Skill::Mercantile => &mut self.mercantile,
             Skill::Speechcraft => &mut self.speechcraft,
             Skill::HandToHand => &mut self.hand_to_hand,
+        }
+    }
+}
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum School {
+        Alteration = 0,
+        Conjuration = 1,
+        Illusion = 2,
+        Destruction = 3,
+        Mysticism = 4,
+        Restoration = 5,
+    }
+}
+
+enum_serde!(School, "school", u32, to_u32, as from_u32, Unsigned, u64);
+
+impl From<School> for Skill {
+    fn from(s: School) -> Skill {
+        match s {
+            School::Alteration => Skill::Alteration,
+            School::Conjuration => Skill::Conjuration,
+            School::Illusion => Skill::Illusion,
+            School::Destruction => Skill::Destruction,
+            School::Mysticism => Skill::Mysticism,
+            School::Restoration => Skill::Restoration
+        }
+    }
+}
+
+impl TryFrom<Skill> for School {
+    type Error = ();
+    
+    fn try_from(s: Skill) -> Result<School, ()> {
+        match s {
+            Skill::Alteration => Ok(School::Alteration),
+            Skill::Conjuration => Ok(School::Conjuration),
+            Skill::Illusion => Ok(School::Illusion),
+            Skill::Destruction => Ok(School::Destruction),
+            Skill::Mysticism => Ok(School::Mysticism),
+            Skill::Restoration => Ok(School::Restoration),
+            _ => Err(())
         }
     }
 }
