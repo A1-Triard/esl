@@ -358,14 +358,14 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
             |_| FieldBodyError::UnexpectedEndOfField(56)
         ),
         |(
-            (weight, value, effect_1, effect_2, effect_3, effect_4),
-            (skill_1, skill_2, skill_3, skill_4),
-            (attribute_1, attribute_2, attribute_3, attribute_4)
+            (weight, value, effect_1_index, effect_2_index, effect_3_index, effect_4_index),
+            (effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill),
+            (effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute)
         )| Ingredient {
             weight, value,
-            effect_1, effect_2, effect_3, effect_4,
-            skill_1, skill_2, skill_3, skill_4,
-            attribute_1, attribute_2, attribute_3, attribute_4
+            effect_1_index, effect_2_index, effect_3_index, effect_4_index,
+            effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill,
+            effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute
         }
     )(input)
 }
@@ -833,6 +833,13 @@ fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
     skill(4, 0)(input)
 }
 
+fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
+        move |w, _| EffectIndex::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectIndex(w), 0)))
+    )(input)
+}
+
 fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     map(
         tuple((
@@ -1103,11 +1110,11 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
         )),
         |(
-            (id, skill, attribute),
+            (index, skill, attribute),
             range,
             (area, duration, magnitude_min, magnitude_max),
         )| Effect {
-            id, skill, attribute, range,
+            index, skill, attribute, range,
             area, duration, magnitude_min, magnitude_max
         }
     )(input)
@@ -1152,6 +1159,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Position => map(position_field, Field::Position)(input),
             FieldType::Skill => map(skill_field, Field::Skill)(input),
+            FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
@@ -1400,6 +1408,7 @@ pub enum Unknown {
     CreatureFlags(u8),
     CreatureType(u32),
     DialogType(u8),
+    EffectIndex(u32),
     EffectRange(u32),
     EnchantmentAutoCalculate(i16),
     EnchantmentType(u32),
@@ -1445,6 +1454,7 @@ impl Display for Unknown {
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
+            Unknown::EffectIndex(v) => write!(f, "effect index {}", v),
         }
     }
 }
@@ -2071,11 +2081,11 @@ mod tests {
         let ingredient = Ingredient {
             weight: 10.0,
             value: 117,
-            effect_1: 22, effect_2: 23, effect_3: 24, effect_4: 25,
-            skill_1: Left(None), skill_2: Right(Skill::Armorer),
-            skill_3: Right(Skill::Axe), skill_4: Right(Skill::Block),
-            attribute_1: Left(None), attribute_2: Right(Attribute::Luck),
-            attribute_3: Right(Attribute::Endurance), attribute_4: Right(Attribute::Strength)
+            effect_1_index: 22, effect_2_index: 23, effect_3_index: 24, effect_4_index: 25,
+            effect_1_skill: Left(None), effect_2_skill: Right(Skill::Armorer),
+            effect_3_skill: Right(Skill::Axe), effect_4_skill: Right(Skill::Block),
+            effect_1_attribute: Left(None), effect_2_attribute: Right(Attribute::Luck),
+            effect_3_attribute: Right(Attribute::Endurance), effect_4_attribute: Right(Attribute::Strength)
         };
         let bin: Vec<u8> = serialize(&ingredient, CodePage::English, false).unwrap();
         let res = ingredient_field(&bin).unwrap().1;
@@ -2125,7 +2135,7 @@ mod tests {
     #[test]
     fn serialize_effect() {
         let effect = Effect {
-            id: 12700,
+            index: 12700,
             skill: Right(Skill::Enchant),
             attribute: Right(Attribute::Agility),
             range: EffectRange::Touch,
@@ -2136,7 +2146,7 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
-        assert_eq!(res.id, effect.id);
+        assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
         assert_eq!(res.range, effect.range);
@@ -2149,7 +2159,7 @@ mod tests {
     #[test]
     fn serialize_effect_no_attribute() {
         let effect = Effect {
-            id: 12700,
+            index: 12700,
             skill: Left(Some(-10)),
             attribute: Left(None),
             range: EffectRange::Touch,
@@ -2160,7 +2170,7 @@ mod tests {
         };
         let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
-        assert_eq!(res.id, effect.id);
+        assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
         assert_eq!(res.range, effect.range);

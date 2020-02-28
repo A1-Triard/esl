@@ -147,6 +147,7 @@ pub(crate) enum FieldType {
     Potion,
     Class,
     Skill,
+    EffectIndex,
 }
 
 impl FieldType {
@@ -230,6 +231,7 @@ impl FieldType {
             (_, INAM) => FieldType::StringZ,
             (ARMO, INDX) => FieldType::BipedObject,
             (CLOT, INDX) => FieldType::BipedObject,
+            (MGEF, INDX) => FieldType::EffectIndex,
             (SKIL, INDX) => FieldType::Skill,
             (_, INDX) => FieldType::I32,
             (CELL, INTV) => FieldType::F32,
@@ -338,26 +340,26 @@ pub struct Ingredient {
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    pub effect_1: i32,
-    pub effect_2: i32,
-    pub effect_3: i32,
-    pub effect_4: i32,
+    pub effect_1_index: i32,
+    pub effect_2_index: i32,
+    pub effect_3_index: i32,
+    pub effect_4_index: i32,
     #[serde(with="skill_option_i32")]
-    pub skill_1: Either<Option<i32>, Skill>,
+    pub effect_1_skill: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_2: Either<Option<i32>, Skill>,
+    pub effect_2_skill: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_3: Either<Option<i32>, Skill>,
+    pub effect_3_skill: Either<Option<i32>, Skill>,
     #[serde(with="skill_option_i32")]
-    pub skill_4: Either<Option<i32>, Skill>,
+    pub effect_4_skill: Either<Option<i32>, Skill>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_1: Either<Option<i32>, Attribute>,
+    pub effect_1_attribute: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_2: Either<Option<i32>, Attribute>,
+    pub effect_2_attribute: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_3: Either<Option<i32>, Attribute>,
+    pub effect_3_attribute: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
-    pub attribute_4: Either<Option<i32>, Attribute>,
+    pub effect_4_attribute: Either<Option<i32>, Attribute>,
 }
 
 fn eq_f32(a: &f32, b: &f32) -> bool {
@@ -530,7 +532,7 @@ mod multiline_256_dos {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Effect {
-    pub id: i16,
+    pub index: i16,
     #[serde(with="skill_option_i8")]
     pub skill: Either<Option<i8>, Skill>,
     #[serde(with="attribute_option_i8")]
@@ -1429,6 +1431,47 @@ impl IndexMut<Skill> for Skills {
     }
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum EffectIndex {
+        WaterBreathing = 0, SwiftSwim = 1, WaterWalking = 2, Shield = 3, FireShield = 4, LightningShield = 5,
+        FrostShield = 6, Burden = 7, Feather = 8, Jump = 9, Levitate = 10, SlowFall = 11, Lock = 12, Open = 13,
+        FireDamage = 14, ShockDamage = 15, FrostDamage = 16, DrainAttribute = 17, DrainHealth = 18,
+        DrainSpellpoints = 19, DrainFatigue = 20, DrainSkill = 21, DamageAttribute = 22, DamageHealth = 23,
+        DamageMagicka = 24, DamageFatigue = 25, DamageSkill = 26, Poison = 27, WeaknessToFire = 28,
+        WeaknessToFrost = 29, WeaknessToShock = 30, WeaknessToMagicka = 31, WeaknessToCommonDisease = 32,
+        WeaknessToBlightDisease = 33, WeaknessToCorprusDisease = 34, WeaknessToPoison = 35,
+        WeaknessToNormalWeapons = 36, DisintegrateWeapon = 37, DisintegrateArmor = 38, Invisibility = 39,
+        Chameleon = 40, Light = 41, Sanctuary = 42, NightEye = 43, Charm = 44, Paralyze = 45, Silence = 46,
+        Blind = 47, Sound = 48, CalmHumanoid = 49, CalmCreature = 50, FrenzyHumanoid = 51, FrenzyCreature = 52,
+        DemoralizeHumanoid = 53, DemoralizeCreature = 54, RallyHumanoid = 55, RallyCreature = 56, Dispel = 57,
+        Soultrap = 58, Telekinesis = 59, Mark = 60, Recall = 61, DivineIntervention = 62, AlmsiviIntervention = 63,
+        DetectAnimal = 64, DetectEnchantment = 65, DetectKey = 66, SpellAbsorption = 67, Reflect = 68,
+        CureCommonDisease = 69, CureBlightDisease = 70, CureCorprusDisease = 71, CurePoison = 72,
+        CureParalyzation = 73, RestoreAttribute = 74, RestoreHealth = 75, RestoreSpellPoints = 76,
+        RestoreFatigue = 77, RestoreSkill = 78, FortifyAttribute = 79, FortifyHealth = 80, FortifySpellpoints = 81,
+        FortifyFatigue = 82, FortifySkill = 83, FortifyMagickaMultiplier = 84, AbsorbAttribute = 85,
+        AbsorbHealth = 86, AbsorbSpellPoints = 87, AbsorbFatigue = 88, AbsorbSkill = 89, ResistFire = 90,
+        ResistFrost = 91, ResistShock = 92, ResistMagicka = 93, ResistCommonDisease = 94,
+        ResistBlightDisease = 95, ResistCorprusDisease = 96, ResistPoison = 97, ResistNormalWeapons = 98,
+        ResistParalysis = 99, RemoveCurse = 100, TurnUndead = 101, SummonScamp = 102, SummonClannfear = 103,
+        SummonDaedroth = 104, SummonDremora = 105, SummonAncestralGhost = 106, SummonSkeletalMinion = 107,
+        SummonLeastBonewalker = 108, SummonGreaterBonewalker = 109, SummonBonelord = 110,
+        SummonWingedTwilight = 111, SummonHunger = 112, SummonGoldensaint = 113, SummonFlameAtronach = 114,
+        SummonFrostAtronach = 115, SummonStormAtronach = 116, FortifyAttackBonus = 117, CommandCreatures = 118,
+        CommandHumanoids = 119, BoundDagger = 120, BoundLongsword = 121, BoundMace = 122, BoundBattleAxe = 123,
+        BoundSpear = 124, BoundLongbow = 125, ExtraSpell = 126, BoundCuirass = 127, BoundHelm = 128,
+        BoundBoots = 129, BoundShield = 130, BoundGloves = 131, Corpus = 132, Vampirism = 133,
+        SummonCenturionSphere = 134, SunDamage = 135, StuntedMagicka = 136, SummonFabricant = 137,
+        SummonCreature01 = 138, SummonCreature02 = 139, SummonCreature03 = 140, SummonCreature04 = 141,
+        SummonCreature05 = 142
+    }
+}
+
+enum_serde!(EffectIndex, "effect index", u32, to_u32, as from_u32, Unsigned, u64);
+
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub struct Color(pub u32);
 
@@ -1983,6 +2026,7 @@ define_field!(
     CreatureFlags(FlagsAndBlood<CreatureFlags>),
     DialogType(DialogType),
     Effect(Effect),
+    EffectIndex(EffectIndex),
     Enchantment(Enchantment),
     F32(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
     F32List(#[derivative(PartialEq(compare_with="eq_f32_list"))] Vec<f32>),

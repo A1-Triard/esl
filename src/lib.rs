@@ -2,6 +2,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 #![deny(warnings)]
+#![recursion_limit="512"]
 
 #[macro_use]
 extern crate enum_derive;
