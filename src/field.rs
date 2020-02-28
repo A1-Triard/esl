@@ -150,6 +150,7 @@ pub(crate) enum FieldType {
     Skill,
     EffectIndex,
     Sound,
+    EffectMetadata,
 }
 
 impl FieldType {
@@ -256,6 +257,7 @@ impl FieldType {
             (FMAP, MAPH) => FieldType::I64,
             (TES3, MAST) => FieldType::StringZ,
             (MISC, MCDT) => FieldType::MiscItem,
+            (MGEF, MEDT) => FieldType::EffectMetadata,
             (PCDT, MNAM) => FieldType::String(None),
             (CELL, MNAM) => FieldType::U8,
             (_, MODL) => FieldType::StringZ,
@@ -1353,6 +1355,35 @@ mod effect_index_option_i16 {
     }
 }
 
+pub_bitflags_display!(EffectFlags, u32,
+    SPELLMAKING = 0x200,
+    ENCHANTING = 0x400,
+    LIGHT_NEGATIVE = 0x800
+);
+
+enum_serde!(EffectFlags, "effect flags", u32, bits, try from_bits, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct EffectMetadata {
+    pub school: School,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub base_cost: f32,
+    pub flags: EffectFlags,
+    #[serde(with="color_components")]
+    pub color: Color,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub size_factor: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub speed: f32,
+    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[serde(with="float_32")]
+    pub size_cap: f32,
+}
+
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub struct Color {
     pub r: u8,
@@ -1397,6 +1428,39 @@ impl Color {
 }
 
 enum_serde!(Color, "RGB color", u32, to_u32(), try try_from_u32, Unsigned, u64);
+
+mod color_components {
+    use std::convert::TryInto;
+    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use crate::field::Color;
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+    use serde::ser::SerializeTuple;
+
+    pub fn serialize<S>(&c: &Color, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            c.serialize(serializer)
+        } else {
+            let mut serializer = serializer.serialize_tuple(3)?;
+            serializer.serialize_element(&(c.r as u32))?;
+            serializer.serialize_element(&(c.g as u32))?;
+            serializer.serialize_element(&(c.b as u32))?;
+            serializer.end()
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Color, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            Color::deserialize(deserializer)
+        } else {
+            let (r, g, b) = <(u32, u32, u32)>::deserialize(deserializer)?;
+            let r = r.try_into().map_err(|_| D::Error::invalid_value(Unexpected::Unsigned(r as u64), &"0 .. 255"))?;
+            let g = g.try_into().map_err(|_| D::Error::invalid_value(Unexpected::Unsigned(g as u64), &"0 .. 255"))?;
+            let b = b.try_into().map_err(|_| D::Error::invalid_value(Unexpected::Unsigned(b as u64), &"0 .. 255"))?;
+            Ok(Color { r, g, b })
+        }
+    }
+}
 
 pub_bitflags_display!(LightFlags, u32,
     DYNAMIC = 0x0001,
@@ -1913,6 +1977,7 @@ define_field!(
     DialogType(DialogType),
     Effect(Effect),
     EffectIndex(EffectIndex),
+    EffectMetadata(EffectMetadata),
     Enchantment(Enchantment),
     F32(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
     F32List(#[derivative(PartialEq(compare_with="eq_f32_list"))] Vec<f32>),

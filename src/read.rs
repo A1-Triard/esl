@@ -14,6 +14,7 @@ use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Right, Left, Either};
+use std::convert::TryInto;
 
 use crate::strings::*;
 use crate::field::*;
@@ -585,6 +586,36 @@ fn sound_field(input: &[u8]) -> IResult<&[u8], Sound, FieldBodyError> {
         ),
         |(volume, range_min, range_max)| Sound {
             volume, range_min, range_max
+        }
+    )(input)
+}
+
+fn color_component<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], u8, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
+        move |w, _| w.try_into().map_err(|_| nom::Err::Error(FieldBodyError::InvalidValue(Invalid::ColorComponent(w), offset)))
+    )
+}
+
+fn effect_metadata_field(input: &[u8]) -> IResult<&[u8], EffectMetadata, FieldBodyError> {
+    map(
+        tuple((
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(36)),
+                |w, _| School::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::School(w), 0)))
+            ),
+            set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(36)),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(36)),
+                |w, _| EffectFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectFlags(w), 8)))
+            ),
+            color_component(36, 12),
+            color_component(36, 16),
+            color_component(36, 20),
+            set_err(tuple((le_f32, le_f32, le_f32)), |_| FieldBodyError::UnexpectedEndOfField(36))
+        )),
+        |(school, base_cost, flags, r, g, b, (size_factor, speed, size_cap))| EffectMetadata {
+            school, base_cost, flags, color: Color { r, g, b }, size_factor, speed, size_cap
         }
     )(input)
 }
@@ -1199,6 +1230,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Position => map(position_field, Field::Position)(input),
             FieldType::Skill => map(skill_field, Field::Skill)(input),
             FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
+            FieldType::EffectMetadata => map(effect_metadata_field, Field::EffectMetadata)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
@@ -1446,6 +1478,7 @@ pub enum Unknown {
     CreatureFlags(u8),
     CreatureType(u32),
     DialogType(u8),
+    EffectFlags(u32),
     EffectIndex(u32),
     EffectRange(u32),
     EnchantmentAutoCalculate(i16),
@@ -1453,6 +1486,7 @@ pub enum Unknown {
     FileType(u32),
     LightFlags(u32),
     NpcFlags(u8),
+    School(u32),
     Skill(u32),
     Specialization(u32),
     SpellFlags(u32),
@@ -1489,9 +1523,11 @@ impl Display for Unknown {
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
             Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
+            Unknown::EffectFlags(v) => write!(f, "effect flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
+            Unknown::School(v) => write!(f, "school {}", v),
             Unknown::EffectIndex(v) => write!(f, "effect index {}", v),
         }
     }

@@ -303,6 +303,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have effect index type", self.record_tag, self.field_tag)))
             },
+            FieldType::EffectMetadata => if let Field::EffectMetadata(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have effect metadata type", self.record_tag, self.field_tag)))
+            },
             FieldType::F32 => if let &Field::F32(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -470,6 +475,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
                 FieldType::EffectIndex => EffectIndex::deserialize(deserializer).map(Field::EffectIndex),
+                FieldType::EffectMetadata => EffectMetadata::deserialize(deserializer).map(Field::EffectMetadata),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),
