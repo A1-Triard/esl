@@ -131,44 +131,6 @@ macro_rules! enum_serde {
             }
         }
     };
-    ($name:ident, $exp:literal, $bits:ty, ()) => {
-        impl ::serde::Serialize for $name {
-            fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
-                S: ::serde::Serializer {
-        
-                if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{}", self))
-                } else {
-                    <$bits as ::serde::Serialize>::serialize(&self.0, serializer)
-                }
-            }
-        }
-        
-        impl<'de> ::serde::Deserialize<'de> for $name {
-            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
-                D: ::serde::Deserializer<'de> {
-        
-               struct HRDeserializer;
-                
-                impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
-                    type Value = $name;
-                
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, $exp) }
-                
-                    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
-                        ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
-                    }
-                }
-        
-                if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(HRDeserializer)
-                 } else {
-                    let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
-                    Ok($name(b))
-                }
-            }
-        }
-    };
     ($name:ty, $exp:literal, $bits:ty, $to:ident, try $from:ident, $signed:ident, $big:ident $(, ^$xor:literal)?) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where

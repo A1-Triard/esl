@@ -133,8 +133,7 @@ enum FieldBodyError {
     UnexpectedEndOfField(u32),
     UnknownValue(Unknown, u32),
     UnexpectedFieldSize(u32),
-    InvalidBool8(u8, u32),
-    InvalidBool32(u32, u32),
+    InvalidValue(Invalid, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
@@ -563,9 +562,9 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
                 tuple((le_f32, le_u32, le_i32, le_u32)),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
-            map(
+            map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                Color
+                |w, _| Color::try_from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Color(w), 16)))
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
@@ -579,9 +578,9 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
 }
 
 fn color_field(input: &[u8]) -> IResult<&[u8], Color, FieldBodyError> {
-    map(
-        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        Color
+    map_res(
+        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+        |w, _| Color::try_from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Color(w), 0)))
     )(input)
 }
 
@@ -815,7 +814,7 @@ fn bool_u8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a
         move |b, _| match b {
             0 => Ok(false),
             1 => Ok(true),
-            b => Err(nom::Err::Error(FieldBodyError::InvalidBool8(b, offset)))
+            b => Err(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Bool(b as u32), offset)))
         }
     )
 }
@@ -826,7 +825,7 @@ fn bool_u32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'
         move |w, _| match w {
             0 => Ok(false),
             1 => Ok(true),
-            w => Err(nom::Err::Error(FieldBodyError::InvalidBool32(w, offset)))
+            w => Err(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Bool(w), offset)))
         }
     )
 }
@@ -1249,8 +1248,7 @@ enum FieldError {
     FieldSizeMismatch(Tag, u32, u32),
     UnknownValue(Tag, Unknown, u32),
     UnexpectedFieldSize(Tag, u32),
-    InvalidBool8(Tag, u8, u32),
-    InvalidBool32(Tag, u32, u32),
+    InvalidValue(Tag, Invalid, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -1279,8 +1277,7 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
                 move |e, _| match e {
                     FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                     FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
-                    FieldBodyError::InvalidBool8(v, o) => FieldError::InvalidBool8(field_tag, v, o),
-                    FieldBodyError::InvalidBool32(v, o) => FieldError::InvalidBool32(field_tag, v, o),
+                    FieldBodyError::InvalidValue(v, o) => FieldError::InvalidValue(field_tag, v, o),
                     FieldBodyError::UnexpectedFieldSize(s) => FieldError::UnexpectedFieldSize(field_tag, s),
                 }
             )(field_bytes)?;
@@ -1516,19 +1513,36 @@ impl Error for UnknownValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidBool<T> {
+pub enum Invalid {
+    Bool(u32),
+    Color(u32),
+    ColorComponent(u32),
+}
+
+impl Display for Invalid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Invalid::Color(v) => write!(f, "RGB color {:08X}h", v),
+            Invalid::ColorComponent(v) => write!(f, "RGB color component {}", v),
+            Invalid::Bool(v) => write!(f, "boolean {}", v),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InvalidValue {
     pub record_offset: u64,
     pub record_tag: Tag,
     pub field_offset: u32,
     pub field_tag: Tag,
     pub value_offset: u32,
-    pub value: T,
+    pub value: Invalid,
 }
 
-impl<T: Display> Display for InvalidBool<T> {
+impl Display for InvalidValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
-            f, "Invalid boolean {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
+            f, "Invalid {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
             self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
             self.field_tag,
@@ -1539,15 +1553,14 @@ impl<T: Display> Display for InvalidBool<T> {
     }
 }
 
-impl<T: Display + Debug> Error for InvalidBool<T> {
+impl Error for InvalidValue {
     fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[derive(Debug, Clone)]
 pub enum RecordError {
     FieldSizeMismatch(FieldSizeMismatch),
-    InvalidBoolU8(InvalidBool<u8>),
-    InvalidBoolU32(InvalidBool<u32>),
+    InvalidValue(InvalidValue),
     RecordSizeMismatch(RecordSizeMismatch),
     UnexpectedEof(UnexpectedEof),
     UnexpectedFieldSize(UnexpectedFieldSize),
@@ -1564,8 +1577,7 @@ impl Display for RecordError {
             RecordError::FieldSizeMismatch(x) => Display::fmt(x, f),
             RecordError::UnexpectedFieldSize(x) => Display::fmt(x, f),
             RecordError::UnknownValue(x) => Display::fmt(x, f),
-            RecordError::InvalidBoolU8(x) => Display::fmt(x, f),
-            RecordError::InvalidBoolU32(x) => Display::fmt(x, f),
+            RecordError::InvalidValue(x) => Display::fmt(x, f),
         }
     }
 }
@@ -1579,8 +1591,7 @@ impl Error for RecordError {
             RecordError::FieldSizeMismatch(x) => x,
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::UnknownValue(x) => x,
-            RecordError::InvalidBoolU8(x) => x,
-            RecordError::InvalidBoolU32(x) => x,
+            RecordError::InvalidValue(x) => x,
         })
     }
 }
@@ -1674,14 +1685,8 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
                 }),
-            RecordBodyError(FieldError::InvalidBool8(field_tag, value, value_offset), field) =>
-                RecordError::InvalidBoolU8(InvalidBool {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag, value_offset
-                }),
-            RecordBodyError(FieldError::InvalidBool32(field_tag, value, value_offset), field) =>
-                RecordError::InvalidBoolU32(InvalidBool {
+            RecordBodyError(FieldError::InvalidValue(field_tag, value, value_offset), field) =>
+                RecordError::InvalidValue(InvalidValue {
                     record_offset, value,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
