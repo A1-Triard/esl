@@ -151,6 +151,7 @@ pub(crate) enum FieldType {
     EffectIndex,
     Sound,
     EffectMetadata,
+    Race,
 }
 
 impl FieldType {
@@ -290,6 +291,7 @@ impl FieldType {
             (PCDT, PNAM) => FieldType::U8ListZip,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
+            (RACE, RADT) => FieldType::Race,
             (_, RGNN) => FieldType::StringZ,
             (REPA, RIDT) => FieldType::RepairItem,
             (FACT, RNAM) => FieldType::String(Some(32)),
@@ -1932,6 +1934,59 @@ pub struct Class {
     pub auto_calc_services: Services,
 }
 
+pub_bitflags_display!(RaceFlags, u32,
+    PLAYABLE = 0x01,
+    BEAST_RACE = 0x02
+);
+
+enum_serde!(RaceFlags, "race flags", u32, bits, try from_bits, Unsigned, u64);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct RaceAttribute {
+    pub male: u32,
+    pub female: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Race {
+    #[serde(with="skill_option_i32")]
+    pub skill_1: Either<Option<i32>, Skill>,
+    pub skill_1_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_2: Either<Option<i32>, Skill>,
+    pub skill_2_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_3: Either<Option<i32>, Skill>,
+    pub skill_3_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_4: Either<Option<i32>, Skill>,
+    pub skill_4_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_5: Either<Option<i32>, Skill>,
+    pub skill_5_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_6: Either<Option<i32>, Skill>,
+    pub skill_6_bonus: u32,
+    #[serde(with="skill_option_i32")]
+    pub skill_7: Either<Option<i32>, Skill>,
+    pub skill_7_bonus: u32,
+    pub attributes: Attributes<RaceAttribute>,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub male_height: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub female_height: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub male_weight: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub female_weight: f32,
+    pub flags: RaceFlags
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Sound {
     pub volume: u8,
@@ -1997,6 +2052,8 @@ define_field!(
     NpcState(NpcState),
     PathGrid(PathGrid),
     Position(Position),
+    Potion(Potion),
+    Race(Race),
     ScriptMetadata(ScriptMetadata),
     ScriptVars(ScriptVars),
     Skill(Skill),
@@ -2012,7 +2069,6 @@ define_field!(
     U8List(Vec<u8>),
     Weapon(Weapon),
     Weather(Weather),
-    Potion(Potion),
 );
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {

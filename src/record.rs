@@ -308,6 +308,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have effect metadata type", self.record_tag, self.field_tag)))
             },
+            FieldType::Race => if let Field::Race(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have race type", self.record_tag, self.field_tag)))
+            },
             FieldType::F32 => if let &Field::F32(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -494,6 +499,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 }.map(Field::Tool),
                 FieldType::Weather => Weather::deserialize(deserializer).map(Field::Weather),
                 FieldType::Light => Light::deserialize(deserializer).map(Field::Light),
+                FieldType::Race => Race::deserialize(deserializer).map(Field::Race),
                 FieldType::MiscItem => MiscItem::deserialize(deserializer).map(Field::MiscItem),
                 FieldType::Apparatus => Apparatus::deserialize(deserializer).map(Field::Apparatus),
                 FieldType::Weapon => Weapon::deserialize(deserializer).map(Field::Weapon),

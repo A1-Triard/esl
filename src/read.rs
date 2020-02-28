@@ -962,6 +962,64 @@ fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
     )(input)
 }
 
+fn race_field(input: &[u8]) -> IResult<&[u8], Race, FieldBodyError> {
+    map(
+        pair(
+            set_err(
+                pair(
+                    tuple((
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32,
+                        skill_option_i32, le_u32
+                    )),
+                    tuple((
+                        le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32,
+                        le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32,
+                        le_f32, le_f32, le_f32, le_f32
+                    ))
+                ),
+                |_| FieldBodyError::UnexpectedEndOfField(140)
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(140)),
+                |w, _| RaceFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::RaceFlags(w), 136)))
+            )
+        ),
+        |(
+            (
+                (
+                    skill_1, skill_1_bonus, skill_2, skill_2_bonus, skill_3, skill_3_bonus, skill_4, skill_4_bonus,
+                    skill_5, skill_5_bonus, skill_6, skill_6_bonus, skill_7, skill_7_bonus
+                ),
+                (
+                    strength_m, strength_f, intelligence_m, intelligence_f, willpower_m, willpower_f, agility_m, agility_f,
+                    speed_m, speed_f, endurance_m, endurance_f, personality_m, personality_f, luck_m, luck_f,
+                    male_height, female_height, male_weight, female_weight
+                )
+            ),
+            flags
+        )| Race {
+            skill_1, skill_1_bonus, skill_2, skill_2_bonus, skill_3, skill_3_bonus, skill_4, skill_4_bonus,
+            skill_5, skill_5_bonus, skill_6, skill_6_bonus, skill_7, skill_7_bonus,
+            male_height, female_height, male_weight, female_weight, flags,
+            attributes: Attributes {
+                strength: RaceAttribute { male: strength_m, female: strength_f },
+                intelligence: RaceAttribute { male: intelligence_m, female: intelligence_f },
+                willpower: RaceAttribute { male: willpower_m, female: willpower_f },
+                agility: RaceAttribute { male: agility_m, female: agility_f },
+                speed: RaceAttribute { male: speed_m, female: speed_f },
+                endurance: RaceAttribute { male: endurance_m, female: endurance_f },
+                personality: RaceAttribute { male: personality_m, female: personality_f },
+                luck: RaceAttribute { male: luck_m, female: luck_f }
+            }
+        }
+    )(input)
+}
+
 fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<NpcFlags>, FieldBodyError> {
     map(
         tuple((
@@ -1236,6 +1294,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
             FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
             FieldType::Clothing => map(clothing_field, Field::Clothing)(input),
+            FieldType::Race => map(race_field, Field::Race)(input),
             FieldType::Enchantment => map(enchantment_field, Field::Enchantment)(input),
             FieldType::Creature => map(creature_field, Field::Creature)(input),
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
@@ -1486,6 +1545,7 @@ pub enum Unknown {
     FileType(u32),
     LightFlags(u32),
     NpcFlags(u8),
+    RaceFlags(u32),
     School(u32),
     Skill(u32),
     Specialization(u32),
@@ -1524,6 +1584,7 @@ impl Display for Unknown {
             Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
             Unknown::EffectFlags(v) => write!(f, "effect flags {:08X}h", v),
+            Unknown::RaceFlags(v) => write!(f, "race flags {:08X}h", v),
             Unknown::Specialization(v) => write!(f, "specialization {}", v),
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
