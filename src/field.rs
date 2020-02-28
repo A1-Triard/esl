@@ -1348,7 +1348,7 @@ impl Color {
     }
 }
 
-enum_serde!(Color, "RGBA color with zero alpha component", u32, to_u32(), try try_from_u32, Unsigned, u64);
+enum_serde!(Color, "RGB color", u32, to_u32(), try try_from_u32, Unsigned, u64);
 
 pub_bitflags_display!(LightFlags, u32,
     DYNAMIC = 0x0001,
