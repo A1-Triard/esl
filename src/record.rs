@@ -298,6 +298,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have path grid type", self.record_tag, self.field_tag)))
             },
+            FieldType::SoundGen => if let Field::SoundGen(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have sound gen type", self.record_tag, self.field_tag)))
+            },
             FieldType::EffectIndex => if let Field::EffectIndex(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -491,6 +496,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::SoundChance => SoundChance::deserialize(deserializer).map(Field::SoundChance),
                 FieldType::Color => Color::deserialize(deserializer).map(Field::Color),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
+                FieldType::SoundGen => SoundGen::deserialize(deserializer).map(Field::SoundGen),
                 FieldType::Tool => Tool::deserialize(deserializer).map(Field::Tool),
                 FieldType::RepairItem => if deserializer.is_human_readable() {
                     Tool::deserialize(deserializer)

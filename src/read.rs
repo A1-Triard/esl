@@ -910,6 +910,13 @@ fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyErro
     )(input)
 }
 
+fn sound_gen_field(input: &[u8]) -> IResult<&[u8], SoundGen, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
+        move |w, _| SoundGen::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SoundGen(w), 0)))
+    )(input)
+}
+
 fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     map(
         tuple((
@@ -1301,6 +1308,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Grid => map(grid_field, Field::Grid)(input),
             FieldType::Color => map(color_field, Field::Color)(input),
             FieldType::Sound => map(sound_field, Field::Sound)(input),
+            FieldType::SoundGen => map(sound_gen_field, Field::SoundGen)(input),
             FieldType::Potion => map(potion_field, Field::Potion)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),
@@ -1548,6 +1556,7 @@ pub enum Unknown {
     RaceFlags(u32),
     School(u32),
     Skill(u32),
+    SoundGen(u32),
     Specialization(u32),
     SpellFlags(u32),
     SpellType(u32),
@@ -1589,6 +1598,7 @@ impl Display for Unknown {
             Unknown::Attribute(v) => write!(f, "attribute {}", v),
             Unknown::Skill(v) => write!(f, "skill {}", v),
             Unknown::School(v) => write!(f, "school {}", v),
+            Unknown::SoundGen(v) => write!(f, "sound gen {}", v),
             Unknown::EffectIndex(v) => write!(f, "effect index {}", v),
         }
     }

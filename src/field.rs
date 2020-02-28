@@ -152,6 +152,7 @@ pub(crate) enum FieldType {
     Sound,
     EffectMetadata,
     Race,
+    SoundGen,
 }
 
 impl FieldType {
@@ -204,6 +205,7 @@ impl FieldType {
             (LTEX, DATA) => FieldType::StringZ,
             (PGRD, DATA) => FieldType::PathGrid,
             (REFR, DATA) => FieldType::Position,
+            (SNDG, DATA) => FieldType::SoundGen,
             (SOUN, DATA) => FieldType::Sound,
             (SSCR, DATA) => FieldType::String(None),
             (TES3, DATA) => FieldType::I64,
@@ -1994,6 +1996,24 @@ pub struct Sound {
     pub range_max: u8,
 }
 
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum SoundGen {
+        Left = 0,
+        Right = 1,
+        SwimLeft = 2,
+        SwimRight = 3,
+        Moan = 4,
+        Roar = 5,
+        Scream = 6,
+        Land = 7
+    }
+}
+
+enum_serde!(SoundGen, "sound gen", u32, to_u32, as from_u32, Unsigned, u64);
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -2059,6 +2079,7 @@ define_field!(
     Skill(Skill),
     Sound(Sound),
     SoundChance(SoundChance),
+    SoundGen(SoundGen),
     SpellMetadata(SpellMetadata),
     String(String),
     StringList(Vec<String>),
