@@ -1,10 +1,63 @@
-use std::fmt::{self};
+use std::fmt::{self, Display};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, SeqAccess};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeTuple, SerializeSeq};
 use std::mem::{transmute};
+use either::{Either, Left,  Right};
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="OptionIndex")]
+enum OptionIndexHRSurrogate<I, T> {
+    None(Option<I>),
+    Some(T)
+}
+
+pub fn serialize_option_index<I: Copy + Eq + Display, T: Copy, S>(
+    name: &str, none: I, from: impl Fn(I) -> Option<T>, to: impl Fn(T) -> I, v: Either<Option<I>, T>, serializer: S
+) -> Result<S::Ok, S::Error> where S: Serializer, I: Serialize, T: Serialize {
+    if serializer.is_human_readable() {
+        match v {
+            Left(i) => OptionIndexHRSurrogate::None(i),
+            Right(v) => OptionIndexHRSurrogate::Some(v),
+        }.serialize(serializer)
+    } else {
+        let v = match v {
+            Left(Some(i)) => {
+                if i == none || from(i).is_some() {
+                    let err = format!("{} is not valid undefined {} value", i, name);
+                    return Err(S::Error::custom(&err));
+                }
+                i
+            },
+            Left(None) => none,
+            Right(a) => to(a)
+        };
+        v.serialize(serializer)
+    }
+}
+
+pub fn deserialize_option_index<'de, I: Copy + Eq, T: Copy, D>(
+    none: I, from: impl Fn(I) -> Option<T>, deserializer: D
+) -> Result<Either<Option<I>, T>, D::Error> where D: Deserializer<'de>, I: Deserialize<'de>, T: Deserialize<'de> {
+    if deserializer.is_human_readable() {
+        let v = <OptionIndexHRSurrogate<I, T>>::deserialize(deserializer)?;
+        Ok(match v {
+            OptionIndexHRSurrogate::None(i) => Left(i),
+            OptionIndexHRSurrogate::Some(v) => Right(v),
+        })
+    } else {
+        let d = I::deserialize(deserializer)?;
+        if d == none { return Ok(Left(None)); }
+        if let Some(a) = from(d) {
+            Ok(Right(a))
+        } else {
+            Ok(Left(Some(d)))
+        }
+    }
+}
 
 struct FloatSurrogate(f32);
 

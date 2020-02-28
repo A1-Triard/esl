@@ -347,18 +347,46 @@ fn skill_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Skill>, ()
     )(input)
 }
 
+fn effect_index_option_i16(input: &[u8]) -> IResult<&[u8], Either<Option<i16>, EffectIndex>, ()> {
+    map(
+        le_i16,
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = EffectIndex::from_i16(b) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
+    )(input)
+}
+
+fn effect_index_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, EffectIndex>, ()> {
+    map(
+        le_i32,
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = EffectIndex::from_i32(b) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
+    )(input)
+}
+
 fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
     map(
         set_err(
             tuple((
-                tuple((le_f32, le_u32, le_i32, le_i32, le_i32, le_i32)),
+                le_f32, le_u32,
+                tuple((effect_index_option_i32, effect_index_option_i32, effect_index_option_i32, effect_index_option_i32)),
                 tuple((skill_option_i32, skill_option_i32, skill_option_i32, skill_option_i32)),
                 tuple((attribute_option_i32, attribute_option_i32, attribute_option_i32, attribute_option_i32))
             )),
             |_| FieldBodyError::UnexpectedEndOfField(56)
         ),
         |(
-            (weight, value, effect_1_index, effect_2_index, effect_3_index, effect_4_index),
+            weight, value,
+            (effect_1_index, effect_2_index, effect_3_index, effect_4_index),
             (effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill),
             (effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute)
         )| Ingredient {
@@ -1097,7 +1125,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
     map(
         tuple((
             set_err(
-                tuple((le_i16, skill_option_i8, attribute_option_i8)),
+                tuple((effect_index_option_i16, skill_option_i8, attribute_option_i8)),
                 |_| FieldBodyError::UnexpectedEndOfField(24)
             ),
             map_res(
@@ -2081,7 +2109,8 @@ mod tests {
         let ingredient = Ingredient {
             weight: 10.0,
             value: 117,
-            effect_1_index: 22, effect_2_index: 23, effect_3_index: 24, effect_4_index: 25,
+            effect_1_index: Right(EffectIndex::AbsorbFatigue), effect_2_index: Right(EffectIndex::Charm),
+            effect_3_index: Right(EffectIndex::SummonClannfear), effect_4_index: Right(EffectIndex::Chameleon),
             effect_1_skill: Left(None), effect_2_skill: Right(Skill::Armorer),
             effect_3_skill: Right(Skill::Axe), effect_4_skill: Right(Skill::Block),
             effect_1_attribute: Left(None), effect_2_attribute: Right(Attribute::Luck),
@@ -2135,7 +2164,7 @@ mod tests {
     #[test]
     fn serialize_effect() {
         let effect = Effect {
-            index: 12700,
+            index: Right(EffectIndex::Recall),
             skill: Right(Skill::Enchant),
             attribute: Right(Attribute::Agility),
             range: EffectRange::Touch,
@@ -2157,9 +2186,9 @@ mod tests {
     }
 
     #[test]
-    fn serialize_effect_no_attribute() {
+    fn serialize_effect_undefined_values() {
         let effect = Effect {
-            index: 12700,
+            index: Left(None),
             skill: Left(Some(-10)),
             attribute: Left(None),
             range: EffectRange::Touch,
