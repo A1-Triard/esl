@@ -273,6 +273,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have color type", self.record_tag, self.field_tag)))
             },
+            FieldType::Sound => if let Field::Sound(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have sound type", self.record_tag, self.field_tag)))
+            },
             FieldType::Potion => if let Field::Potion(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -462,6 +467,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
                 FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
+                FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
                 FieldType::EffectIndex => EffectIndex::deserialize(deserializer).map(Field::EffectIndex),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),

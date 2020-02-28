@@ -577,6 +577,18 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
     )(input)
 }
 
+fn sound_field(input: &[u8]) -> IResult<&[u8], Sound, FieldBodyError> {
+    map(
+        set_err(
+            tuple((le_u8, le_u8, le_u8)),
+            |_| FieldBodyError::UnexpectedEndOfField(3)
+        ),
+        |(volume, range_min, range_max)| Sound {
+            volume, range_min, range_max
+        }
+    )(input)
+}
+
 fn color_field(input: &[u8]) -> IResult<&[u8], Color, FieldBodyError> {
     map_res(
         set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
@@ -1197,6 +1209,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Grid => map(grid_field, Field::Grid)(input),
             FieldType::Color => map(color_field, Field::Color)(input),
+            FieldType::Sound => map(sound_field, Field::Sound)(input),
             FieldType::Potion => map(potion_field, Field::Potion)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),

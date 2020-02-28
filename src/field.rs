@@ -149,6 +149,7 @@ pub(crate) enum FieldType {
     Class,
     Skill,
     EffectIndex,
+    Sound,
 }
 
 impl FieldType {
@@ -201,6 +202,7 @@ impl FieldType {
             (LTEX, DATA) => FieldType::StringZ,
             (PGRD, DATA) => FieldType::PathGrid,
             (REFR, DATA) => FieldType::Position,
+            (SOUN, DATA) => FieldType::Sound,
             (SSCR, DATA) => FieldType::String(None),
             (TES3, DATA) => FieldType::I64,
             (QUES, DATA) => FieldType::StringZ,
@@ -1866,6 +1868,13 @@ pub struct Class {
     pub auto_calc_services: Services,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Sound {
+    pub volume: u8,
+    pub range_min: u8,
+    pub range_max: u8,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -1926,6 +1935,7 @@ define_field!(
     ScriptMetadata(ScriptMetadata),
     ScriptVars(ScriptVars),
     Skill(Skill),
+    Sound(Sound),
     SoundChance(SoundChance),
     SpellMetadata(SpellMetadata),
     String(String),
