@@ -184,6 +184,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have book type", self.record_tag, self.field_tag)))
             },
+            FieldType::Info => if let Field::Info(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have info type", self.record_tag, self.field_tag)))
+            },
             FieldType::Tool => if let Field::Tool(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -469,6 +474,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 } else {
                     deserializer.deserialize_bytes(ZlibEncoderDeserializer)
                 }.map(Field::U8List),
+                FieldType::Info => Info::deserialize(deserializer).map(Field::Info),
                 FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
                 FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),

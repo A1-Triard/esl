@@ -373,6 +373,30 @@ fn effect_index_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, E
     )(input)
 }
 
+fn sex_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Sex>, ()> {
+    map(
+        le_i8,
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = Sex::from_i8(b) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
+    )(input)
+}
+
+fn option_i8(input: &[u8]) -> IResult<&[u8], Option<i8>, ()> {
+    map(
+        le_i8,
+        move |b| if b == -1 {
+            None
+        } else {
+            Some(b)
+        }
+    )(input)
+}
+
 fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
     map(
         set_err(
@@ -441,15 +465,31 @@ fn script_metadata_field<'a>(code_page: CodePage)
 fn script_vars_field(input: &[u8]) -> IResult<&[u8], ScriptVars, FieldBodyError> {
     map(
         set_err(
-            tuple((
-                le_u32, le_u32, le_u32
-            )),
+            tuple((le_u32, le_u32, le_u32)),
             |_| FieldBodyError::UnexpectedEndOfField(12)
         ),
         |(shorts, longs, floats)| ScriptVars {
             shorts,
             longs,
             floats
+        }
+    )(input)
+}
+
+fn info_field(input: &[u8]) -> IResult<&[u8], Info, FieldBodyError> {
+    map(
+        pair(
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
+                |w, _| DialogType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(w), 0)))
+            ),
+            set_err(
+                tuple((le_u32, option_i8, sex_option_i8, option_i8, le_u8)),
+                |_| FieldBodyError::UnexpectedEndOfField(12)
+            )
+        ),
+        |(dialog_type, (hide_until, rank, sex, pc_rank, padding))| Info {
+            dialog_type, hide_until, rank, sex, pc_rank, padding
         }
     )(input)
 }
@@ -1005,14 +1045,15 @@ fn race_field(input: &[u8]) -> IResult<&[u8], Race, FieldBodyError> {
                 (
                     strength_m, strength_f, intelligence_m, intelligence_f, willpower_m, willpower_f, agility_m, agility_f,
                     speed_m, speed_f, endurance_m, endurance_f, personality_m, personality_f, luck_m, luck_f,
-                    male_height, female_height, male_weight, female_weight
+                    height_m, height_f, weight_m, weight_f
                 )
             ),
             flags
         )| Race {
             skill_1, skill_1_bonus, skill_2, skill_2_bonus, skill_3, skill_3_bonus, skill_4, skill_4_bonus,
-            skill_5, skill_5_bonus, skill_6, skill_6_bonus, skill_7, skill_7_bonus,
-            male_height, female_height, male_weight, female_weight, flags,
+            skill_5, skill_5_bonus, skill_6, skill_6_bonus, skill_7, skill_7_bonus, flags,
+            height: RaceParameter { male: height_m, female: height_f },
+            weight: RaceParameter { male: weight_m, female: weight_f },
             attributes: Attributes {
                 strength: RaceAttribute { male: strength_m, female: strength_f },
                 intelligence: RaceAttribute { male: intelligence_m, female: intelligence_f },
@@ -1258,7 +1299,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
 fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b), 0)))
+        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b as u32), 0)))
     )
     (input)
 }
@@ -1309,6 +1350,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Color => map(color_field, Field::Color)(input),
             FieldType::Sound => map(sound_field, Field::Sound)(input),
             FieldType::SoundGen => map(sound_gen_field, Field::SoundGen)(input),
+            FieldType::Info => map(info_field, Field::Info)(input),
             FieldType::Potion => map(potion_field, Field::Potion)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),
@@ -1544,7 +1586,7 @@ pub enum Unknown {
     ContainerFlags(u32),
     CreatureFlags(u8),
     CreatureType(u32),
-    DialogType(u8),
+    DialogType(u32),
     EffectFlags(u32),
     EffectIndex(u32),
     EffectRange(u32),

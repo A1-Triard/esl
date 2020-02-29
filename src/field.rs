@@ -55,6 +55,31 @@ macro_attr! {
 
 enum_serde!(DialogType, "dialog type", u8, to_u8, as from_u8, Unsigned, u64);
 
+mod dialog_type_u32 {
+    use crate::field::DialogType;
+    use serde::{Serializer, Deserializer, Serialize, Deserialize};
+    use serde::de::Unexpected;
+    use serde::de::Error as de_Error;
+    use num_traits::cast::{ToPrimitive, FromPrimitive};
+
+    pub fn serialize<S>(&v: &DialogType, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            v.serialize(serializer)
+        } else {
+            serializer.serialize_u32(v.to_u32().unwrap())
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DialogType, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            DialogType::deserialize(deserializer)
+        } else {
+            let d = u32::deserialize(deserializer)?;
+            DialogType::from_u32(d).ok_or_else(|| D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"dialog type"))
+        }
+    }
+}
+
 macro_attr! {
     #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -93,66 +118,17 @@ enum_serde!(EffectRange, "effect range", u32, to_u32, as from_u32, Unsigned, u64
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FieldType {
-    U8List,
+    U8List, U8ListZip,
     String(Option<u32>),
-    StringZ,
+    StringZ, StringZList,
     Multiline(Newline),
-    StringZList,
-    Item,
-    F32,
-    I32,
-    I16,
-    I64,
-    U8,
-    U8ListZip,
-    Ingredient,
-    ScriptMetadata,
-    DialogMetadata,
-    FileMetadata,
-    Npc,
-    NpcState,
-    Effect,
-    SpellMetadata,
-    Ai,
-    AiWander,
-    AiTravel,
-    AiTarget,
-    AiActivate,
-    NpcFlags,
-    CreatureFlags,
-    Book,
-    ContainerFlags,
-    Creature,
-    Light,
-    MiscItem,
-    Apparatus,
-    Weapon,
-    Armor,
-    BipedObject,
-    BodyPart,
-    Clothing,
-    Enchantment,
-    Tool,
-    RepairItem,
-    Position,
-    PositionOrCell,
-    Grid,
-    PathGrid,
-    ScriptVars,
-    I16List,
-    I32List,
-    F32List,
-    Weather,
-    Color,
-    SoundChance,
-    Potion,
-    Class,
-    Skill,
-    EffectIndex,
-    Sound,
-    EffectMetadata,
-    Race,
-    SoundGen,
+    F32, I32, I16, I64, U8,
+    Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, SpellMetadata,
+    Ai, AiWander, AiTravel, AiTarget, AiActivate, NpcFlags, CreatureFlags, Book, ContainerFlags,
+    Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
+    Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
+    I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
+    Item, Sound, EffectMetadata, Race, SoundGen, Info
 }
 
 impl FieldType {
@@ -199,6 +175,7 @@ impl FieldType {
             (_, CVFX) => FieldType::StringZ,
             (CELL, DATA) => FieldType::PositionOrCell,
             (DIAL, DATA) => FieldType::DialogMetadata,
+            (INFO, DATA) => FieldType::Info,
             (LAND, DATA) => FieldType::I32,
             (LEVC, DATA) => FieldType::I32,
             (LEVI, DATA) => FieldType::I32,
@@ -396,6 +373,38 @@ mod float_32 {
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
         deserialize_f32_as_is(deserializer)
+    }
+}
+
+mod option_i8 {
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::ser::Error as ser_Error;
+
+    pub fn serialize<S>(&v: &Option<i8>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if serializer.is_human_readable() {
+            v.serialize(serializer)
+        } else {
+            let v = if let Some(v) = v {
+                if v == -1 { return Err(S::Error::custom("-1 is reserved")); }
+                v
+            } else {
+                -1
+            };
+            serializer.serialize_i8(v)
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<i8>, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            <Option<i8>>::deserialize(deserializer)
+        } else {
+            let d = i8::deserialize(deserializer)?;
+            if d == -1 {
+                Ok(None)
+            } else {
+                Ok(Some(d))
+            }
+        }
     }
 }
 
@@ -1949,6 +1958,57 @@ pub struct RaceAttribute {
     pub female: u32,
 }
 
+impl Index<Sex> for RaceAttribute {
+    type Output = u32;
+
+    fn index(&self, index: Sex) -> &Self::Output {
+        match index {
+            Sex::Male => &self.male,
+            Sex::Female => &self.female,
+        }
+    }
+}
+
+impl IndexMut<Sex> for RaceAttribute {
+    fn index_mut(&mut self, index: Sex) -> &mut Self::Output {
+        match index {
+            Sex::Male => &mut self.male,
+            Sex::Female => &mut self.female,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct RaceParameter {
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub male: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub female: f32,
+}
+
+impl Index<Sex> for RaceParameter {
+    type Output = f32;
+
+    fn index(&self, index: Sex) -> &Self::Output {
+        match index {
+            Sex::Male => &self.male,
+            Sex::Female => &self.female,
+        }
+    }
+}
+
+impl IndexMut<Sex> for RaceParameter {
+    fn index_mut(&mut self, index: Sex) -> &mut Self::Output {
+        match index {
+            Sex::Male => &mut self.male,
+            Sex::Female => &mut self.female,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct Race {
@@ -1974,18 +2034,8 @@ pub struct Race {
     pub skill_7: Either<Option<i32>, Skill>,
     pub skill_7_bonus: u32,
     pub attributes: Attributes<RaceAttribute>,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
-    #[serde(with = "float_32")]
-    pub male_height: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
-    #[serde(with = "float_32")]
-    pub female_height: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
-    #[serde(with = "float_32")]
-    pub male_weight: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
-    #[serde(with = "float_32")]
-    pub female_weight: f32,
+    pub height: RaceParameter,
+    pub weight: RaceParameter,
     pub flags: RaceFlags
 }
 
@@ -2013,6 +2063,48 @@ macro_attr! {
 }
 
 enum_serde!(SoundGen, "sound gen", u32, to_u32, as from_u32, Unsigned, u64);
+
+macro_attr! {
+    #[derive(Primitive)]
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    pub enum Sex {
+        Male = 0,
+        Female = 1
+    }
+}
+
+enum_serde!(Sex, "sex", u8, to_u8, as from_u8, Unsigned, u64);
+
+mod sex_option_i8 {
+    use serde::{Serializer, Deserializer};
+    use either::{Either};
+    use crate::field::Sex;
+    use num_traits::cast::{ToPrimitive, FromPrimitive};
+    use crate::serde_helpers::*;
+
+    pub fn serialize<S>(&v: &Either<Option<i8>, Sex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serialize_option_index("sex", -1, Sex::from_i8, |x| x.to_i8().unwrap(), v, serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Sex>, D::Error> where D: Deserializer<'de> {
+        deserialize_option_index(-1, Sex::from_i8, deserializer)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Info {
+    #[serde(with="dialog_type_u32")]
+    pub dialog_type: DialogType,
+    pub hide_until: u32,
+    #[serde(with="option_i8")]
+    pub rank: Option<i8>,
+    #[serde(with="sex_option_i8")]
+    pub sex: Either<Option<i8>, Sex>,
+    #[serde(with="option_i8")]
+    pub pc_rank: Option<i8>,
+    pub padding: u8,
+}
 
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
@@ -2063,6 +2155,7 @@ define_field!(
     I32(i32),
     I32List(Vec<i32>),
     I64(i64),
+    Info(Info),
     Ingredient(Ingredient),
     Item(Item),
     Light(Light),
