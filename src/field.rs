@@ -287,6 +287,7 @@ impl FieldType {
             (FACT, RNAM) => FieldType::String(Some(32)),
             (SCPT, RNAM) => FieldType::I32,
             (_, RNAM) => FieldType::StringZ,
+            (SCPT, SCDT) => FieldType::U8ListZip,
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (TES3, SCRD) => FieldType::U8ListZip,
             (_, SCRI) => FieldType::StringZ,
