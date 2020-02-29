@@ -853,6 +853,15 @@ pub struct AiTravel {
     pub flags: AiTravelFlags
 }
 
+pub_bitflags_display!(AiTargetFlags, u8,
+    _1 = 0x01,
+    _2 = 0x02,
+    _4 = 0x04,
+    _8 = 0x08
+);
+
+enum_serde!(AiTargetFlags, "AI target flags", u8, bits, try from_bits, Unsigned, u64);
+
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct AiTarget {
@@ -868,7 +877,9 @@ pub struct AiTarget {
     pub duration: u16,
     #[serde(with = "string_32")]
     pub actor_id: String,
-    pub reset: u16
+    #[serde(with = "bool_u8")]
+    pub reset: bool,
+    pub flags: AiTargetFlags
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

@@ -921,16 +921,22 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
 
 fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiTarget, FieldBodyError> {
     map(
-        set_err(
-            tuple((
-                le_f32, le_f32, le_f32, le_u16,
-                string_len(code_page, 32),
-                le_u16
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(48)
-        ),
-        |(x, y, z, duration, actor_id, reset)| AiTarget {
-            x, y, z, duration, actor_id, reset
+        tuple((
+            set_err(
+                tuple((
+                    le_f32, le_f32, le_f32, le_u16,
+                    string_len(code_page, 32)
+                )),
+                |_| FieldBodyError::UnexpectedEndOfField(48)
+            ),
+            bool_u8(48, 46),
+            map_res(
+                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(48)),
+                |b, _| AiTargetFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTargetFlags(b), 46)))
+            )
+        )),
+        |((x, y, z, duration, actor_id), reset, flags)| AiTarget {
+            x, y, z, duration, actor_id, reset, flags
         }
     )
 }
@@ -1652,6 +1658,7 @@ impl Error for UnexpectedFieldSize {
 #[derive(Debug, Clone)]
 pub enum Unknown {
     AiServices(u32),
+    AiTargetFlags(u8),
     AiTravelFlags(u32),
     ApparatusType(u32),
     ArmorType(u32),
@@ -1711,6 +1718,7 @@ impl Display for Unknown {
             Unknown::BipedObject(v) => write!(f, "biped object {}", v),
             Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
             Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
+            Unknown::AiTargetFlags(v) => write!(f, "AI travel flags {:02X}h", v),
             Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
             Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {}", v),
             Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
