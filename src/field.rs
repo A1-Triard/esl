@@ -140,7 +140,7 @@ impl FieldType {
             (_, ACDT) => FieldType::U8ListZip,
             (_, ACSC) => FieldType::U8ListZip,
             (_, ACSL) => FieldType::U8ListZip,
-            (CELL, ACTN) => FieldType::I32,
+            (_, ACTN) => FieldType::I32,
             (_, AI_A) => FieldType::AiActivate,
             (_, AI_E) => FieldType::AiTarget,
             (_, AI_F) => FieldType::AiTarget,
@@ -151,6 +151,7 @@ impl FieldType {
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (ARMO, AODT) => FieldType::Armor,
+            (REFR, APUD) => FieldType::String(None), // TODO
             (_, ASND) => FieldType::StringZ,
             (_, AVFX) => FieldType::StringZ,
             (BOOK, BKDT) => FieldType::Book,
@@ -202,7 +203,7 @@ impl FieldType {
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
             (ENCH, ENDT) => FieldType::Enchantment,
-            (CELL, FGTN) => FieldType::String(None),
+            (CELL, FGTN) => FieldType::StringZ,
             (CONT, FLAG) => FieldType::ContainerFlags,
             (CREA, FLAG) => FieldType::CreatureFlags,
             (NPC_, FLAG) => FieldType::NpcFlags,
@@ -321,9 +322,11 @@ impl FieldType {
             (_, XCHG) => FieldType::F32,
             (_, XHLT) => FieldType::I32,
             (_, XIDX) => FieldType::I32,
+            (REFR, XNAM) => FieldType::StringZ,
             (SPLM, XNAM) => FieldType::U8,
             (_, XSCL) => FieldType::F32,
             (_, XSOL) => FieldType::StringZ,
+            (REFR, YNAM) => FieldType::I32,
             (CELL, ZNAM) => FieldType::U8,
             _ => FieldType::U8List
         }
