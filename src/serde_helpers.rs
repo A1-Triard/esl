@@ -7,6 +7,70 @@ use serde::ser::{SerializeTuple, SerializeSeq};
 use std::mem::{transmute};
 use either::{Either, Left,  Right};
 
+pub fn serialize_none_u8<S>(none: u8, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    if serializer.is_human_readable() {
+        serializer.serialize_unit()
+    } else {
+        serializer.serialize_u8(none)
+    }
+}
+
+pub fn deserialize_none_u8<'de, D>(none: u8, deserializer: D) -> Result<(), D::Error> where D: Deserializer<'de> {
+    if deserializer.is_human_readable() {
+        <()>::deserialize(deserializer)
+    } else {
+        let d = u8::deserialize(deserializer)?;
+        if d != none {
+            let e: &str = &format!("{}", none);
+            Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &e))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub fn serialize_bool_u8<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    if serializer.is_human_readable() {
+        serializer.serialize_bool(v)
+    } else {
+        serializer.serialize_u8(if v { 1 } else { 0 })
+    }
+}
+
+pub fn deserialize_bool_u8<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
+    if deserializer.is_human_readable() {
+        bool::deserialize(deserializer)
+    } else {
+        let d = u8::deserialize(deserializer)?;
+        match d {
+            0 => Ok(false),
+            1 => Ok(true),
+            d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+        }
+    }
+}
+
+pub fn serialize_bool_u32<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    if serializer.is_human_readable() {
+        serializer.serialize_bool(v)
+    } else {
+        serializer.serialize_u32(if v { 1 } else { 0 })
+    }
+}
+
+pub fn deserialize_bool_u32<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
+    if deserializer.is_human_readable() {
+        bool::deserialize(deserializer)
+    } else {
+        let d = u32::deserialize(deserializer)?;
+        match d {
+            0 => Ok(false),
+            1 => Ok(true),
+            d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 #[serde(rename="OptionIndex")]

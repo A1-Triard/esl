@@ -123,6 +123,7 @@ pub(crate) enum FieldType {
     StringZ, StringZList,
     Multiline(Newline),
     F32, I32, I16, I64, U8,
+    MarkerU8(u8),
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, SpellMetadata,
     Ai, AiWander, AiTravel, AiTarget, AiActivate, NpcFlags, CreatureFlags, Book, ContainerFlags,
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
@@ -297,6 +298,9 @@ impl FieldType {
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (_, TEXT) => FieldType::StringZ,
             (_, TNAM) => FieldType::StringZ,
+            (INFO, QSTF) => FieldType::MarkerU8(1),
+            (INFO, QSTN) => FieldType::MarkerU8(1),
+            (INFO, QSTR) => FieldType::MarkerU8(1),
             (_, VCLR) => FieldType::U8ListZip,
             (_, VHGT) => FieldType::U8ListZip,
             (_, VNML) => FieldType::U8ListZip,
@@ -409,56 +413,28 @@ mod option_i8 {
 }
 
 mod bool_u32 {
-    use serde::{Serializer, Deserializer, Deserialize};
-    use serde::de::Unexpected;
-    use serde::de::Error as de_Error;
+    use serde::{Serializer, Deserializer};
+    use crate::serde_helpers::*;
 
     pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            serializer.serialize_bool(v)
-        } else {
-            serializer.serialize_u32(if v { 1 } else { 0 })
-        }
+        serialize_bool_u32(v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            bool::deserialize(deserializer)
-        } else {
-            let d = u32::deserialize(deserializer)?;
-            match d {
-                0 => Ok(false),
-                1 => Ok(true),
-                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
-            }
-        }
+        deserialize_bool_u32(deserializer)
     }
 }
 
 mod bool_u8 {
-    use serde::{Serializer, Deserializer, Deserialize};
-    use serde::de::Unexpected;
-    use serde::de::Error as de_Error;
+    use serde::{Serializer, Deserializer};
+    use crate::serde_helpers::*;
 
     pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            serializer.serialize_bool(v)
-        } else {
-            serializer.serialize_u8(if v { 1 } else { 0 })
-        }
+        serialize_bool_u8(v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            bool::deserialize(deserializer)
-        } else {
-            let d = u8::deserialize(deserializer)?;
-            match d {
-                0 => Ok(false),
-                1 => Ok(true),
-                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
-            }
-        }
+        deserialize_bool_u8(deserializer)
     }
 }
 
@@ -2096,7 +2072,7 @@ mod sex_option_i8 {
 pub struct Info {
     #[serde(with="dialog_type_u32")]
     pub dialog_type: DialogType,
-    pub hide_until: u32,
+    pub disp_index: u32,
     #[serde(with="option_i8")]
     pub rank: Option<i8>,
     #[serde(with="sex_option_i8")]
@@ -2112,6 +2088,7 @@ macro_rules! define_field {
         #[derive(Derivative)]
         #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
         pub enum Field {
+            None,
             $($variant($(#[derivative(PartialEq(compare_with=$a))])? $from)),*
         }
         
@@ -2184,6 +2161,10 @@ define_field!(
     Weapon(Weapon),
     Weather(Weather),
 );
+
+impl From<()> for Field {
+    fn from(_: ()) -> Self { Field::None }
+}
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
     match (record_tag, field_tag) {

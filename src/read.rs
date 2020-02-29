@@ -488,8 +488,8 @@ fn info_field(input: &[u8]) -> IResult<&[u8], Info, FieldBodyError> {
                 |_| FieldBodyError::UnexpectedEndOfField(12)
             )
         ),
-        |(dialog_type, (hide_until, rank, sex, pc_rank, padding))| Info {
-            dialog_type, hide_until, rank, sex, pc_rank, padding
+        |(dialog_type, (disp_index, rank, sex, pc_rank, padding))| Info {
+            dialog_type, disp_index, rank, sex, pc_rank, padding
         }
     )(input)
 }
@@ -909,6 +909,17 @@ fn bool_u32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'
             0 => Ok(false),
             1 => Ok(true),
             w => Err(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Bool(w), offset)))
+        }
+    )
+}
+
+fn none_u8_field<'a>(none: u8) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (), FieldBodyError> {
+    map_res(
+        set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(1)),
+        move |b, _| if b == none {
+            Ok(())
+        } else {
+            Err(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::MarkerU8(b), 0)))
         }
     )
 }
@@ -1356,6 +1367,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::I16 => map(i16_field, Field::I16)(input),
             FieldType::I64 => map(i64_field, Field::I64)(input),
             FieldType::U8 => map(u8_field, Field::U8)(input),
+            FieldType::MarkerU8(none) => map(none_u8_field(none), |()| Field::None)(input),
             FieldType::F32 => map(f32_field, Field::F32)(input),
             FieldType::I32List => map(i32_list_field, Field::I32List)(input),
             FieldType::I16List => map(i16_list_field, Field::I16List)(input),
@@ -1679,6 +1691,7 @@ pub enum Invalid {
     Bool(u32),
     Color(u32),
     ColorComponent(u32),
+    MarkerU8(u8)
 }
 
 impl Display for Invalid {
@@ -1687,6 +1700,7 @@ impl Display for Invalid {
             Invalid::Color(v) => write!(f, "RGB color {:08X}h", v),
             Invalid::ColorComponent(v) => write!(f, "RGB color component {}", v),
             Invalid::Bool(v) => write!(f, "boolean {}", v),
+            Invalid::MarkerU8(v) => write!(f, "one-byte marker {}", v),
         }
     }
 }

@@ -328,6 +328,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
+            FieldType::MarkerU8(none) => if let Field::None = self.field {
+                serialize_none_u8(none, serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have none type", self.record_tag, self.field_tag)))
+            },
             FieldType::I32 => if let &Field::I32(v) = self.field {
                 serializer.serialize_i32(v)
             } else {
@@ -525,6 +530,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Class => Class::deserialize(deserializer).map(Field::Class),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
+                FieldType::MarkerU8(none) => deserialize_none_u8(none, deserializer).map(|()| Field::None),
                 FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
