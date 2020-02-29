@@ -2183,7 +2183,7 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         (BOOK, TEXT) => true,
         (FACT, RNAM) => true,
         (REGN, SNAM) => true,
-        // TODO (JOUR, NAME)
+        (JOUR, NAME) => true,
         _ => false
     }
 }
