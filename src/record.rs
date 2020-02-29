@@ -328,6 +328,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have faction type", self.record_tag, self.field_tag)))
             },
+            FieldType::SkillMetadata => if let Field::SkillMetadata(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have skill metadata type", self.record_tag, self.field_tag)))
+            },
             FieldType::F32 => if let &Field::F32(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
@@ -510,6 +515,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::NpcFlags => <FlagsAndBlood<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsAndBlood<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
                 FieldType::SoundChance => SoundChance::deserialize(deserializer).map(Field::SoundChance),
+                FieldType::SkillMetadata => SkillMetadata::deserialize(deserializer).map(Field::SkillMetadata),
                 FieldType::Color => Color::deserialize(deserializer).map(Field::Color),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::SoundGen => SoundGen::deserialize(deserializer).map(Field::SoundGen),

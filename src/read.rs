@@ -1049,6 +1049,28 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
     )(input)
 }
 
+fn skill_metadata_field(input: &[u8]) -> IResult<&[u8], SkillMetadata, FieldBodyError> {
+    map(
+        tuple((
+            attribute(24, 0),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
+                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 4)))
+            ),
+            set_err(
+                tuple((le_f32, le_f32, le_f32, le_f32)),
+                |_| FieldBodyError::UnexpectedEndOfField(24)
+            )
+        )),
+        |(
+            governing_attribute, specialization,
+            (use_value_1, use_value_2, use_value_3, use_value_4)
+        )| SkillMetadata {
+            governing_attribute, specialization, use_value_1, use_value_2, use_value_3, use_value_4
+        }
+    )(input)
+}
+
 fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
     map(
         set_err(
@@ -1407,6 +1429,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Sound => map(sound_field, Field::Sound)(input),
             FieldType::SoundGen => map(sound_gen_field, Field::SoundGen)(input),
             FieldType::Info => map(info_field, Field::Info)(input),
+            FieldType::SkillMetadata => map(skill_metadata_field, Field::SkillMetadata)(input),
             FieldType::Potion => map(potion_field, Field::Potion)(input),
             FieldType::I32 => map(i32_field, Field::I32)(input),
             FieldType::I16 => map(i16_field, Field::I16)(input),

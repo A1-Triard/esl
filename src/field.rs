@@ -129,7 +129,7 @@ pub(crate) enum FieldType {
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
-    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction
+    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata
 }
 
 impl FieldType {
@@ -294,6 +294,7 @@ impl FieldType {
             (_, SCTX) => FieldType::Multiline(Newline::Dos),
             (SCPT, SCVR) => FieldType::StringZList,
             (_, SCVR) => FieldType::String(None),
+            (SKIL, SKDT) => FieldType::SkillMetadata,
             (_, SLCS) => FieldType::ScriptVars,
             (_, SLFD) => FieldType::F32List,
             (_, SLLD) => FieldType::I32List,
@@ -1997,8 +1998,7 @@ impl IndexMut<Sex> for RaceParameter {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Race {
     #[serde(with="skill_option_i32")]
     pub skill_1: Either<Option<i32>, Skill>,
@@ -2126,6 +2126,25 @@ pub struct Faction {
     pub hidden_from_pc: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct SkillMetadata {
+    pub governing_attribute: Attribute,
+    pub specialization: Specialization,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub use_value_1: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub use_value_2: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub use_value_3: f32,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub use_value_4: f32,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -2192,6 +2211,7 @@ define_field!(
     ScriptMetadata(ScriptMetadata),
     ScriptVars(ScriptVars),
     Skill(Skill),
+    SkillMetadata(SkillMetadata),
     Sound(Sound),
     SoundChance(SoundChance),
     SoundGen(SoundGen),
