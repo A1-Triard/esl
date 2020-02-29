@@ -139,10 +139,10 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 &Field::Cell(v) => PositionOrCell::Cell(v.clone()).serialize(serializer),
                 _ => Err(S::Error::custom(&format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
             },
-            FieldType::SpellMetadata => if let Field::SpellMetadata(v) = self.field {
+            FieldType::Spell => if let Field::Spell(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have spell metadata type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(&format!("{} {} field should have spell type", self.record_tag, self.field_tag)))
             },
             FieldType::Ai => if let Field::Ai(v) = self.field {
                 v.serialize(serializer)
@@ -501,7 +501,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Npc => Npc::deserialize(deserializer).map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
                 FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
-                FieldType::SpellMetadata => SpellMetadata::deserialize(deserializer).map(Field::SpellMetadata),
+                FieldType::Spell => Spell::deserialize(deserializer).map(Field::Spell),
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),

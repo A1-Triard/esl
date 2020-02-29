@@ -124,7 +124,7 @@ pub(crate) enum FieldType {
     Multiline(Newline),
     F32, I32, I16, I64, U8,
     MarkerU8(u8),
-    Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, SpellMetadata,
+    Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
     Ai, AiWander, AiTravel, AiTarget, AiActivate, NpcFlags, CreatureFlags, Book, ContainerFlags,
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
@@ -304,7 +304,7 @@ impl FieldType {
             (REGN, SNAM) => FieldType::SoundChance,
             (_, SNAM) => FieldType::StringZ,
             (SPLM, SPDT) => FieldType::U8ListZip,
-            (SPEL, SPDT) => FieldType::SpellMetadata,
+            (SPEL, SPDT) => FieldType::Spell,
             (_, STPR) => FieldType::U8ListZip,
             (_, STRV) => FieldType::String(None),
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
@@ -767,7 +767,7 @@ pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE_COST = 1, PC_START = 2, AL
 enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub struct SpellMetadata {
+pub struct Spell {
     #[serde(rename="type")]
     pub spell_type: SpellType,
     pub cost: u32,
@@ -2216,7 +2216,7 @@ define_field!(
     Sound(Sound),
     SoundChance(SoundChance),
     SoundGen(SoundGen),
-    SpellMetadata(SpellMetadata),
+    Spell(Spell),
     String(String),
     StringList(Vec<String>),
     StringZ(StringZ),

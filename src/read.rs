@@ -621,7 +621,7 @@ fn grid_field(input: &[u8]) -> IResult<&[u8], Grid, FieldBodyError> {
     )(input)
 }
 
-fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBodyError> {
+fn spell_field(input: &[u8]) -> IResult<&[u8], Spell, FieldBodyError> {
     map(
         tuple((
             map_res(
@@ -634,7 +634,7 @@ fn spell_metadata_field(input: &[u8]) -> IResult<&[u8], SpellMetadata, FieldBody
                 |w, _| SpellFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellFlags(w), 8)))
             ),
         )),
-        |(spell_type, cost, flags)| SpellMetadata {
+        |(spell_type, cost, flags)| Spell {
             spell_type, cost, flags
         }
     )(input)
@@ -1396,7 +1396,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
             FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
-            FieldType::SpellMetadata => map(spell_metadata_field, Field::SpellMetadata)(input),
+            FieldType::Spell => map(spell_field, Field::Spell)(input),
             FieldType::Ai => map(ai_field, Field::Ai)(input),
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
             FieldType::AiTravel => map(ai_travel_field, Field::AiTravel)(input),
@@ -2552,13 +2552,13 @@ mod tests {
 
     #[test]
     fn serialize_spell() {
-        let spell = SpellMetadata {
+        let spell = Spell {
             flags: SpellFlags::empty(),
             cost: 40,
             spell_type: SpellType::Curse
         };
         let bin: Vec<u8> = serialize(&spell, CodePage::English, false).unwrap();
-        let res = spell_metadata_field(&bin).unwrap().1;
+        let res = spell_field(&bin).unwrap().1;
         assert_eq!(res, spell);
     }
 
