@@ -494,6 +494,50 @@ fn info_field(input: &[u8]) -> IResult<&[u8], Info, FieldBodyError> {
     )(input)
 }
 
+fn rank(input: &[u8]) -> IResult<&[u8], Rank, ()> {
+    map(
+        tuple((le_u32, le_u32, le_u32, le_u32, le_u32)),
+        |(attribute_1, attribute_2, primary_skill, favored_skill, reputation)| Rank {
+            attribute_1, attribute_2, primary_skill, favored_skill, reputation
+        }
+    )(input)
+}
+
+fn faction_field(input: &[u8]) -> IResult<&[u8], Faction, FieldBodyError> {
+    map(
+        tuple((
+            attribute(240, 0), attribute(240, 4),
+            set_err(
+                pair(
+                    tuple((rank, rank, rank, rank, rank, rank, rank, rank, rank, rank)),
+                    tuple((
+                        skill_option_i32, skill_option_i32, skill_option_i32, skill_option_i32,
+                        skill_option_i32, skill_option_i32, skill_option_i32
+                    ))
+                ),
+                |_| FieldBodyError::UnexpectedEndOfField(240)
+            ),
+            bool_u32(240, 236)
+        )),
+        |(
+            favored_attribute_1, favored_attribute_2,
+            (
+                (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9),
+                (
+                    favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
+                    favored_skill_5, favored_skill_6, favored_skill_7
+                )
+            ),
+            hidden_from_pc
+        )| Faction {
+            favored_attribute_1, favored_attribute_2,
+            favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
+            favored_skill_5, favored_skill_6, favored_skill_7, hidden_from_pc,
+            ranks: [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9]
+        }
+    )(input)
+}
+
 fn weather_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
     map(
         set_err(
@@ -1342,6 +1386,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::Light => map(light_field, Field::Light)(input),
             FieldType::MiscItem => map(misc_item_field, Field::MiscItem)(input),
             FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
+            FieldType::Faction => map(faction_field, Field::Faction)(input),
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Position => map(position_field, Field::Position)(input),

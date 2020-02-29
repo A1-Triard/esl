@@ -129,7 +129,7 @@ pub(crate) enum FieldType {
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
-    Item, Sound, EffectMetadata, Race, SoundGen, Info
+    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction
 }
 
 impl FieldType {
@@ -203,6 +203,7 @@ impl FieldType {
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
             (ENCH, ENDT) => FieldType::Enchantment,
+            (FACT, FADT) => FieldType::Faction,
             (CELL, FGTN) => FieldType::StringZ,
             (CONT, FLAG) => FieldType::ContainerFlags,
             (CREA, FLAG) => FieldType::CreatureFlags,
@@ -2093,6 +2094,38 @@ pub struct Info {
     pub padding: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Rank {
+    pub attribute_1: u32,
+    pub attribute_2: u32,
+    pub primary_skill: u32,
+    pub favored_skill: u32,
+    pub reputation: u32
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Faction {
+    pub favored_attribute_1: Attribute,
+    pub favored_attribute_2: Attribute,
+    pub ranks: [Rank; 10],
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_1: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_2: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_3: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_4: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_5: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_6: Either<Option<i32>, Skill>,
+    #[serde(with="skill_option_i32")]
+    pub favored_skill_7: Either<Option<i32>, Skill>,
+    #[serde(with="bool_u32")]
+    pub hidden_from_pc: bool,
+}
+
 macro_rules! define_field {
     ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
@@ -2136,6 +2169,7 @@ define_field!(
     Enchantment(Enchantment),
     F32(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
     F32List(#[derivative(PartialEq(compare_with="eq_f32_list"))] Vec<f32>),
+    Faction(Faction),
     FileMetadata(FileMetadata),
     Grid(Grid),
     I16(i16),
