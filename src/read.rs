@@ -662,6 +662,29 @@ fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
     )(input)
 }
 
+fn interior_field(input: &[u8]) -> IResult<&[u8], Interior, FieldBodyError> {
+    map(
+        tuple((
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| Color::try_from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Color(w), 0)))
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| Color::try_from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Color(w), 4)))
+            ),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
+                |w, _| Color::try_from_u32(w).ok_or(nom::Err::Error(FieldBodyError::InvalidValue(Invalid::Color(w), 8)))
+            ),
+            set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(16))
+        )),
+        |(ambient, sunlight, fog, fog_density)| Interior {
+            ambient, sunlight, fog, fog_density
+        }
+    )(input)
+}
+
 fn sound_field(input: &[u8]) -> IResult<&[u8], Sound, FieldBodyError> {
     map(
         set_err(
@@ -1432,6 +1455,7 @@ fn field_body<'a>(code_page: CodePage, record_tag: Tag, field_tag: Tag, field_si
             FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
             FieldType::Grid => map(grid_field, Field::Grid)(input),
             FieldType::Color => map(color_field, Field::Color)(input),
+            FieldType::Interior => map(interior_field, Field::Interior)(input),
             FieldType::Sound => map(sound_field, Field::Sound)(input),
             FieldType::SoundGen => map(sound_gen_field, Field::SoundGen)(input),
             FieldType::Info => map(info_field, Field::Info)(input),

@@ -129,7 +129,7 @@ pub(crate) enum FieldType {
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
-    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata
+    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior
 }
 
 impl FieldType {
@@ -148,6 +148,7 @@ impl FieldType {
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
             (ALCH, ALDT) => FieldType::Potion,
+            (CELL, AMBI) => FieldType::Interior,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (ARMO, AODT) => FieldType::Armor,
@@ -1863,6 +1864,17 @@ pub struct Cell {
     pub grid: Grid,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
+#[derivative(Eq, PartialEq)]
+pub struct Interior {
+    pub ambient: Color,
+    pub sunlight: Color,
+    pub fog: Color,
+    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[serde(with = "float_32")]
+    pub fog_density: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Grid {
     pub x: i32,
@@ -2210,6 +2222,7 @@ define_field!(
     I64(i64),
     Info(Info),
     Ingredient(Ingredient),
+    Interior(Interior),
     Item(Item),
     Light(Light),
     MiscItem(MiscItem),
@@ -2255,12 +2268,13 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         (ARMO, CNAM) => true,
         (SSCR, DATA) => true,
         (BSGN, DESC) => true,
-        (SSCR, NAME) => true,
-        (_, SCTX) => true,
-        (BOOK, TEXT) => true,
-        (FACT, RNAM) => true,
-        (REGN, SNAM) => true,
+        (TES3, HEDR) => true,
         (JOUR, NAME) => true,
+        (SSCR, NAME) => true,
+        (FACT, RNAM) => true,
+        (_, SCTX) => true,
+        (REGN, SNAM) => true,
+        (BOOK, TEXT) => true,
         _ => false
     }
 }
@@ -2269,6 +2283,16 @@ impl Field {
     pub fn fit(&mut self, record_tag: Tag, field_tag: Tag) {
         if !allow_fit(record_tag, field_tag) { return; }
         match FieldType::from_tags(record_tag, field_tag) {
+            FieldType::FileMetadata => {
+                if let Field::FileMetadata(v) = self {
+                    v.author.find('\0').map(|i| v.author.truncate(i));
+                    let mut d = v.description.join(Newline::Dos.as_str());
+                    d.find('\0').map(|i| d.truncate(i));
+                    v.description = d.split(Newline::Dos.as_str()).map(String::from).collect();
+                } else {
+                    panic!("invalid field type")
+                }
+            },
             FieldType::String(_) => {
                 if let Field::String(v) = self {
                     v.find('\0').map(|i| v.truncate(i));

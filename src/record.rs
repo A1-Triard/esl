@@ -218,6 +218,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have light type", self.record_tag, self.field_tag)))
             },
+            FieldType::Interior => if let Field::Interior(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(&format!("{} {} field should have interior type", self.record_tag, self.field_tag)))
+            },
             FieldType::MiscItem => if let Field::MiscItem(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -517,6 +522,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::SoundChance => SoundChance::deserialize(deserializer).map(Field::SoundChance),
                 FieldType::SkillMetadata => SkillMetadata::deserialize(deserializer).map(Field::SkillMetadata),
                 FieldType::Color => Color::deserialize(deserializer).map(Field::Color),
+                FieldType::Interior => Interior::deserialize(deserializer).map(Field::Interior),
                 FieldType::Book => Book::deserialize(deserializer).map(Field::Book),
                 FieldType::SoundGen => SoundGen::deserialize(deserializer).map(Field::SoundGen),
                 FieldType::Tool => Tool::deserialize(deserializer).map(Field::Tool),
