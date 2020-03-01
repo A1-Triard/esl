@@ -6,7 +6,7 @@ A library for reading, writing and processing ESM/ESP/ESS files.
 
 ```rust
 fn main() {
-    let input = std::fs::File::open(file.clone()).unwrap();
+    let input = std::fs::File::open(file.clone()).unwrap(); 
     let mut input = std::io::BufReader::new(input);
     let records = Records::new(CodePage::Russian, 0, &mut input);
     let records = records.map(|x| {
