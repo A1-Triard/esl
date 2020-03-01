@@ -319,7 +319,7 @@ impl FieldType {
             (_, VNML) => FieldType::U8ListZip,
             (_, VTEX) => FieldType::U8ListZip,
             (REGN, WEAT) => FieldType::Weather,
-            (_, WHGT) => FieldType::I32,
+            (_, WHGT) => FieldType::F32,
             (_, WIDX) => FieldType::I64,
             (_, WNAM) => FieldType::U8ListZip,
             (WEAP, WPDT) => FieldType::Weapon,
