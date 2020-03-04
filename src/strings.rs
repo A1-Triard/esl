@@ -63,7 +63,7 @@ impl<'de> de::Visitor<'de> for StringZDeserializer {
     fn visit_string<E: de::Error>(self, mut string: String) -> Result<Self::Value, E> {
         if self.is_human_readable {
             let carets = string.len() - string.rfind(|x| x != '^').map_or(0, |i| i + string[i..].chars().nth(0).unwrap().len_utf8());
-            let has_tail_zero = carets % 2 == 1;
+            let has_tail_zero = carets % 2 == 0;
             let carets = (carets + 1) / 2;
             string.truncate(string.len() - carets);
             Ok(StringZ { string, has_tail_zero })
@@ -149,7 +149,7 @@ impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
             vec.push(line);
         }
         let carets = vec.len() - vec.iter().rposition(|x| x != "^").map_or(0, |i| i + 1);
-        let has_tail_zero = carets % 2 == 1;
+        let has_tail_zero = carets % 2 == 0;
         let carets = (carets + 1) / 2;
         vec.truncate(vec.len() - carets);
         Ok(StringZList { vec, has_tail_zero })
