@@ -57,6 +57,7 @@ mod tests {
     use byteorder::{WriteBytesExt, LittleEndian};
     use std::iter::Iterator;
     use std::str::FromStr;
+    use std::mem::transmute;
 
     fn test_author() -> &'static [u8] {
         b"test author\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"
@@ -235,29 +236,24 @@ mod tests {
         assert_eq!(record, deserialized);
     }
 
-//    #[test]
-//    fn read_test_files() {
-//        for file in std::fs::read_dir("D:\\MFR\\Data Files").unwrap() {
-//            let file = file.unwrap().path().to_str().unwrap().to_ascii_lowercase();
-//            if !file.ends_with(".esm") && !file.ends_with(".esp") && !file.ends_with(".ess") {
-//                continue;
-//            }
-//            let input = std::fs::File::open(file.clone()).unwrap();
-//            let mut input = std::io::BufReader::new(input);
-//            let records = Records::new(CodePage::Russian, 0, &mut input);
-//            let records = records.map(|x| {
-//                match x {
-//                    Ok(mut x) => {
-//                        x.coerce();
-//                        x
-//                    },
-//                    Err(e) => {
-//                        panic!(format!("{}", e))
-//                    }
-//                }
-//            }).collect::<Vec<_>>();
-//            let output = std::fs::File::create(file + ".yaml").unwrap();
-//            serde_yaml::to_writer(std::io::BufWriter::new(output), &records).unwrap();
-//        }
-//    }
+    #[test]
+    fn float_field() {
+        let yaml = "\
+- GMST:
+  - FLTV: 3.0
+  - FLTV: .nan
+  - FLTV: nanFFEEEEEE
+        ";
+        let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].fields.len(), 3);
+        assert_eq!(res[0].fields[0].1, Field::F32(3.0));
+        let standard_nan: f32 = unsafe { transmute(0xFFFFFFFFu32) };
+        let custom_nan: f32 = unsafe { transmute(0xFFEEEEEEu32) };
+        assert!(standard_nan.is_nan());
+        assert!(custom_nan.is_nan());
+        assert_ne!(Field::F32(standard_nan), Field::F32(custom_nan));
+        assert_eq!(res[0].fields[1].1, Field::F32(standard_nan));
+        assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
+    }
 }

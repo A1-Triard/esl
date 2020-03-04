@@ -173,7 +173,7 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
         if d == 0xFFFFFFFF {
             serializer.serialize_f32(v)
         } else {
-            serializer.serialize_str(&format!("NaN_{:08X}", d))
+            serializer.serialize_str(&format!("nan{:08X}", d))
         }
     } else {
         serializer.serialize_f32(v)
@@ -186,18 +186,29 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
     type Value = f32;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "float or string 'NaN_XXXXXXXX' where X is hex digit")
+        write!(f, "32-bit float value or 'nanXXXXXXXX' (where X is hex digit)")
     }
 
     fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E> where E: de::Error {
         Ok(if v.is_nan() { unsafe { transmute(0xFFFFFFFFu32) } } else { v })
     }
 
+    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
+        let v_as_f32 = v as f32;
+        if (!v_as_f32.is_nan() || !v.is_nan()) && v_as_f32 as f64 != v {
+            return Err(E::invalid_value(Unexpected::Float(v), &self));
+        }
+        self.visit_f32(v_as_f32)
+    }
+
     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
-        if s.len() != 12 || !s.starts_with("NaN_") || &s[4..5] == "+" {
+        if s.len() != 11 || !s.starts_with("nan") || &s[4..5] == "+" {
             return Err(E::invalid_value(Unexpected::Str(s), &self));
         }
-        let d = u32::from_str_radix(&s[4..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
+        let d = u32::from_str_radix(&s[3..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
+        if d == 0xFFFFFFFF {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
         Ok(unsafe { transmute(d) })
     }
 }
