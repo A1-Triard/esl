@@ -775,7 +775,7 @@ pub struct Spell {
     pub flags: SpellFlags
 }
 
-pub_bitflags_display!(Services, u32, [
+pub_bitflags_display!(Services, u32,
     WEAPON = 0x00000001,
     ARMOR = 0x00000002,
     CLOTHING = 0x00000004,
@@ -786,8 +786,7 @@ pub_bitflags_display!(Services, u32, [
     LIGHTS = 0x00000080,
     APPARATUS = 0x00000100,
     REPAIR_ITEMS = 0x00000200,
-    MISCELLANEOUS  = 0x00000400
-], [
+    MISCELLANEOUS  = 0x00000400,
     SPELLS = 0x00000800,
     MAGIC_ITEMS = 0x00001000,
     POTIONS = 0x00002000,
@@ -800,7 +799,7 @@ pub_bitflags_display!(Services, u32, [
     _400000 = 0x00400000,
     _800000 = 0x00800000,
     _1000000 = 0x01000000
-]);
+);
 
 enum_serde!(Services, "services", u32, bits, try from_bits, Unsigned, u64);
 
@@ -2371,5 +2370,13 @@ mod tests {
         assert_eq!(None, FileType::from_u32(2));
         assert_eq!(32, FileType::ESS as u32);
         assert_eq!(Ok(FileType::ESP), FileType::from_str("ESP"));
+    }
+    
+    #[test]
+    fn light_flags_from_str() {
+        assert_eq!(
+            LightFlags::from_str("DYNAMIC CAN_CARRY FIRE FLICKER_SLOW"),
+            Ok(LightFlags::DYNAMIC | LightFlags::CAN_CARRY | LightFlags::FIRE | LightFlags::FLICKER_SLOW)
+        );
     }
 }

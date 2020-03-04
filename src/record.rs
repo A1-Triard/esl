@@ -898,7 +898,7 @@ mod tests {
         assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("DELETED PERSIST"));
         assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("PERSIST  DELETED"));
         assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(""));
-        assert_eq!(Err(()), RecordFlags::from_str(" "));
+        assert_eq!(Ok(RecordFlags::empty()), RecordFlags::from_str(" "));
     }
 
     #[test]

@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn float_field() {
+    fn deseralize_float_field() {
         let yaml = "\
 - GMST:
   - FLTV: 3.0
@@ -255,5 +255,27 @@ mod tests {
         assert_ne!(Field::F32(standard_nan), Field::F32(custom_nan));
         assert_eq!(res[0].fields[1].1, Field::F32(standard_nan));
         assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
+    }
+
+    #[test]
+    fn deserialize_light_field() {
+        let yaml = "\
+- LIGH:
+    - LHDT:
+        weight: 0.0
+        value: 3
+        time: 0
+        radius: 128
+        color: \"#F58C28\"
+        flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
+        ";
+        let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].fields.len(), 1);
+        if let Field::Light(field) = &res[0].fields[0].1 {
+            assert_eq!(field.weight, 0.0);
+        } else {
+            panic!()
+        }
     }
 }
