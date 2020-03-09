@@ -25,7 +25,7 @@ pub struct Record {
 }
 
 impl Record {
-    pub fn coerce(&mut self) {
+    pub fn fit(&mut self) {
         for &mut (field_tag, ref mut field) in self.fields.iter_mut() {
             field.fit(self.tag, field_tag);
         }
