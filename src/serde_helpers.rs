@@ -300,10 +300,10 @@ pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<u
             text.push_str(separator);
         }
         text.truncate(text.len() - separator.len());
-        if text.as_bytes().last().map_or(false, |&x| x == 0) {
-            return Err(S::Error::custom("string list has tail zero"));
-        }
         if let Some(len) = len {
+            if text.as_bytes().last().map_or(false, |&x| x == 0) {
+                return Err(S::Error::custom("string list has tail zero"));
+            }
             let mut serializer = serializer.serialize_tuple(len)?;
             let mut text_len = 0;
             for c in text.chars() {

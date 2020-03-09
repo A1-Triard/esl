@@ -237,6 +237,28 @@ mod tests {
     }
 
     #[test]
+    fn journal_zeros() {
+        let record = Record {
+            tag: JOUR,
+            flags: RecordFlags::empty(),
+            fields: vec![(NAME, Field::StringList(vec![
+                "\0\0\0".into(),
+            ]))]
+        };
+        let bytes = code::serialize(&record, CodePage::English, false).unwrap();
+        let read = {
+            let mut bytes = &bytes[..];
+            let mut records = Records::new(CodePage::English, 0, &mut bytes);
+            let read = records.next().unwrap().unwrap();
+            assert!(records.next().is_none());
+            read
+        };
+        assert_eq!(record, read);
+        let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
+        assert_eq!(record, deserialized);
+    }
+
+    #[test]
     fn deseralize_float_field() {
         let yaml = "\
 - GMST:
