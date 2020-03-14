@@ -1232,11 +1232,12 @@ fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyErro
 
 fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     map(
-        set_err(
-            tuple((le_f32, le_u32, le_u32, skill_option_i32, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(20)
-        ),
-        |(weight, value, scroll, skill, enchantment)| Book {
+        tuple((
+            set_err(pair(le_f32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20)),
+            bool_u32(20, 8),
+            set_err(pair(skill_option_i32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20))
+        )),
+        |((weight, value), scroll, (skill, enchantment))| Book {
             weight, value, scroll, skill, enchantment
         }
     )(input)

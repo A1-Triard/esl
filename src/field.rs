@@ -938,7 +938,8 @@ pub struct Book {
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    pub scroll: u32,
+    #[serde(with = "bool_u32")]
+    pub scroll: bool,
     #[serde(with="skill_option_i32")]
     pub skill: Either<Option<i32>, Skill>,
     pub enchantment: u32
