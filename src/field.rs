@@ -931,6 +931,13 @@ pub struct FlagsAndBlood<Flags> {
     pub padding: u16,
 }
 
+pub_bitflags_display!(BookFlags, u32,
+    SCROLL = 0x01,
+    _10 = 0x10
+);
+
+enum_serde!(BookFlags, "book flags", u32, bits, try from_bits, Unsigned, u64);
+
 #[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
 #[derivative(Eq, PartialEq)]
 pub struct Book {
@@ -938,8 +945,7 @@ pub struct Book {
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    #[serde(with = "bool_u32")]
-    pub scroll: bool,
+    pub flags: BookFlags,
     #[serde(with="skill_option_i32")]
     pub skill: Either<Option<i32>, Skill>,
     pub enchantment: u32

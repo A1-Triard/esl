@@ -1234,11 +1234,14 @@ fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
     map(
         tuple((
             set_err(pair(le_f32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20)),
-            bool_u32(20, 8),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
+                |w, _| BookFlags::from_bits(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BookFlags(w), 8)))
+            ),
             set_err(pair(skill_option_i32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20))
         )),
-        |((weight, value), scroll, (skill, enchantment))| Book {
-            weight, value, scroll, skill, enchantment
+        |((weight, value), flags, (skill, enchantment))| Book {
+            weight, value, flags, skill, enchantment
         }
     )(input)
 }
@@ -1693,6 +1696,7 @@ pub enum Unknown {
     BodyPartFlags(u8),
     BodyPartKind(u8),
     BodyPartType(u8),
+    BookFlags(u32),
     CellFlags(u32),
     ClothingType(u32),
     ContainerFlags(u32),
@@ -1755,6 +1759,7 @@ impl Display for Unknown {
             Unknown::School(v) => write!(f, "school {}", v),
             Unknown::SoundGen(v) => write!(f, "sound gen {}", v),
             Unknown::EffectIndex(v) => write!(f, "effect index {}", v),
+            Unknown::BookFlags(v) => write!(f, "book flags {:08X}h", v),
         }
     }
 }
