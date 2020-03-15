@@ -262,13 +262,15 @@ mod tests {
     fn deseralize_float_field() {
         let yaml = "\
 - GMST:
-  - FLTV: 3.0
-  - FLTV: .nan
-  - FLTV: nanFFEEEEEE
+    - FLTV: 3.0
+    - FLTV: .nan
+    - FLTV: nanFFEEEEEE
+    - FLTV: 0.1
+    - FLTV: -0.0
         ";
         let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(res.len(), 1);
-        assert_eq!(res[0].fields.len(), 3);
+        assert_eq!(res[0].fields.len(), 5);
         assert_eq!(res[0].fields[0].1, Field::F32(3.0));
         let standard_nan: f32 = unsafe { transmute(0xFFFFFFFFu32) };
         let custom_nan: f32 = unsafe { transmute(0xFFEEEEEEu32) };
@@ -277,6 +279,10 @@ mod tests {
         assert_ne!(Field::F32(standard_nan), Field::F32(custom_nan));
         assert_eq!(res[0].fields[1].1, Field::F32(standard_nan));
         assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
+        assert_eq!(res[0].fields[3].1, Field::F32(0.1));
+        assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
+        let res_yaml = serde_yaml::to_string(&res).unwrap();
+        assert_eq!(res_yaml, format!("---\n{}", yaml).trim());
     }
 
     #[test]

@@ -179,7 +179,7 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
             serializer.serialize_str(&format!("nan{:08X}", d))
         }
     } else {
-        serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap())
+        serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap().copysign(v as f64))
     }
 }
 
@@ -198,8 +198,12 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
 
     fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
         let v_as_f32 = v as f32;
-        if (!v_as_f32.is_nan() || !v.is_nan()) && f64::from_str(&v_as_f32.to_string()).unwrap() != v {
-            return Err(E::invalid_value(Unexpected::Float(v), &self));
+        if !v_as_f32.is_nan() || !v.is_nan() {
+            let v_as_u64: u64 = unsafe { transmute(v) };
+            let v_as_u32_as_u64: u64 = unsafe{ transmute(f64::from_str(&v_as_f32.to_string()).unwrap().copysign(v_as_f32 as f64)) };
+            if v_as_u32_as_u64 != v_as_u64 {
+                return Err(E::invalid_value(Unexpected::Float(v), &self));
+            }
         }
         self.visit_f32(v_as_f32)
     }
