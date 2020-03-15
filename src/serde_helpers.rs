@@ -6,6 +6,7 @@ use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeTuple, SerializeSeq};
 use std::mem::{transmute};
 use either::{Either, Left,  Right};
+use std::str::FromStr;
 
 pub fn serialize_none_u8<S>(none: u8, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if serializer.is_human_readable() {
@@ -168,7 +169,9 @@ pub fn deserialize_f32_s_as_is<'de, D>(deserializer: D) -> Result<Vec<f32>, D::E
 }
 
 pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if v.is_nan() && serializer.is_human_readable() {
+    if !serializer.is_human_readable() {
+        serializer.serialize_f32(v)
+    } else if v.is_nan() {
         let d: u32 = unsafe { transmute(v) };
         if d == 0xFFFFFFFF {
             serializer.serialize_f32(v)
@@ -176,7 +179,7 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
             serializer.serialize_str(&format!("nan{:08X}", d))
         }
     } else {
-        serializer.serialize_f32(v)
+        serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap())
     }
 }
 
@@ -195,7 +198,7 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
 
     fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
         let v_as_f32 = v as f32;
-        if (!v_as_f32.is_nan() || !v.is_nan()) && v_as_f32 as f64 != v {
+        if (!v_as_f32.is_nan() || !v.is_nan()) && f64::from_str(&v_as_f32.to_string()).unwrap() != v {
             return Err(E::invalid_value(Unexpected::Float(v), &self));
         }
         self.visit_f32(v_as_f32)

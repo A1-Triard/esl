@@ -1,6 +1,6 @@
 [package]
 name = "esl"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["warlock <internalmike@gmail.com>"]
 description = "A library for reading, writing and processing ESM/ESP/ESS files."
 readme = "README.md"

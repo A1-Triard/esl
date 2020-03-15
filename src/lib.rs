@@ -284,7 +284,7 @@ mod tests {
         let yaml = "\
 - LIGH:
     - LHDT:
-        weight: 0.0
+        weight: 0.1
         value: 3
         time: 0
         radius: 128
@@ -295,9 +295,11 @@ mod tests {
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 1);
         if let Field::Light(field) = &res[0].fields[0].1 {
-            assert_eq!(field.weight, 0.0);
+            assert_eq!(field.weight, 0.1);
         } else {
             panic!()
         }
+        let res_yaml = serde_yaml::to_string(&res).unwrap();
+        assert_eq!(res_yaml, format!("---\n{}", yaml).trim());
     }
 }
