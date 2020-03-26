@@ -2277,6 +2277,8 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         (TES3, HEDR) => true,
         (JOUR, NAME) => true,
         (SSCR, NAME) => true,
+        (INFO, NNAM) => true,
+        (INFO, PNAM) => true,
         (FACT, RNAM) => true,
         (_, SCTX) => true,
         (REGN, SNAM) => true,
