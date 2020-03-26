@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn read_file_1() {
         let mut records = &test_file_1_bytes()[..];
-        let records = Records::new(CodePage::English, 0, &mut records);
+        let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut records);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records, test_file1());
     }
@@ -171,7 +171,7 @@ mod tests {
             0x00, 0x46, 0x4E, 0x41, 0x4D, 0x08, 0x00, 0x00, 0x00, 0xD0, 0xE5, 0xE4, 0xE3, 0xE0, 0xF0, 0xE4,
             0x00
         ][..];
-        let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
+        let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
         let yaml = serde_yaml::to_string(&record).unwrap();
@@ -196,7 +196,7 @@ mod tests {
         let bytes = code::serialize(&record, CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
+            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
@@ -224,7 +224,7 @@ mod tests {
         let bytes = code::serialize(&record, CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::Russian, 0, &mut bytes);
+            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
@@ -246,7 +246,7 @@ mod tests {
         let bytes = code::serialize(&record, CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::English, 0, &mut bytes);
+            let mut records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
