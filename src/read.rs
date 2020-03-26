@@ -1830,6 +1830,30 @@ pub enum RecordError {
     UnknownValue(UnknownValue),
 }
 
+impl RecordError {
+    pub fn record_tag(&self) -> Tag {
+        match self {
+            RecordError::UnknownRecordFlags(x) => x.record_tag,
+            RecordError::RecordSizeMismatch(x) => x.record_tag,
+            RecordError::FieldSizeMismatch(x) => x.record_tag,
+            RecordError::UnexpectedFieldSize(x) => x.record_tag,
+            RecordError::UnknownValue(x) => x.record_tag,
+            RecordError::InvalidValue(x) => x.record_tag,
+        }
+    }
+
+    pub fn record_offset(&self) -> u64 {
+        match self {
+            RecordError::UnknownRecordFlags(x) => x.record_offset,
+            RecordError::RecordSizeMismatch(x) => x.record_offset,
+            RecordError::FieldSizeMismatch(x) => x.record_offset,
+            RecordError::UnexpectedFieldSize(x) => x.record_offset,
+            RecordError::UnknownValue(x) => x.record_offset,
+            RecordError::InvalidValue(x) => x.record_offset,
+        }
+    }
+}
+
 impl Display for RecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
