@@ -1558,28 +1558,6 @@ fn field<'a>(code_page: CodePage, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResu
 }
 
 #[derive(Debug, Clone)]
-pub struct UnexpectedEof {
-    pub record_offset: u64,
-    pub expected_size: u32,
-    pub actual_size: u32
-}
-
-impl Display for UnexpectedEof {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f, "unexpected EOF at {:X}h in record started at {:X}h, {} bytes missing",
-            self.record_offset + self.actual_size as u64,
-            self.record_offset,
-            self.expected_size - self.actual_size
-        )
-    }
-}
-
-impl Error for UnexpectedEof {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
-}
-
-#[derive(Debug, Clone)]
 pub struct UnknownRecordFlags {
     pub record_offset: u64,
     pub record_tag: Tag,
@@ -1844,7 +1822,6 @@ pub enum RecordError {
     FieldSizeMismatch(FieldSizeMismatch),
     InvalidValue(InvalidValue),
     RecordSizeMismatch(RecordSizeMismatch),
-    UnexpectedEof(UnexpectedEof),
     UnexpectedFieldSize(UnexpectedFieldSize),
     UnknownRecordFlags(UnknownRecordFlags),
     UnknownValue(UnknownValue),
@@ -1853,7 +1830,6 @@ pub enum RecordError {
 impl Display for RecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecordError::UnexpectedEof(x) => Display::fmt(x, f),
             RecordError::UnknownRecordFlags(x) => Display::fmt(x, f),
             RecordError::RecordSizeMismatch(x) => Display::fmt(x, f),
             RecordError::FieldSizeMismatch(x) => Display::fmt(x, f),
@@ -1867,7 +1843,6 @@ impl Display for RecordError {
 impl Error for RecordError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         Some(match self {
-            RecordError::UnexpectedEof(x) => x,
             RecordError::UnknownRecordFlags(x) => x,
             RecordError::RecordSizeMismatch(x) => x,
             RecordError::FieldSizeMismatch(x) => x,
@@ -1880,38 +1855,12 @@ impl Error for RecordError {
 
 impl_parse_error!(<'a>, &'a [u8], RecordError);
 
-fn record_head<'a>(record_offset: u64) -> impl Fn(&'a [u8])
-    -> IResult<&'a [u8], (Tag, u32, RecordFlags), RecordError> {
-
-    flat_map(
-        set_err(
-            pair(tag, le_u32),
-            move |input| {
-                debug_panic!();
-                RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size: 16, actual_size: input.len() as u32 })
-            }
-        ),
-        move |(record_tag, record_size)| {
-            map_res(
-                set_err(
-                    le_u64,
-                    move |input| {
-                        debug_panic!();
-                        RecordError::UnexpectedEof(UnexpectedEof { record_offset, expected_size: 16, actual_size: input.len() as u32 + 8 })
-                    }
-                ),
-                move |value, _| {
-                    let record_flags = RecordFlags::from_bits(value)
-                        .ok_or(nom::Err::Error(RecordError::UnknownRecordFlags(UnknownRecordFlags { record_offset, record_tag, value })))?;
-                    Ok((record_tag, record_size, record_flags))
-                }
-            )
-        }
-    )
+fn record_head(input: &[u8]) -> IResult<&[u8], (Tag, u32, u64), RecordError> {
+    set_err(tuple((tag, le_u32, le_u64)), |_| { panic!(); })(input)
 }
 
-fn read_record_head(record_offset: u64, input: &[u8]) -> Result<(Tag, u32, RecordFlags), RecordError> {
-    match record_head(record_offset)(input) {
+fn read_record_head(input: &[u8]) -> Result<(Tag, u32, u64), RecordError> {
+    match record_head(input) {
         Ok((rem, res)) => {
             debug_assert!(rem.is_empty());
             Ok(res)
@@ -1994,77 +1943,55 @@ fn read_record_body(record_offset: u64, code_page: CodePage,
 
 #[derive(Debug)]
 pub struct ReadRecordError {
-    record_error: RecordError,
-    io_error: Option<io::Error>,
+    source: Either<RecordError, io::Error>,
     bytes: Vec<u8>
-}
-
-fn is_eof(e: &RecordError) -> bool {
-    match e {
-        RecordError::UnexpectedEof(_) => true,
-        _ => false
-    }
 }
 
 lazy_static! {
     static ref INVALID_DATA_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::InvalidData);
-    static ref UNEXPECTED_EOF_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::UnexpectedEof);
 }
 
 impl ReadRecordError {
-    pub fn as_record_error(&self) -> &RecordError { &self.record_error }
-    
     pub fn as_io_error(&self) -> &io::Error {
-        self.io_error.as_ref().unwrap_or_else(|| if is_eof(&self.record_error) {
-            &*UNEXPECTED_EOF_IO_ERROR
-        } else {
-            &*INVALID_DATA_IO_ERROR
-        })
+        self.source.as_ref().right_or_else(|_| &*INVALID_DATA_IO_ERROR)
     }
     
     pub fn into_io_error(self) -> io::Error {
-        let record_error = &self.record_error;
-        self.io_error.unwrap_or_else(move || if is_eof(record_error) {
-            io::Error::from(io::ErrorKind::UnexpectedEof)
-        } else {
-            io::Error::from(io::ErrorKind::InvalidData)
-        })
+        self.source.right_or_else(|_| io::Error::from(io::ErrorKind::InvalidData))
     }
-    
-    pub fn into_record_error(self) -> RecordError { self.record_error }
-    
+
     pub fn as_bytes(&self) -> &[u8] { &self.bytes }
 
     pub fn into_bytes(self) -> Vec<u8> { self.bytes }
-    
-    pub fn into_tuple(self) -> (RecordError, io::Error, Vec<u8>) {
-        let record_error = &self.record_error;
-        let io_error = self.io_error.unwrap_or_else(move || if is_eof(record_error) {
-            io::Error::from(io::ErrorKind::UnexpectedEof)
-        } else {
-            io::Error::from(io::ErrorKind::InvalidData)
-        });
-        (self.record_error, io_error, self.bytes)
+
+    pub fn into_tuple(self) -> (Either<RecordError, io::Error>, Vec<u8>) {
+        (self.source, self.bytes)
     }
+
+    pub fn source(&self) -> Either<&RecordError, &io::Error> { self.source.as_ref() }
+
+    pub fn into_source(self) -> Either<RecordError, io::Error> { self.source }
+}
+
+impl Into<io::Error> for ReadRecordError {
+    fn into(self) -> io::Error { self.into_io_error() }
 }
 
 impl Display for ReadRecordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(io_error) = &self.io_error {
-            if io_error.kind() != io::ErrorKind::UnexpectedEof {
-                return Display::fmt(io_error, f);
-            }
+        match &self.source {
+            Left(record_error) => Display::fmt(record_error, f),
+            Right(io_error) => Display::fmt(io_error, f),
         }
-        Display::fmt(&self.record_error, f)
     }
 }
 
 impl Error for ReadRecordError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(self.io_error.as_ref().map(|x| {
-            let x: &(dyn Error + 'static) = x;
-            x
-        }).unwrap_or(&self.record_error))
+        Some(match &self.source {
+            Left(record_error) => record_error,
+            Right(io_error) => io_error,
+        })
     }
 }
 
@@ -2092,33 +2019,21 @@ impl RecordReader {
         }
     }
 
-    fn read_chunk(&mut self, record_offset: u64, input: &mut (impl Read + ?Sized))
-                  -> Result<usize, ReadRecordError> {
-
+    fn read_chunk(&mut self, input: &mut (impl Read + ?Sized)) -> Result<usize, ReadRecordError> {
         read_and_ignore_interrupts(input, &mut self.buf[..])
             .map_err(|io_error| ReadRecordError {
-                io_error: Some(io_error),
-                record_error: RecordError::UnexpectedEof(UnexpectedEof {
-                    record_offset,
-                    expected_size: self.buf.len() as u32,
-                    actual_size: 0
-                }),
+                source: Right(io_error),
                 bytes: Vec::new()
             })
     }
 
-    fn fill_buf(&mut self, mut from: usize, record_offset: u64, input: &mut (impl Read + ?Sized))
-                -> Result<(), ReadRecordError> {
+    fn fill_buf(&mut self, mut from: usize, input: &mut (impl Read + ?Sized))
+        -> Result<(), ReadRecordError> {
 
         while from < self.buf.len() {
             let read = read_and_ignore_interrupts(input, &mut self.buf[from..])
                 .map_err(|io_error| ReadRecordError {
-                    io_error: Some(io_error),
-                    record_error: RecordError::UnexpectedEof(UnexpectedEof {
-                        record_offset,
-                        expected_size: self.buf.len() as u32,
-                        actual_size: from as u32
-                    }),
+                    source: Right(io_error),
                     bytes: {
                         let mut bytes = replace(&mut self.buf, Vec::with_capacity(16));
                         bytes.truncate(from);
@@ -2127,12 +2042,7 @@ impl RecordReader {
                 })?;
             if read == 0 {
                 return Err(ReadRecordError {
-                    io_error: None,
-                    record_error: RecordError::UnexpectedEof(UnexpectedEof {
-                        record_offset,
-                        expected_size: self.buf.len() as u32,
-                        actual_size: from as u32
-                    }),
+                    source: Right(io::Error::from(io::ErrorKind::UnexpectedEof)),
                     bytes: {
                         let mut bytes = replace(&mut self.buf, Vec::with_capacity(16));
                         bytes.truncate(from);
@@ -2149,23 +2059,32 @@ impl RecordReader {
         -> Result<Option<(Record, u32)>, ReadRecordError> {
 
         self.buf.resize(16, 0);
-        let read = self.read_chunk(offset, input)?;
+        let read = self.read_chunk(input)?;
         if read == 0 { return Ok(None); }
-        self.fill_buf(read, offset, input)?;
+        self.fill_buf(read, input)?;
         let (record_tag, record_size, record_flags) =
-            read_record_head(offset, &self.buf[..]).map_err(|record_error| ReadRecordError {
-                io_error: None,
-                record_error,
+            read_record_head(&self.buf[..]).map_err(|record_error| ReadRecordError {
+                source: Left(record_error),
                 bytes: replace(&mut self.buf, Vec::with_capacity(16))
             })?;
         self.buf.resize(16 + record_size as usize, 0);
-        self.fill_buf(16, offset, input)?;
-        let record = read_record_body(offset, code_page, record_tag, record_size, record_flags,
-                         &self.buf[16..]).map_err(|record_error| ReadRecordError {
-            io_error: None,
-            record_error,
-            bytes: replace(&mut self.buf, Vec::with_capacity(16))
-        })?;
+        self.fill_buf(16, input)?;
+        let record_flags = RecordFlags::from_bits(record_flags)
+            .ok_or_else(|| ReadRecordError {
+                source: Left(RecordError::UnknownRecordFlags(UnknownRecordFlags {
+                    record_offset: offset,
+                    record_tag,
+                    value: record_flags
+                })),
+                bytes: replace(&mut self.buf, Vec::with_capacity(16))
+            })?;
+        let record = read_record_body(
+            offset, code_page, record_tag, record_size, record_flags,
+            &self.buf[16..]).map_err(|record_error| ReadRecordError {
+                source: Left(record_error),
+                bytes: replace(&mut self.buf, Vec::with_capacity(16))
+            }
+        )?;
         Ok(Some((record, 16 + record_size)))
     }
 }
@@ -2251,7 +2170,7 @@ mod tests {
         input.extend(0x70000u64.to_le_bytes().iter());
         let result = RecordReader::new().read(CodePage::English, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
-        if let RecordError::UnknownRecordFlags(error) = error.into_record_error() { 
+        if let Left(RecordError::UnknownRecordFlags(error)) = error.into_source() { 
             assert_eq!(error.value, 0x70000);
             assert_eq!(error.record_offset, 0x11);
             assert_eq!(error.record_tag, TES3);
