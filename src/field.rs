@@ -1,6 +1,5 @@
 use std::fmt::{self, Debug, Display};
 use std::str::FromStr;
-use std::mem::{transmute};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
@@ -372,12 +371,10 @@ pub struct Ingredient {
 }
 
 fn eq_f32(a: &f32, b: &f32) -> bool {
-    let a: u32 = unsafe { transmute(*a) };
-    let b: u32 = unsafe { transmute(*b) };
-    a == b
+    a.to_bits() == b.to_bits()
 }
 
-fn eq_f32_list(a: &Vec<f32>, b: &Vec<f32>) -> bool {
+fn eq_f32_list(a: &[f32], b: &[f32]) -> bool {
     if a.len() != b.len() { return false; }
     a.iter().zip(b.iter()).all(|(x, y)| eq_f32(x, y))
 }
@@ -2274,6 +2271,7 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         (ARMO, CNAM) => true,
         (SSCR, DATA) => true,
         (BSGN, DESC) => true,
+        (ACTI, FNAM) => true,
         (TES3, HEDR) => true,
         (JOUR, NAME) => true,
         (SSCR, NAME) => true,

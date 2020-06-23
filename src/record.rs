@@ -879,6 +879,7 @@ mod tests {
     use std::hash::Hash;
     use std::collections::hash_map::DefaultHasher;
 
+    #[allow(clippy::deref_addrof)]
     #[test]
     fn record_flags_traits() {
         assert_eq!(RecordFlags::PERSIST, *&RecordFlags::PERSIST);

@@ -473,7 +473,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         if !self.isolated {
             self.writer.write_u32::<LittleEndian>(size(v.len())?)?;
         }
-        self.writer.write(v)?;
+        self.writer.write_all(v)?;
         Ok(())
     }
 
@@ -550,7 +550,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
         let bytes = self.code_page.encoding()
             .encode(v, EncoderTrap::Strict)
-            .map_err(|s| Error::UnrepresentableChar(s.chars().nth(0).unwrap(), self.code_page))?;
+            .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?;
         self.serialize_bytes(&bytes)
     }
 

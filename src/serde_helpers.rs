@@ -4,7 +4,6 @@ use serde::de::{self, Unexpected, SeqAccess};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeTuple, SerializeSeq};
-use std::mem::{transmute};
 use either::{Either, Left,  Right};
 use std::str::FromStr;
 
@@ -172,7 +171,7 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
     if !serializer.is_human_readable() {
         serializer.serialize_f32(v)
     } else if v.is_nan() {
-        let d: u32 = unsafe { transmute(v) };
+        let d: u32 = v.to_bits();
         if d == 0xFFFFFFFF {
             serializer.serialize_f32(v)
         } else {
@@ -193,14 +192,14 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
     }
 
     fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E> where E: de::Error {
-        Ok(if v.is_nan() { unsafe { transmute(0xFFFFFFFFu32) } } else { v })
+        Ok(if v.is_nan() { f32::from_bits(0xFFFFFFFFu32) } else { v })
     }
 
     fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
         let v_as_f32 = v as f32;
         if !v_as_f32.is_nan() || !v.is_nan() {
-            let v_as_u64: u64 = unsafe { transmute(v) };
-            let v_as_u32_as_u64: u64 = unsafe{ transmute(f64::from_str(&v_as_f32.to_string()).unwrap().copysign(v_as_f32 as f64)) };
+            let v_as_u64: u64 = v.to_bits();
+            let v_as_u32_as_u64: u64 = f64::from_str(&v_as_f32.to_string()).unwrap().copysign(v_as_f32 as f64).to_bits();
             if v_as_u32_as_u64 != v_as_u64 {
                 return Err(E::invalid_value(Unexpected::Float(v), &self));
             }
@@ -216,7 +215,7 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
         if d == 0xFFFFFFFF {
             return Err(E::invalid_value(Unexpected::Str(s), &self));
         }
-        Ok(unsafe { transmute(d) })
+        Ok(f32::from_bits(d))
     }
 }
 
@@ -275,7 +274,7 @@ impl<'de> de::Visitor<'de> for StringNHRDeserializer {
         if string_len != self.len {
             Err(A::Error::invalid_length(string_len, &self))
         } else {
-            let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().nth(0).unwrap().len_utf8());
+            let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().next().unwrap().len_utf8());
             string.truncate(cut_to);
             Ok(string)
         }
@@ -369,7 +368,7 @@ impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
             if string_len != len {
                 return Err(A::Error::invalid_length(string_len, &self));
             } else {
-                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().nth(0).unwrap().len_utf8());
+                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().next().unwrap().len_utf8());
                 string.truncate(cut_to);
             }
         }

@@ -2,6 +2,10 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 #![deny(warnings)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::option_map_unit_fn)]
+#![allow(clippy::match_ref_pats)]
+#![allow(clippy::or_fun_call)]
 #![recursion_limit="512"]
 
 #[macro_use]
@@ -133,8 +137,8 @@ mod tests {
                 tag: Tag::from_str("CLOH").unwrap(),
                 flags: RecordFlags::empty(),
                 fields: vec![
-                    (Tag::from_str("NAMF").unwrap(), Field::U8List(b"namename".iter().map(|&x| x).collect())),
-                    (Tag::from_str("IDID").unwrap(), Field::U8List(b"idid\0".iter().map(|&x| x).collect())),
+                    (Tag::from_str("NAMF").unwrap(), Field::U8List(b"namename".iter().copied().collect())),
+                    (Tag::from_str("IDID").unwrap(), Field::U8List(b"idid\0".iter().copied().collect())),
                 ]
             }
         ]
@@ -175,7 +179,7 @@ mod tests {
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
         let yaml = serde_yaml::to_string(&record).unwrap();
-        assert!(!yaml.contains("^"));
+        assert!(!yaml.contains('^'));
         assert!(!yaml.contains("\\u"));
     }
     
@@ -190,7 +194,7 @@ mod tests {
                 (RGNN, Field::StringZ("Coast Region".into())),
                 (FRMR, Field::I32(347140)),
                 (NAME, Field::StringZ("crab".into())),
-                (DATA, Field::Position(Position { x: 165898.0, y: 38710.484375, z: 198.8867950439453, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
+                (DATA, Field::Position(Position { x: 165898.0, y: 38710.484, z: 198.8868, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
             ]
         };
         let bytes = code::serialize(&record, CodePage::English, false).unwrap();
@@ -256,6 +260,7 @@ mod tests {
         assert_eq!(record, deserialized);
     }
 
+    #[allow(clippy::transmute_int_to_float)]
     #[test]
     fn deseralize_float_field() {
         let yaml = "\
@@ -283,6 +288,7 @@ mod tests {
         assert_eq!(res_yaml, format!("---\n{}", yaml).trim());
     }
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn deserialize_light_field() {
         let yaml = "\

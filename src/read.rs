@@ -184,7 +184,7 @@ fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8])
     no_err(
         map(
             string_z_field(code_page),
-            |s| StringZList { vec: s.string.split("\0").map(String::from).collect(), has_tail_zero: s.has_tail_zero }
+            |s| StringZList { vec: s.string.split('\0').map(String::from).collect(), has_tail_zero: s.has_tail_zero }
         )
     )
 }
@@ -1365,7 +1365,7 @@ fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
         |(level, stats, disposition, reputation, rank, padding, gold)| Npc {
             level, disposition, reputation, rank, gold,
             stats: Right(stats), padding
-        }.into()
+        }
     )(input)
 }
 
@@ -1378,7 +1378,7 @@ fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
         |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc {
             level, disposition, reputation, rank, gold,
             padding: padding_8, stats: Left(padding_16)
-        }.into()
+        }
     )(input)
 }
 
@@ -2045,6 +2045,7 @@ pub struct RecordReader {
     buf: Vec<u8>,
 }
 
+#[allow(clippy::new_without_default)]
 impl RecordReader {
     pub fn new() -> Self {
         RecordReader {
@@ -2509,9 +2510,9 @@ mod tests {
             rank: 33,
             gold: 20000,
             padding: 17,
-            stats: Right(npc_stats.clone())
+            stats: Right(npc_stats)
         };
-        let bin: Vec<u8> = serialize(&Npc::from(npc.clone()), CodePage::English, true).unwrap();
+        let bin: Vec<u8> = serialize(&npc, CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res, npc);
     }
@@ -2527,7 +2528,7 @@ mod tests {
             padding: 17,
             stats: Left(30001)
         };
-        let bin: Vec<u8> = serialize(&Npc::from(npc.clone()), CodePage::English, true).unwrap();
+        let bin: Vec<u8> = serialize(&npc, CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);

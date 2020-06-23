@@ -43,7 +43,7 @@ impl FromStr for Tag {
         let mut i = 0;
         for byte in s.bytes() {
             if i == 4 { return Err(()); }
-            dword = dword | (byte as u32) << (8 * i);
+            dword |= (byte as u32) << (8 * i);
             i += 1;
         }
         if i != 4 { return Err(()); }

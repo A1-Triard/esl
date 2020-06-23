@@ -107,8 +107,7 @@ impl<'de, R: Read + ?Sized> Read for GenericReader<'de, R> {
 
 impl<'de, R: Read + ?Sized> Reader<'de> for GenericReader<'de, R> {
     fn read_bytes(&mut self, len: usize) -> io::Result<Cow<'de, [u8]>> {
-        let mut buf = Vec::with_capacity(len);
-        buf.resize(len, 0);
+        let mut buf = vec![0; len];
         self.read_exact(&mut buf[..])?;
         Ok(Cow::Owned(buf))
     }
@@ -149,7 +148,7 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
             phantom: PhantomData, map_entry_value_size: None
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
-            return Err(Error::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize }.into());
+            return Err(Error::InvalidSize { expected: self.size, actual: (self.reader.pos() - self.start_pos) as usize });
         }
         Ok(Some(element))
     }
@@ -180,7 +179,7 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
         })?;
         if let Some((start_pos, size)) = self.isolated {
             if self.reader.pos() > start_pos + size as isize {
-                return Err(Error::InvalidSize { expected: size, actual: (self.reader.pos() - start_pos) as usize }.into());
+                return Err(Error::InvalidSize { expected: size, actual: (self.reader.pos() - start_pos) as usize });
             }
         }
         if let Some(map_entry_value_size) = self.map_entry_value_size.take() {
@@ -309,7 +308,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         let v = match b {
             0 => false,
             1 => true,
-            b => return Err(Error::InvalidBoolEncoding(b).into())
+            b => return Err(Error::InvalidBoolEncoding(b))
         };
         visitor.visit_bool(v)
     }
@@ -367,7 +366,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         let b = self.reader.read_u8()?;
         let v = self.code_page.encoding().decode(&[b], DecoderTrap::Strict).unwrap();
-        visitor.visit_char(v.chars().nth(0).unwrap())
+        visitor.visit_char(v.chars().next().unwrap())
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
@@ -564,6 +563,7 @@ mod tests {
         i: i8
     }
 
+    #[allow(clippy::unit_cmp)]
     #[test]
     fn vec_deserialize_map() {
         let data = vec![
