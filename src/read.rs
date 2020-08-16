@@ -15,6 +15,7 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Right, Left, Either};
 use std::convert::TryInto;
+use once_cell::sync::{self};
 
 use crate::strings::*;
 use crate::field::*;
@@ -1974,13 +1975,11 @@ pub struct ReadRecordError {
     bytes: Vec<u8>
 }
 
-lazy_static! {
-    static ref INVALID_DATA_IO_ERROR: io::Error = io::Error::from(io::ErrorKind::InvalidData);
-}
+static INVALID_DATA_IO_ERROR: sync::Lazy<io::Error> = sync::Lazy::new(|| io::Error::from(io::ErrorKind::InvalidData));
 
 impl ReadRecordError {
     pub fn as_io_error(&self) -> &io::Error {
-        self.source.as_ref().right_or_else(|_| &*INVALID_DATA_IO_ERROR)
+        self.source.as_ref().right_or_else(|_| &INVALID_DATA_IO_ERROR)
     }
     
     pub fn into_io_error(self) -> io::Error {
