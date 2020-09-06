@@ -2,7 +2,9 @@ use serde::{Serializer, Serialize};
 use std::mem::{replace};
 use std::fmt::{self, Display, Debug};
 use encoding::{EncoderTrap};
-use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct, SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
+use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct};
+use serde::ser::{SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
+use serde::serde_if_integer128;
 use std::io::{self, Write};
 use byteorder::{WriteBytesExt, LittleEndian};
 

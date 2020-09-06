@@ -6,6 +6,11 @@ use serde::de::Error as de_Error;
 use either::{Either, Left, Right};
 use std::ops::{Index, IndexMut};
 use std::convert::TryFrom;
+use macro_attr_2018::macro_attr;
+use enum_derive_2018::{EnumDisplay, EnumFromStr};
+use enum_primitive_derive::Primitive;
+use educe::Educe;
+use nameof::name_of;
 
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -337,10 +342,10 @@ impl FieldType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Derivative)]
-#[derivative(PartialEq, Eq)]
+#[derive(Educe)]
+#[educe(PartialEq, Eq)]
 pub struct Ingredient {
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
@@ -760,7 +765,13 @@ macro_attr! {
 
 enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32, Unsigned, u64);
 
-pub_bitflags_display!(SpellFlags, u32, AUTO_CALCULATE_COST = 1, PC_START = 2, ALWAYS_SUCCEEDS = 4);
+bitflags_ext! {
+    pub struct SpellFlags: u32 {
+        AUTO_CALCULATE_COST = 1,
+        PC_START = 2,
+        ALWAYS_SUCCEEDS = 4,
+    }
+}
 
 enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
 
@@ -772,31 +783,33 @@ pub struct Spell {
     pub flags: SpellFlags
 }
 
-pub_bitflags_display!(Services, u32,
-    WEAPON = 0x00000001,
-    ARMOR = 0x00000002,
-    CLOTHING = 0x00000004,
-    BOOKS = 0x00000008,
-    INGREDIENTS = 0x00000010,
-    PICKS = 0x00000020,
-    PROBES = 0x00000040,
-    LIGHTS = 0x00000080,
-    APPARATUS = 0x00000100,
-    REPAIR_ITEMS = 0x00000200,
-    MISCELLANEOUS  = 0x00000400,
-    SPELLS = 0x00000800,
-    MAGIC_ITEMS = 0x00001000,
-    POTIONS = 0x00002000,
-    TRAINING = 0x00004000,
-    SPELLMAKING = 0x00008000,
-    ENCHANTING = 0x00010000,
-    REPAIR = 0x00020000,
-    _80000 = 0x00080000,
-    _200000 = 0x00200000,
-    _400000 = 0x00400000,
-    _800000 = 0x00800000,
-    _1000000 = 0x01000000
-);
+bitflags_ext! {
+    pub struct Services: u32 {
+        WEAPON = 0x00000001,
+        ARMOR = 0x00000002,
+        CLOTHING = 0x00000004,
+        BOOKS = 0x00000008,
+        INGREDIENTS = 0x00000010,
+        PICKS = 0x00000020,
+        PROBES = 0x00000040,
+        LIGHTS = 0x00000080,
+        APPARATUS = 0x00000100,
+        REPAIR_ITEMS = 0x00000200,
+        MISCELLANEOUS  = 0x00000400,
+        SPELLS = 0x00000800,
+        MAGIC_ITEMS = 0x00001000,
+        POTIONS = 0x00002000,
+        TRAINING = 0x00004000,
+        SPELLMAKING = 0x00008000,
+        ENCHANTING = 0x00010000,
+        REPAIR = 0x00020000,
+        _80000 = 0x00080000,
+        _200000 = 0x00200000,
+        _400000 = 0x00400000,
+        _800000 = 0x00800000,
+        _1000000 = 0x01000000
+    }
+}
 
 enum_serde!(Services, "services", u32, bits, try from_bits, Unsigned, u64);
 
@@ -821,54 +834,58 @@ pub struct AiWander {
     pub repeat: bool,
 }
 
-pub_bitflags_display!(AiTravelFlags, u32,
-    RESET = 0x000100,
-    _1 = 0x000001,
-    _800 = 0x000800,
-    _1000 = 0x001000,
-    _4000 = 0x004000,
-    _10000 = 0x010000,
-    _20000 = 0x020000,
-    _40000 = 0x040000,
-    _400000 = 0x400000
-);
+bitflags_ext! {
+    pub struct AiTravelFlags: u32 {
+        RESET = 0x000100,
+        _1 = 0x000001,
+        _800 = 0x000800,
+        _1000 = 0x001000,
+        _4000 = 0x004000,
+        _10000 = 0x010000,
+        _20000 = 0x020000,
+        _40000 = 0x040000,
+        _400000 = 0x400000
+    }
+}
 
 enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct AiTravel {
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub x: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub y: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub z: f32,
     pub flags: AiTravelFlags
 }
 
-pub_bitflags_display!(AiTargetFlags, u8,
-    _1 = 0x01,
-    _2 = 0x02,
-    _4 = 0x04,
-    _8 = 0x08
-);
+bitflags_ext! {
+    pub struct AiTargetFlags: u8 {
+        _1 = 0x01,
+        _2 = 0x02,
+        _4 = 0x04,
+        _8 = 0x08
+    }
+}
 
 enum_serde!(AiTargetFlags, "AI target flags", u8, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct AiTarget {
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub x: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub y: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub z: f32,
     pub duration: u16,
@@ -900,24 +917,28 @@ macro_attr! {
 
 enum_serde!(Blood, "blood", u8, to_u8, as from_u8, Unsigned, u64);
 
-pub_bitflags_display!(NpcFlags, u8,
-    FEMALE = 0x01,
-    ESSENTIAL = 0x02,
-    RESPAWN = 0x04,
-    AUTO_CALCULATE_STATS = 0x10
-);
+bitflags_ext! {
+    pub struct NpcFlags: u8 {
+        FEMALE = 0x01,
+        ESSENTIAL = 0x02,
+        RESPAWN = 0x04,
+        AUTO_CALCULATE_STATS = 0x10
+    }
+}
 
 enum_serde!(NpcFlags, "NPC flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
 
-pub_bitflags_display!(CreatureFlags, u8,
-    BIPED = 0x01,
-    RESPAWN = 0x02,
-    WEAPON_AND_SHIELD = 0x04,
-    SWIMS = 0x10,
-    FLIES = 0x20,
-    WALKS = 0x40,
-    ESSENTIAL = 0x80
-);
+bitflags_ext! {
+    pub struct CreatureFlags: u8 {
+        BIPED = 0x01,
+        RESPAWN = 0x02,
+        WEAPON_AND_SHIELD = 0x04,
+        SWIMS = 0x10,
+        FLIES = 0x20,
+        WALKS = 0x40,
+        ESSENTIAL = 0x80
+    }
+}
 
 enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
 
@@ -928,17 +949,19 @@ pub struct FlagsAndBlood<Flags> {
     pub padding: u16,
 }
 
-pub_bitflags_display!(BookFlags, u32,
-    SCROLL = 0x01,
-    _10 = 0x10
-);
+bitflags_ext! {
+    pub struct BookFlags: u32 {
+        SCROLL = 0x01,
+        _10 = 0x10
+    }
+}
 
 enum_serde!(BookFlags, "book flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Book {
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
@@ -948,10 +971,12 @@ pub struct Book {
     pub enchantment: u32
 }
 
-pub_bitflags_display!(ContainerFlags, u32,
-    ORGANIC = 0x01,
-    RESPAWN = 0x02
-);
+bitflags_ext! {
+    pub struct ContainerFlags: u32 {
+        ORGANIC = 0x01,
+        RESPAWN = 0x02
+    }
+}
 
 enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64, ^0x08);
 
@@ -1373,31 +1398,33 @@ mod effect_index_option_i16 {
     }
 }
 
-pub_bitflags_display!(EffectFlags, u32,
-    SPELLMAKING = 0x200,
-    ENCHANTING = 0x400,
-    LIGHT_NEGATIVE = 0x800
-);
+bitflags_ext! {
+    pub struct EffectFlags: u32 {
+        SPELLMAKING = 0x200,
+        ENCHANTING = 0x400,
+        LIGHT_NEGATIVE = 0x800
+    }
+}
 
 enum_serde!(EffectFlags, "effect flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct EffectMetadata {
     pub school: School,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub base_cost: f32,
     pub flags: EffectFlags,
     #[serde(with="color_components")]
     pub color: Color,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub size_factor: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub speed: f32,
-    #[derivative(PartialEq(compare_with="eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub size_cap: f32,
 }
@@ -1480,24 +1507,26 @@ mod color_components {
     }
 }
 
-pub_bitflags_display!(LightFlags, u32,
-    DYNAMIC = 0x0001,
-    CAN_CARRY = 0x0002,
-    NEGATIVE = 0x0004,
-    FLICKER = 0x0008,
-    FIRE = 0x0010,
-    OFF_BY_DEFAULT = 0x0020,
-    FLICKER_SLOW = 0x0040,
-    PULSE = 0x0080,
-    PULSE_SLOW = 0x0100
-);
+bitflags_ext! {
+    pub struct LightFlags: u32 {
+        DYNAMIC = 0x0001,
+        CAN_CARRY = 0x0002,
+        NEGATIVE = 0x0004,
+        FLICKER = 0x0008,
+        FIRE = 0x0010,
+        OFF_BY_DEFAULT = 0x0020,
+        FLICKER_SLOW = 0x0040,
+        PULSE = 0x0080,
+        PULSE_SLOW = 0x0100
+    }
+}
 
 enum_serde!(LightFlags, "light flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Light {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
@@ -1507,10 +1536,10 @@ pub struct Light {
     pub flags: LightFlags,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct MiscItem {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
@@ -1532,15 +1561,15 @@ macro_attr! {
 
 enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Apparatus {
     #[serde(rename="type")]
     pub apparatus_type: ApparatusType,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub quality: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
@@ -1567,12 +1596,12 @@ macro_attr! {
 
 enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Armor {
     #[serde(rename="type")]
     pub armor_type: ArmorType,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
@@ -1605,27 +1634,29 @@ macro_attr! {
 
 enum_serde!(WeaponType, "weapon type", u16, to_u16, as from_u16, Unsigned, u64);
 
-pub_bitflags_display!(WeaponFlags, u32,
-    MAGICAL = 0x01,
-    SILVER = 0x02
-);
+bitflags_ext! {
+    pub struct WeaponFlags: u32 {
+        MAGICAL = 0x01,
+        SILVER = 0x02
+    }
+}
 
 enum_serde!(WeaponFlags, "weapon flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Weapon {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
     #[serde(rename="type")]
     pub weapon_type: WeaponType,
     pub health: u16,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub speed: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub reach: f32,
     pub enchantment: u16,
@@ -1663,10 +1694,12 @@ macro_attr! {
 
 enum_serde!(BodyPartKind, "body part kind", u8, to_u8, as from_u8, Unsigned, u64);
 
-pub_bitflags_display!(BodyPartFlags, u8,
-    FEMALE = 0x01,
-    NON_PLAYABLE = 0x02
-);
+bitflags_ext! {
+    pub struct BodyPartFlags: u8 {
+        FEMALE = 0x01,
+        NON_PLAYABLE = 0x02
+    }
+}
 
 enum_serde!(BodyPartFlags, "body part flags", u8, bits, try from_bits, Unsigned, u64);
 
@@ -1750,12 +1783,12 @@ pub struct BodyPart {
     pub body_part_type: BodyPartType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Clothing {
     #[serde(rename="type")]
     pub clothing_type: ClothingType,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u16,
@@ -1787,28 +1820,28 @@ pub struct Enchantment {
     pub padding: u16,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Tool {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub quality: f32,
     pub uses: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub(crate) struct RepairItem {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
     pub uses: u32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub quality: f32,
 }
@@ -1825,39 +1858,41 @@ impl From<Tool> for RepairItem {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Position {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub x: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub y: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub z: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub x_rot: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub y_rot: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub z_rot: f32,
 }
 
-pub_bitflags_display!(CellFlags, u32,
-    INTERIOR = 0x01,
-    HAS_WATER = 0x02,
-    ILLEGAL_TO_SLEEP = 0x04,
-    BEHAVE_LIKE_EXTERIOR = 0x80,
-    _8 = 0x08,
-    _10 = 0x10,
-    _20 = 0x20,
-    _40 = 0x40
-);
+bitflags_ext! {
+    pub struct CellFlags: u32 {
+        INTERIOR = 0x01,
+        HAS_WATER = 0x02,
+        ILLEGAL_TO_SLEEP = 0x04,
+        BEHAVE_LIKE_EXTERIOR = 0x80,
+        _8 = 0x08,
+        _10 = 0x10,
+        _20 = 0x20,
+        _40 = 0x40
+    }
+}
 
 enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
 
@@ -1867,13 +1902,13 @@ pub struct Cell {
     pub grid: Grid,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Interior {
     pub ambient: Color,
     pub sunlight: Color,
     pub fog: Color,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub fog_density: f32,
 }
@@ -1917,10 +1952,10 @@ pub struct SoundChance {
     pub chance: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct Potion {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub weight: f32,
     pub value: u32,
@@ -1961,10 +1996,12 @@ pub struct Class {
     pub auto_calc_services: Services,
 }
 
-pub_bitflags_display!(RaceFlags, u32,
-    PLAYABLE = 0x01,
-    BEAST_RACE = 0x02
-);
+bitflags_ext! {
+    pub struct RaceFlags: u32 {
+        PLAYABLE = 0x01,
+        BEAST_RACE = 0x02
+    }
+}
 
 enum_serde!(RaceFlags, "race flags", u32, bits, try from_bits, Unsigned, u64);
 
@@ -1994,13 +2031,13 @@ impl IndexMut<Sex> for RaceAttribute {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct RaceParameter {
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub male: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub female: f32,
 }
@@ -2153,33 +2190,33 @@ pub struct Faction {
     pub hidden_from_pc: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Derivative)]
-#[derivative(Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
 pub struct SkillMetadata {
     pub governing_attribute: Attribute,
     pub specialization: Specialization,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub use_value_1: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub use_value_2: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub use_value_3: f32,
-    #[derivative(PartialEq(compare_with = "eq_f32"))]
+    #[educe(PartialEq(method="eq_f32"))]
     #[serde(with = "float_32")]
     pub use_value_4: f32,
 }
 
 macro_rules! define_field {
-    ($($variant:ident($(#[derivative(PartialEq(compare_with=$a:literal))])? $from:ty),)*) => {
+    ($($variant:ident($(#[educe(PartialEq(method=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
-        #[derive(Derivative)]
-        #[derivative(PartialEq="feature_allow_slow_enum", Eq)]
+        #[derive(Educe)]
+        #[educe(PartialEq, Eq)]
         pub enum Field {
             None,
-            $($variant($(#[derivative(PartialEq(compare_with=$a))])? $from)),*
+            $($variant($(#[educe(PartialEq(method=$a))])? $from)),*
         }
         
         $(
@@ -2213,8 +2250,8 @@ define_field!(
     EffectIndex(EffectIndex),
     EffectMetadata(EffectMetadata),
     Enchantment(Enchantment),
-    F32(#[derivative(PartialEq(compare_with="eq_f32"))] f32),
-    F32List(#[derivative(PartialEq(compare_with="eq_f32_list"))] Vec<f32>),
+    F32(#[educe(PartialEq(method="eq_f32"))] f32),
+    F32List(#[educe(PartialEq(method="eq_f32_list"))] Vec<f32>),
     Faction(Faction),
     FileMetadata(FileMetadata),
     Grid(Grid),

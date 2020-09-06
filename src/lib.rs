@@ -1,4 +1,3 @@
-#![feature(ptr_offset_from)]
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
 #![deny(warnings)]
@@ -7,21 +6,6 @@
 #![allow(clippy::match_ref_pats)]
 #![allow(clippy::or_fun_call)]
 #![recursion_limit="512"]
-
-#[macro_use]
-extern crate enum_derive;
-#[macro_use]
-extern crate enum_primitive_derive;
-#[macro_use]
-extern crate macro_attr;
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate serde;
-#[macro_use]
-extern crate derivative;
-#[macro_use]
-extern crate nameof;
 
 #[macro_use]
 mod tag;

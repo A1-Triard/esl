@@ -1,5 +1,7 @@
 use encoding::{Encoding};
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
+use macro_attr_2018::macro_attr;
+use enum_derive_2018::IterVariants;
 
 macro_attr! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]

@@ -1,9 +1,9 @@
 use std::fmt::{self, Debug};
 use std::iter::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use crate::serde::ser::SerializeSeq;
-use crate::serde::ser::Error as ser_Error;
-use crate::serde::de::{self};
+use serde::ser::SerializeSeq;
+use serde::ser::Error as ser_Error;
+use serde::de::{self};
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct StringZ {

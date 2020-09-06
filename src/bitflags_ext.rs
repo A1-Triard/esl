@@ -1,12 +1,36 @@
-macro_rules! pub_bitflags_display {
-    ($flags:ident, $ty:ty, $($name:ident = $value:literal),+) => {
-        bitflags! {
+macro_rules! bitflags_ext {
+    (
+        struct $flags:ident : $ty:ty {
+            $($(
+                $name:ident = $value:expr
+            ),+ $(,)?)?
+        }
+    ) => {
+        bitflags_ext! {
+            @impl () $flags : $ty [$($($name = $value),+)?]
+        }
+    };
+    (
+        pub $(($($vis:tt)+))? struct $flags:ident : $ty:ty {
+            $($(
+                $name:ident = $value:expr
+            ),+ $(,)?)?
+        }
+    ) => {
+        bitflags_ext! {
+            @impl (pub $(($($vis)+))?) $flags : $ty [$($($name = $value),+)?]
+        }
+    };
+    (
+        @impl ($($vis:tt)*) $flags:ident : $ty:ty [$($name:ident = $value:expr),*]
+    ) => {
+        bitflags::bitflags! {
             #[derive(Default)]
-            pub struct $flags: $ty {
+            $($vis)* struct $flags: $ty {
                 $(const $name = $value;)*
             }
         }
-        
+
         impl ::std::fmt::Display for $flags {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 let mut start = true;
@@ -44,4 +68,3 @@ macro_rules! pub_bitflags_display {
         }
     }
 }
-

@@ -2,6 +2,7 @@ use serde::{Deserializer};
 use std::fmt::{self, Display};
 use encoding::{DecoderTrap};
 use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
+use serde::serde_if_integer128;
 use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;

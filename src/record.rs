@@ -8,12 +8,19 @@ use serde::de::Error as de_Error;
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
 use std::io::Write;
+use nameof::name_of;
 
 use crate::field::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
 
-pub_bitflags_display!(RecordFlags, u64, PERSIST = 0x40000000000, BLOCKED = 0x200000000000, DELETED = 0x2000000000);
+bitflags_ext! {
+    pub struct RecordFlags: u64 {
+        PERSIST = 0x40000000000,
+        BLOCKED = 0x200000000000,
+        DELETED = 0x2000000000,
+    }
+}
 
 enum_serde!(RecordFlags, "record flags", u64, bits, try from_bits, Unsigned, u64);
 
