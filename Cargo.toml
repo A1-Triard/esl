@@ -1,6 +1,6 @@
 [package]
 name = "esl"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["warlock <internalmike@gmail.com>"]
 description = "A library for reading, writing and processing ESM/ESP/ESS files."
 readme = "README.md"
@@ -13,10 +13,10 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-enum-derive-2018 = "0.3.1"
+enum-derive-2018 = "1.0.1"
 enum-primitive-derive = "0.2.1"
 num-traits = "0.2.12"
-macro-attr-2018 = "0.4.0"
+macro-attr-2018 = "1.0.0"
 either = { version = "1.5.3", features = ["serde"] }
 bitflags = "1.2.1"
 nom = "5.1.2"
