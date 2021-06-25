@@ -5,7 +5,6 @@ use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f3
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::{DecoderTrap};
-use num_traits::cast::FromPrimitive;
 use nom::multi::many0;
 use std::io::{self, Read, Write};
 use std::error::Error;
@@ -108,7 +107,7 @@ impl<E> ErrExt<E> for nom::Err<E> {
 macro_rules! impl_parse_error {
     (<$($lifetimes:lifetime),+>, $input:ty, $name:ident) => {
         impl<$($lifetimes),+> ::nom::error::ParseError<$input> for $name {
-            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!("{:?}", kind) }
         
             fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
         
@@ -119,7 +118,7 @@ macro_rules! impl_parse_error {
     };
     (<$($lifetime:lifetime),+>, $input:ty, $name:ident<$($name_lt:lifetime),+>) => {
         impl<$($lifetime),+> ::nom::error::ParseError<$input> for $name<$($name_lt),+> {
-            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!(format!("{:?}", kind)) }
+            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!("{:?}", kind) }
         
             fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
         
@@ -202,7 +201,7 @@ fn file_metadata_field<'a>(code_page: CodePage)
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(w), 4)))
+                |w, _| FileType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(w), 4)))
             ),
             set_err(
                 tuple((
@@ -304,7 +303,7 @@ fn attribute_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attrib
         le_i8,
         move |b| if b == -1 { 
             Left(None)
-        } else if let Some(a) = Attribute::from_i8(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -317,7 +316,7 @@ fn attribute_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Attr
         le_i32,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = Attribute::from_i32(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -330,7 +329,7 @@ fn skill_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, 
         le_i32,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = Skill::from_i32(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -343,7 +342,7 @@ fn skill_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Skill>, ()
         le_i8,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = Skill::from_i8(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -356,7 +355,7 @@ fn effect_index_option_i16(input: &[u8]) -> IResult<&[u8], Either<Option<i16>, E
         le_i16,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = EffectIndex::from_i16(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -369,7 +368,7 @@ fn effect_index_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, E
         le_i32,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = EffectIndex::from_i32(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -382,7 +381,7 @@ fn sex_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Sex>, ()> {
         le_i8,
         move |b| if b == -1 {
             Left(None)
-        } else if let Some(a) = Sex::from_i8(b) {
+        } else if let Some(a) = b.try_into().ok().and_then(Sex::n) {
             Right(a)
         } else {
             Left(Some(b))
@@ -485,7 +484,7 @@ fn info_field(input: &[u8]) -> IResult<&[u8], Info, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| DialogType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(w), 0)))
+                |w, _| w.try_into().ok().and_then(DialogType::n).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(w), 0)))
             ),
             set_err(
                 tuple((le_u32, option_i8, sex_option_i8, option_i8, le_u8)),
@@ -630,7 +629,7 @@ fn spell_field(input: &[u8]) -> IResult<&[u8], Spell, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellType(w), 0)))
+                |w, _| SpellType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SpellType(w), 0)))
             ),
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
             map_res(
@@ -713,7 +712,7 @@ fn effect_metadata_field(input: &[u8]) -> IResult<&[u8], EffectMetadata, FieldBo
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(36)),
-                |w, _| School::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::School(w), 0)))
+                |w, _| School::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::School(w), 0)))
             ),
             set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(36)),
             map_res(
@@ -758,7 +757,7 @@ fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| ApparatusType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0)))
+                |w, _| ApparatusType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_f32, le_u32)),
@@ -776,7 +775,7 @@ fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| EnchantmentType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0)))
+                |w, _| EnchantmentType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0)))
             ),
             set_err(
                 pair(le_u32, le_u32),
@@ -805,7 +804,7 @@ fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| ArmorType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0)))
+                |w, _| ArmorType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_u32, le_u32, le_u32, le_u32)),
@@ -823,7 +822,7 @@ fn clothing_field(input: &[u8]) -> IResult<&[u8], Clothing, FieldBodyError> {
         pair(
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| ClothingType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0)))
+                |w, _| ClothingType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0)))
             ),
             set_err(
                 tuple((le_f32, le_u16, le_u16)),
@@ -845,7 +844,7 @@ fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponType::from_u16(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8)))
+                |w, _| WeaponType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8)))
             ),
             set_err(
                 tuple((le_u16, le_f32, le_f32, le_u16, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
@@ -867,7 +866,7 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartKind::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0)))
+                |b, _| BodyPartKind::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0)))
             ),
             bool_u8(4, 1),
             map_res(
@@ -876,7 +875,7 @@ fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3)))
+                |b, _| BodyPartType::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3)))
             )
         )),
         |(kind, vampire, flags, body_part_type)| BodyPart {
@@ -1016,14 +1015,14 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
 fn attribute<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Attribute, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| Attribute::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset)))
+        move |w, _| Attribute::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset)))
     )
 }
 
 fn skill<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Skill, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| Skill::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Skill(w), offset)))
+        move |w, _| Skill::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Skill(w), offset)))
     )
 }
 
@@ -1034,14 +1033,14 @@ fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
 fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| EffectIndex::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectIndex(w), 0)))
+        move |w, _| EffectIndex::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectIndex(w), 0)))
     )(input)
 }
 
 fn sound_gen_field(input: &[u8]) -> IResult<&[u8], SoundGen, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| SoundGen::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SoundGen(w), 0)))
+        move |w, _| SoundGen::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::SoundGen(w), 0)))
     )(input)
 }
 
@@ -1052,7 +1051,7 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
             attribute(60, 4),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8)))
+                |w, _| Specialization::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8)))
             ),
             pair(
                 tuple((
@@ -1088,7 +1087,7 @@ fn skill_metadata_field(input: &[u8]) -> IResult<&[u8], SkillMetadata, FieldBody
             attribute(24, 0),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| Specialization::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 4)))
+                |w, _| Specialization::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Specialization(w), 4)))
             ),
             set_err(
                 tuple((le_f32, le_f32, le_f32, le_f32)),
@@ -1187,7 +1186,7 @@ fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<NpcFlags>, Fiel
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
+                |b, _| Blood::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -1208,7 +1207,7 @@ fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<CreatureFl
             ),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
+                |b, _| Blood::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Blood(b), 1)))
             ),
             set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
         )),
@@ -1230,7 +1229,7 @@ fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBo
 fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| BipedObject::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0)))
+        |b, _| BipedObject::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0)))
     )(input)
 }
 
@@ -1326,7 +1325,7 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
         tuple((
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(96)),
-                |w, _| CreatureType::from_u32(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0)))
+                |w, _| CreatureType::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0)))
             ),
             set_err(
                 tuple((
@@ -1392,7 +1391,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
             ),
             map_res(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::from_u32(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4)))
+                |d, _| EffectRange::n(d).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4)))
             ),
             set_err(
                 tuple((le_i32, le_i32, le_i32, le_i32)),
@@ -1413,7 +1412,7 @@ fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
 fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError> {
     map_res(
         set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| DialogType::from_u8(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b as u32), 0)))
+        |b, _| DialogType::n(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::DialogType(b as u32), 0)))
     )
     (input)
 }

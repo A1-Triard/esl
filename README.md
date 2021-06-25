@@ -1,5 +1,3 @@
-![travis](https://travis-ci.org/A1-Triard/esl.svg?branch=master)
-
 # esl
 
 A library for reading, writing and processing ESM/ESP/ESS files.

@@ -1,16 +1,16 @@
-use std::fmt::{self, Debug, Display};
-use std::str::FromStr;
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self, Unexpected, VariantAccess};
-use serde::de::Error as de_Error;
-use either::{Either, Left, Right};
-use std::ops::{Index, IndexMut};
-use std::convert::TryFrom;
-use macro_attr_2018::macro_attr;
-use enum_derive_2018::{EnumDisplay, EnumFromStr};
-use enum_primitive_derive::Primitive;
 use educe::Educe;
+use either::{Either, Left, Right};
+use enum_derive_2018::{EnumDisplay, EnumFromStr};
+use enumn::N;
+use macro_attr_2018::macro_attr;
 use nameof::name_of;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::Error as de_Error;
+use serde::de::{self, Unexpected, VariantAccess};
+use std::convert::TryFrom;
+use std::fmt::{self, Debug, Display};
+use std::ops::{Index, IndexMut};
+use std::str::FromStr;
 
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -32,9 +32,9 @@ impl Newline {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum FileType {
         ESP = 0,
         ESM = 1,
@@ -42,12 +42,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(FileType, "file type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(FileType, "file type", as u32, Unsigned, u64);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum DialogType {
         Topic = 0,
         Voice = 1,
@@ -57,20 +57,20 @@ macro_attr! {
     }
 }
 
-enum_serde!(DialogType, "dialog type", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(DialogType, "dialog type", as u8, Unsigned, u64);
 
 mod dialog_type_u32 {
     use crate::field::DialogType;
     use serde::{Serializer, Deserializer, Serialize, Deserialize};
     use serde::de::Unexpected;
     use serde::de::Error as de_Error;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &DialogType, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
             v.serialize(serializer)
         } else {
-            serializer.serialize_u32(v.to_u32().unwrap())
+            serializer.serialize_u32(v as u32)
         }
     }
 
@@ -79,15 +79,15 @@ mod dialog_type_u32 {
             DialogType::deserialize(deserializer)
         } else {
             let d = u32::deserialize(deserializer)?;
-            DialogType::from_u32(d).ok_or_else(|| D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"dialog type"))
+            d.try_into().ok().and_then(DialogType::n).ok_or_else(|| D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"dialog type"))
         }
     }
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug)]
+    #[derive(Debug, N)]
+    #[repr(u32)]
     pub enum EffectRange {
         Self_ = 0,
         Touch = 1,
@@ -118,7 +118,7 @@ impl FromStr for EffectRange {
     }
 }
 
-enum_serde!(EffectRange, "effect range", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(EffectRange, "effect range", as u32, Unsigned, u64);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FieldType {
@@ -750,9 +750,9 @@ pub struct Item {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum SpellType {
         Spell = 0,
         Ability = 1,
@@ -763,7 +763,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(SpellType, "spell type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(SpellType, "spell type", as u32, Unsigned, u64);
 
 bitflags_ext! {
     pub struct SpellFlags: u32 {
@@ -905,9 +905,9 @@ pub struct AiActivate {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum Blood {
         Default = 0,
         Skeleton = 4,
@@ -915,7 +915,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(Blood, "blood", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(Blood, "blood", as u8, Unsigned, u64);
 
 bitflags_ext! {
     pub struct NpcFlags: u8 {
@@ -981,9 +981,9 @@ bitflags_ext! {
 enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64, ^0x08);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum CreatureType {
         Creature = 0,
         Daedra  = 1,
@@ -992,7 +992,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(CreatureType, "creature type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(CreatureType, "creature type", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Creature {
@@ -1017,9 +1017,9 @@ pub struct Creature {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum Attribute {
         Strength = 0,
         Intelligence = 1,
@@ -1032,21 +1032,21 @@ macro_attr! {
     }
 }
 
-enum_serde!(Attribute, "attribute", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(Attribute, "attribute", as u32, Unsigned, u64);
 
 mod attribute_option_i8 {
     use serde::{Serializer, Deserializer};
     use either::{Either};
     use crate::field::Attribute;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("attribute", -1, Attribute::from_i8, |x| x.to_i8().unwrap(), v, serializer)
+        serialize_option_index("attribute", -1, |x| x.try_into().ok().and_then(Attribute::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Attribute>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, Attribute::from_i8, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Attribute::n), deserializer)
     }
 }
 
@@ -1054,15 +1054,15 @@ mod attribute_option_i32 {
     use serde::{Serializer, Deserializer};
     use either::{Either};
     use crate::field::Attribute;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("attribute", -1, Attribute::from_i32, |x| x.to_i32().unwrap(), v, serializer)
+        serialize_option_index("attribute", -1, |x| x.try_into().ok().and_then(Attribute::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Attribute>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, Attribute::from_i32, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Attribute::n), deserializer)
     }
 }
 
@@ -1111,9 +1111,9 @@ impl<T> IndexMut<Attribute> for Attributes<T> {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum Skill {
         Block = 0,
         Armorer = 1,
@@ -1145,37 +1145,37 @@ macro_attr! {
     }
 }
 
-enum_serde!(Skill, "skill", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(Skill, "skill", as u32, Unsigned, u64);
 
 mod skill_option_i32 {
-    use serde::{Serializer, Deserializer};
-    use either::{Either};
     use crate::field::Skill;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use either::{Either};
+    use serde::{Serializer, Deserializer};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("skill", -1, Skill::from_i32, |x| x.to_i32().unwrap(), v, serializer)
+        serialize_option_index("skill", -1, |x| x.try_into().ok().and_then(Skill::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Skill>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, Skill::from_i32, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Skill::n), deserializer)
     }
 }
 
 mod skill_option_i8 {
-    use serde::{Serializer, Deserializer};
-    use either::{Either};
     use crate::field::Skill;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use either::{Either};
+    use serde::{Serializer, Deserializer};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("skill", -1, Skill::from_i8, |x| x.to_i8().unwrap(), v, serializer)
+        serialize_option_index("skill", -1, |x| x.try_into().ok().and_then(Skill::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Skill>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, Skill::from_i8, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Skill::n), deserializer)
     }
 }
 
@@ -1281,9 +1281,9 @@ impl IndexMut<Skill> for Skills {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum School {
         Alteration = 0,
         Conjuration = 1,
@@ -1294,7 +1294,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(School, "school", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(School, "school", as u32, Unsigned, u64);
 
 impl From<School> for Skill {
     fn from(s: School) -> Skill {
@@ -1326,9 +1326,9 @@ impl TryFrom<Skill> for School {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum EffectIndex {
         WaterBreathing = 0, SwiftSwim = 1, WaterWalking = 2, Shield = 3, FireShield = 4, LightningShield = 5,
         FrostShield = 6, Burden = 7, Feather = 8, Jump = 9, Levitate = 10, SlowFall = 11, Lock = 12, Open = 13,
@@ -1364,37 +1364,37 @@ macro_attr! {
     }
 }
 
-enum_serde!(EffectIndex, "effect index", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(EffectIndex, "effect index", as u32, Unsigned, u64);
 
 mod effect_index_option_i32 {
-    use serde::{Serializer, Deserializer};
-    use either::{Either};
     use crate::field::EffectIndex;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use either::{Either};
+    use serde::{Serializer, Deserializer};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("effect index", -1, EffectIndex::from_i32, |x| x.to_i32().unwrap(), v, serializer)
+        serialize_option_index("effect index", -1, |x| x.try_into().ok().and_then(EffectIndex::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, EffectIndex::from_i32, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(EffectIndex::n), deserializer)
     }
 }
 
 mod effect_index_option_i16 {
-    use serde::{Serializer, Deserializer};
-    use either::{Either};
     use crate::field::EffectIndex;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use either::{Either};
+    use serde::{Serializer, Deserializer};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i16>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("effect index", -1, EffectIndex::from_i16, |x| x.to_i16().unwrap(), v, serializer)
+        serialize_option_index("effect index", -1, |x| x.try_into().ok().and_then(EffectIndex::n), |x| (x as u32).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i16>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, EffectIndex::from_i16, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(EffectIndex::n), deserializer)
     }
 }
 
@@ -1548,9 +1548,9 @@ pub struct MiscItem {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum ApparatusType {
         MortarPestle = 0,
         Alembic  = 1,
@@ -1559,7 +1559,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ApparatusType, "apparatus type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(ApparatusType, "apparatus type", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -1576,9 +1576,9 @@ pub struct Apparatus {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum ArmorType {
         Helmet = 0,
         Cuirass = 1,
@@ -1594,7 +1594,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ArmorType, "armor type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(ArmorType, "armor type", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -1611,9 +1611,9 @@ pub struct Armor {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u16)]
     pub enum WeaponType {
         ShortBladeOneHand = 0,
         LongBladeOneHand = 1,
@@ -1632,7 +1632,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(WeaponType, "weapon type", u16, to_u16, as from_u16, Unsigned, u64);
+enum_serde!(WeaponType, "weapon type", as u16, Unsigned, u64);
 
 bitflags_ext! {
     pub struct WeaponFlags: u32 {
@@ -1670,9 +1670,9 @@ pub struct Weapon {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum BodyPartKind {
         Head = 0,
         Hair = 1,
@@ -1692,7 +1692,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(BodyPartKind, "body part kind", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(BodyPartKind, "body part kind", as u8, Unsigned, u64);
 
 bitflags_ext! {
     pub struct BodyPartFlags: u8 {
@@ -1704,9 +1704,9 @@ bitflags_ext! {
 enum_serde!(BodyPartFlags, "body part flags", u8, bits, try from_bits, Unsigned, u64);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum BodyPartType {
         Skin = 0,
         Clothing = 1,
@@ -1714,12 +1714,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(BodyPartType, "body part type", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(BodyPartType, "body part type", as u8, Unsigned, u64);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum BipedObject {
         Head = 0,
         Hair = 1,
@@ -1751,12 +1751,12 @@ macro_attr! {
     }
 }
 
-enum_serde!(BipedObject, "biped object", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(BipedObject, "biped object", as u8, Unsigned, u64);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum ClothingType {
         Pants = 0,
         Shoes = 1,
@@ -1771,7 +1771,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(ClothingType, "clothing type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(ClothingType, "clothing type", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BodyPart {
@@ -1796,9 +1796,9 @@ pub struct Clothing {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum EnchantmentType {
         CastOnce = 0,
         WhenStrikes = 1,
@@ -1807,7 +1807,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(EnchantmentType, "enchantment type", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(EnchantmentType, "enchantment type", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Enchantment {
@@ -1964,9 +1964,9 @@ pub struct Potion {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum Specialization {
         Combat = 0,
         Magic = 1,
@@ -1974,7 +1974,7 @@ macro_attr! {
     }
 }
 
-enum_serde!(Specialization, "specialization", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(Specialization, "specialization", as u32, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Class {
@@ -2099,9 +2099,9 @@ pub struct Sound {
 }
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum SoundGen {
         Left = 0,
         Right = 1,
@@ -2114,33 +2114,33 @@ macro_attr! {
     }
 }
 
-enum_serde!(SoundGen, "sound gen", u32, to_u32, as from_u32, Unsigned, u64);
+enum_serde!(SoundGen, "sound gen", as u32, Unsigned, u64);
 
 macro_attr! {
-    #[derive(Primitive)]
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u8)]
     pub enum Sex {
         Male = 0,
         Female = 1
     }
 }
 
-enum_serde!(Sex, "sex", u8, to_u8, as from_u8, Unsigned, u64);
+enum_serde!(Sex, "sex", as u8, Unsigned, u64);
 
 mod sex_option_i8 {
-    use serde::{Serializer, Deserializer};
-    use either::{Either};
     use crate::field::Sex;
-    use num_traits::cast::{ToPrimitive, FromPrimitive};
     use crate::serde_helpers::*;
+    use either::{Either};
+    use serde::{Serializer, Deserializer};
+    use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Sex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("sex", -1, Sex::from_i8, |x| x.to_i8().unwrap(), v, serializer)
+        serialize_option_index("sex", -1, |x| x.try_into().ok().and_then(Sex::n), |x| (x as u8).try_into().unwrap(), v, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Sex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, Sex::from_i8, deserializer)
+        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Sex::n), deserializer)
     }
 }
 
@@ -2396,7 +2396,6 @@ impl Field {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use num_traits::cast::FromPrimitive;
     use std::str::FromStr;
 
     #[test]
@@ -2410,8 +2409,8 @@ mod tests {
     fn test_file_type() {
         assert_eq!("ESM", format!("{}", FileType::ESM));
         assert_eq!("ESS", format!("{:?}", FileType::ESS));
-        assert_eq!(Some(FileType::ESP), FileType::from_u32(0));
-        assert_eq!(None, FileType::from_u32(2));
+        assert_eq!(Some(FileType::ESP), FileType::n(0));
+        assert_eq!(None, FileType::n(2));
         assert_eq!(32, FileType::ESS as u32);
         assert_eq!(Ok(FileType::ESP), FileType::from_str("ESP"));
     }

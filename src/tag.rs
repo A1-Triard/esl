@@ -52,7 +52,7 @@ impl FromStr for Tag {
 }
 
 macro_rules! enum_serde {
-    ($name:ty, $exp:literal, $bits:ty, $to:ident, as $from:ident, $signed:ident, $big:ident) => {
+    ($name:ty, $exp:literal, as $bits:ty, $signed:ident, $big:ident) => {
         impl ::serde::Serialize for $name {
             fn serialize<S>(&self, serializer: S) -> ::std::result::Result<S::Ok, S::Error> where
                 S: ::serde::Serializer {
@@ -61,7 +61,7 @@ macro_rules! enum_serde {
                     serializer.serialize_str(&format!("{}", self))
                 } else {
                     <$bits as ::serde::Serialize>::serialize(
-                        &::num_traits::cast::ToPrimitive::$to(self).unwrap(),
+                        &(*self as $bits),
                         serializer
                     )
                 }
@@ -88,7 +88,7 @@ macro_rules! enum_serde {
                     deserializer.deserialize_str(HRDeserializer)
                 } else {
                     let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
-                    ::num_traits::cast::FromPrimitive::$from(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))
+                    <$name>::n(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))
                 }
             }
         }

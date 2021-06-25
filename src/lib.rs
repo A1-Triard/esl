@@ -1,5 +1,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(stmt_expr_attributes)]
+#![feature(macro_attributes_in_derive_output)]
+#![allow(incomplete_features)]
 #![deny(warnings)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::option_map_unit_fn)]
