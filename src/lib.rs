@@ -246,7 +246,7 @@ mod tests {
 
     #[allow(clippy::transmute_int_to_float)]
     #[test]
-    fn deseralize_float_field() {
+    fn deserialize_float_field() {
         let yaml = "\
 - GMST:
     - FLTV: 3.0
@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(res[0].fields[3].1, Field::F32(0.1));
         assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
         let res_yaml = serde_yaml::to_string(&res).unwrap();
-        assert_eq!(res_yaml, format!("---\n{}", yaml).trim());
+        assert_eq!(res_yaml, format!("---\n{}", yaml).trim_matches(' '));
     }
 
     #[allow(clippy::float_cmp)]
@@ -294,6 +294,6 @@ mod tests {
             panic!()
         }
         let res_yaml = serde_yaml::to_string(&res).unwrap();
-        assert_eq!(res_yaml, format!("---\n{}", yaml).trim());
+        assert_eq!(res_yaml, format!("---\n{}", yaml).trim_matches(' '));
     }
 }
