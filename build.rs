@@ -1,5 +1,5 @@
 #![deny(warnings)]
-use std::env;
+use std::env::{var_os};
 use std::fs::File;
 use std::io::{Write, BufReader, BufRead};
 use std::path::Path;
@@ -14,8 +14,12 @@ mod tag {
 use tag::*;
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let src_path = Path::new("src/tags.list");
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=src/tag.rs");
+    println!("cargo:rerun-if-changed=src/tags.list");
+    let base_dir = var_os("CARGO_MANIFEST_DIR").unwrap();
+    let out_dir = var_os("OUT_DIR").unwrap();
+    let src_path = Path::new(&base_dir).join("src").join("tags.list");
     let dest_path = Path::new(&out_dir).join("tags.rs");
     let mut dest = File::create(&dest_path).unwrap();
     let src = BufReader::new(File::open(&src_path).unwrap());
