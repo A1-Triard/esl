@@ -50,9 +50,9 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
         match FieldType::from_tags(self.record_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
                 if let Some(len) = len {
-                    serialize_string_tuple(&s, len as usize, serializer)
+                    serialize_string_tuple(s, len as usize, serializer)
                 } else {
-                    serializer.serialize_str(&s)
+                    serializer.serialize_str(s)
                 }
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string type", self.record_tag, self.field_tag)))
@@ -63,7 +63,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
-                serialize_string_list(&s, newline.as_str(), None, serializer)
+                serialize_string_list(s, newline.as_str(), None, serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -424,7 +424,7 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
             serializer.serialize_element(&FieldSerializer(self.0.tag, Left(self.0.flags)))?;
         }
         for &(field_tag, ref field) in &self.0.fields {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, Right((field_tag, &field))))?;
+            serializer.serialize_element(&FieldSerializer(self.0.tag, Right((field_tag, field))))?;
         }
         serializer.end()
     }

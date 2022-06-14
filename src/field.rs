@@ -2297,29 +2297,28 @@ impl From<()> for Field {
 }
 
 fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
-    match (record_tag, field_tag) {
-        (_, AI_A) => true,
-        (_, AI_E) => true,
-        (_, AI_F) => true,
-        (ARMO, BNAM) => true,
-        (BODY, BNAM) => true,
-        (CLOT, BNAM) => true,
-        (INFO, BNAM) => true,
-        (ARMO, CNAM) => true,
-        (SSCR, DATA) => true,
-        (BSGN, DESC) => true,
-        (ACTI, FNAM) => true,
-        (TES3, HEDR) => true,
-        (JOUR, NAME) => true,
-        (SSCR, NAME) => true,
-        (INFO, NNAM) => true,
-        (INFO, PNAM) => true,
-        (FACT, RNAM) => true,
-        (_, SCTX) => true,
-        (REGN, SNAM) => true,
-        (BOOK, TEXT) => true,
-        _ => false
-    }
+    matches!((record_tag, field_tag)
+        , (_, AI_A)
+        | (_, AI_E)
+        | (_, AI_F)
+        | (ARMO, BNAM)
+        | (BODY, BNAM)
+        | (CLOT, BNAM)
+        | (INFO, BNAM)
+        | (ARMO, CNAM)
+        | (SSCR, DATA)
+        | (BSGN, DESC)
+        | (ACTI, FNAM)
+        | (TES3, HEDR)
+        | (JOUR, NAME)
+        | (SSCR, NAME)
+        | (INFO, NNAM)
+        | (INFO, PNAM)
+        | (FACT, RNAM)
+        | (_, SCTX)
+        | (REGN, SNAM)
+        | (BOOK, TEXT)
+    )
 }
 
 impl Field {

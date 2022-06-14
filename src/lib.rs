@@ -2,10 +2,11 @@
 #![feature(type_alias_impl_trait)]
 
 #![deny(warnings)]
+#![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::option_map_unit_fn)]
 #![allow(clippy::match_ref_pats)]
-#![allow(clippy::or_fun_call)]
+
 #![recursion_limit="512"]
 
 #[macro_use]

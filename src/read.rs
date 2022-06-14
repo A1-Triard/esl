@@ -1951,7 +1951,7 @@ fn record_body<'a>(
                     Ok((input, ()))
                 }
             },
-            cut(map_err(field(code_page, mode, record_tag), |e, input| RecordBodyError(e, input)))
+            cut(map_err(field(code_page, mode, record_tag), RecordBodyError))
         )
     )
 }
@@ -2036,8 +2036,8 @@ impl ReadRecordError {
     pub fn into_source(self) -> Either<RecordError, io::Error> { self.source }
 }
 
-impl Into<io::Error> for ReadRecordError {
-    fn into(self) -> io::Error { self.into_io_error() }
+impl From<ReadRecordError> for io::Error {
+    fn from(e: ReadRecordError) -> io::Error { e.into_io_error() }
 }
 
 impl Display for ReadRecordError {
