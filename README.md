@@ -1,3 +1,5 @@
+![maintenance: actively developed](https://img.shields.io/badge/maintenance-actively--developed-brightgreen.svg)
+
 # esl
 
 A library for reading, writing and processing ESM/ESP/ESS files.
