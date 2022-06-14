@@ -8,11 +8,13 @@ use encoding::{DecoderTrap};
 use nom::multi::many0;
 use std::io::{self, Read, Write};
 use std::error::Error;
-use std::fmt::{self, Display, Debug};
+use std::fmt::{self, Display, Debug, Formatter};
+use std::hash::{Hash, Hasher};
 use std::mem::replace;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Right, Left, Either};
+use std::cmp::Ordering;
 use std::convert::TryInto;
 use once_cell::sync::{self};
 
@@ -21,21 +23,55 @@ use crate::field::*;
 use crate::record::*;
 use crate::code::CodePage;
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Hash, Clone, Copy)]
-enum Void { }
+#[derive(Eq, Clone, Copy)]
+struct Void(!);
 
-impl Void {
-    fn unreachable<T>(self) -> T { unreachable!() }
+impl PartialEq for Void {
+    fn eq(&self, _: &Self) -> bool { self.0 }
+
+    fn ne(&self, _: &Self) -> bool { self.0 }
+}
+
+impl Ord for Void {
+    fn cmp(&self, _: &Self) -> Ordering { self.0 }
+
+    fn max(self, _: Self) -> Self { self.0 }
+
+    fn min(self, _: Self) -> Self { self.0 }
+
+    fn clamp(self, _: Self, _: Self) -> Self { self.0 }
+}
+
+impl PartialOrd for Void {
+    fn partial_cmp(&self, _: &Self) -> Option<Ordering> { self.0 }
+
+    fn lt(&self, _: &Self) -> bool { self.0 }
+
+    fn le(&self, _: &Self) -> bool { self.0 }
+
+    fn gt(&self, _: &Self) -> bool { self.0 }
+
+    fn ge(&self, _: &Self) -> bool { self.0 }
+}
+
+impl Debug for Void {
+    fn fmt(&self, _: &mut Formatter) -> fmt::Result { self.0 }
+}
+
+impl Hash for Void {
+    fn hash<H: Hasher>(&self, _: &mut H) {
+        self.0
+    }
 }
 
 impl<I> ParseError<I> for Void {
     fn from_error_kind(_input: I, _kind: ErrorKind) -> Self { panic!() }
 
-    fn append(_input: I, _kind: ErrorKind, _other: Self) -> Self { unreachable!() }
+    fn append(_input: I, _kind: ErrorKind, other: Self) -> Self { other.0 }
 
-    fn or(self, _other: Self) -> Self { unreachable!() }
+    fn or(self, other: Self) -> Self { other.0 }
 
-    fn from_char(_input: I, _: char) -> Self { unreachable!() }
+    fn from_char(_input: I, _: char) -> Self { panic!() }
 }
 
 fn map_err<I: Clone, O, E, X, F>(
@@ -57,7 +93,7 @@ fn no_err<I: Clone, O, X, F>(
 ) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, Void> {
     map_err(
         f,
-        |x, _| x.unreachable()
+        |x, _| x.0
     )
 }
 
@@ -1603,7 +1639,7 @@ pub struct UnknownRecordFlags {
 }
 
 impl Display for UnknownRecordFlags {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "invalid record flags value {:016X}h at {:X}h in {} record started at {:X}h",
             self.value,
@@ -1627,7 +1663,7 @@ pub struct RecordSizeMismatch {
 }
 
 impl Display for RecordSizeMismatch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "record size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} record started at {:X}h",
             self.expected_size,
@@ -1654,7 +1690,7 @@ pub struct FieldSizeMismatch {
 }
 
 impl Display for FieldSizeMismatch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "field size mismatch, expected {:08X}h, found {:08X}h at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.expected_size,
@@ -1682,7 +1718,7 @@ pub struct UnexpectedFieldSize {
 }
 
 impl Display for UnexpectedFieldSize {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "found {} field at {:X}h with unexpected size {} at {:X}h in {} record started at {:X}h",
             self.field_tag,
@@ -1739,7 +1775,7 @@ pub enum Unknown {
 }
 
 impl Display for Unknown {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Unknown::FileType(v) => write!(f, "file type {:08X}h", v),
             Unknown::EffectRange(v) => write!(f, "effect range {}", v),
@@ -1791,7 +1827,7 @@ pub struct UnknownValue {
 }
 
 impl Display for UnknownValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "Unknown {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
@@ -1817,7 +1853,7 @@ pub enum Invalid {
 }
 
 impl Display for Invalid {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Invalid::Color(v) => write!(f, "RGB color {:08X}h", v),
             Invalid::ColorComponent(v) => write!(f, "RGB color component {}", v),
@@ -1838,7 +1874,7 @@ pub struct InvalidValue {
 }
 
 impl Display for InvalidValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f, "Invalid {} at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
             self.value,
@@ -1890,7 +1926,7 @@ impl RecordError {
 }
 
 impl Display for RecordError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             RecordError::UnknownRecordFlags(x) => Display::fmt(x, f),
             RecordError::RecordSizeMismatch(x) => Display::fmt(x, f),
@@ -2041,7 +2077,7 @@ impl From<ReadRecordError> for io::Error {
 }
 
 impl Display for ReadRecordError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.source {
             Left(record_error) => Display::fmt(record_error, f),
             Right(io_error) => Display::fmt(io_error, f),
