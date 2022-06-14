@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+  - cron: '0 0 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  main:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+    - run: "rustup component add clippy"
+    - uses: actions/checkout@v2
+    - run: "cargo build --verbose"
+    - run: "cargo test --verbose --tests"
+    - run: "cargo test --verbose --doc"
+    - run: "cargo doc --verbose"
+    - run: "cargo build --verbose --release"
+    - run: "cargo outdated --verbose --aggresssive --root-deps-only --exit-code 1"
+    - run: "cargo clippy --verbose"
