@@ -265,7 +265,7 @@ impl<'de> de::Visitor<'de> for StringNHRDeserializer {
                 return Err(A::Error::invalid_length(n, &self));
             }
         }
-        let mut string: String = String::with_capacity(self.len);
+        let mut string: String = String::with_capacity(self.len); // at least
         let mut string_len = 0;
         while let Some(c) = seq.next_element()? {
             string.push(c);
@@ -276,6 +276,7 @@ impl<'de> de::Visitor<'de> for StringNHRDeserializer {
         } else {
             let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().next().unwrap().len_utf8());
             string.truncate(cut_to);
+            string.shrink_to_fit();
             Ok(string)
         }
     }
@@ -293,6 +294,15 @@ pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<u
     if serializer.is_human_readable() {
         lines.serialize(serializer)
     } else {
+        if separator.is_empty() {
+            return Err(S::Error::custom("empty string list separator"));
+        }
+        if lines.is_empty() {
+            return Err(S::Error::custom("\
+                empty string list cannot be serialized bacause \
+                it is indistinguishable from list with one empty string\
+            "));
+        }
         let mut capacity = 0;
         for line in lines {
             if line.contains(separator) {
@@ -358,7 +368,7 @@ impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
                 size_hint = Some(len);
             }
         }
-        let mut string: String = size_hint.map_or_else(String::new, String::with_capacity);
+        let mut string: String = size_hint.map_or_else(String::new, String::with_capacity); // at least
         let mut string_len = 0;
         while let Some(c) = seq.next_element()? {
             string.push(c);
@@ -376,10 +386,17 @@ impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
     }
 }
 
-pub fn deserialize_string_list<'de, D>(separator: &str, len: Option<usize>, deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
+pub fn deserialize_string_list<'de, D>(
+    separator: &str,
+    len: Option<usize>,
+    deserializer: D
+) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
     if deserializer.is_human_readable() {
         <Vec<String>>::deserialize(deserializer)
     } else {
+        if separator.is_empty() {
+            return Err(D::Error::custom("empty string list separator"));
+        }
         if let Some(len) = len {
             deserializer.deserialize_tuple(len, StringListNHRDeserializer { len: Some(len), separator })
         } else {

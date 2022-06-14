@@ -156,6 +156,128 @@ mod tests {
         assert_eq!(vec![record1, record2], test_file1());
     }
   
+    fn test_file_2_bytes() -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(b"TES3");
+        v.write_u32::<LittleEndian>(346).unwrap();
+        v.write_u64::<LittleEndian>(0).unwrap();
+        v.extend_from_slice(b"HEDR");
+        v.write_u32::<LittleEndian>(300).unwrap();
+        v.write_u32::<LittleEndian>(7).unwrap();
+        v.write_u32::<LittleEndian>(32).unwrap();
+        v.extend_from_slice(test_author());
+        v.extend_from_slice(&vec![0; 256]);
+        v.write_u32::<LittleEndian>(1).unwrap();
+        v.extend_from_slice(b"MAST");
+        v.write_u32::<LittleEndian>(14).unwrap();
+        v.extend_from_slice(b"Mo__o_in_.esm\0");
+        v.extend_from_slice(b"DATA");
+        v.write_u32::<LittleEndian>(8).unwrap();
+        v.write_u64::<LittleEndian>(137).unwrap();
+        v.extend_from_slice(b"CLOH");
+        v.write_u32::<LittleEndian>(29).unwrap();
+        v.write_u64::<LittleEndian>(0).unwrap();
+        v.extend_from_slice(b"NAMF");
+        v.write_u32::<LittleEndian>(8).unwrap();
+        v.extend_from_slice(b"namename");
+        v.extend_from_slice(b"IDID");
+        v.write_u32::<LittleEndian>(5).unwrap();
+        v.extend_from_slice(b"idid\0");
+        v
+    }
+
+    fn test_file2() -> Vec<Record> {
+        vec![
+            Record {
+                tag: TES3,
+                flags: RecordFlags::empty(),
+                fields: vec![
+                    (HEDR, Field::FileMetadata(FileMetadata {
+                        version: 7,
+                        file_type: FileType::ESS,
+                        author: "test author".into(),
+                        description: vec!["".to_string()],
+                        records: 1
+                    })),
+                    (MAST, Field::StringZ("Mo__o_in_.esm".into())),
+                    (DATA, Field::I64(137))
+                ]
+            },
+            Record {
+                tag: Tag::from_str("CLOH").unwrap(),
+                flags: RecordFlags::empty(),
+                fields: vec![
+                    (Tag::from_str("NAMF").unwrap(), Field::U8List(b"namename".iter().copied().collect())),
+                    (Tag::from_str("IDID").unwrap(), Field::U8List(b"idid\0".iter().copied().collect())),
+                ]
+            }
+        ]
+    }
+    
+    #[test]
+    fn read_file_2() {
+        let mut records = &test_file_2_bytes()[..];
+        let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut records);
+        let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
+        assert_eq!(records, test_file2());
+    }
+
+    #[test]
+    fn serialize_file_2() {
+        let bytes = code::serialize(&test_file2(), CodePage::Russian, true).unwrap();
+        assert_eq!(bytes, test_file_2_bytes());
+    }
+
+    #[test]
+    fn deserialize_file_2() {
+        let mut records = &test_file_2_bytes()[..];
+        let record1: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        let record2: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        assert!(records.is_empty());
+        assert_eq!(vec![record1, record2], test_file2());
+    }
+
+    fn test_file_without_description() -> Vec<Record> {
+        vec![
+            Record {
+                tag: TES3,
+                flags: RecordFlags::empty(),
+                fields: vec![
+                    (HEDR, Field::FileMetadata(FileMetadata {
+                        version: 7,
+                        file_type: FileType::ESS,
+                        author: "test author".into(),
+                        description: Vec::new(),
+                        records: 1
+                    })),
+                    (MAST, Field::StringZ("Mo__o_in_.esm".into())),
+                    (DATA, Field::I64(137))
+                ]
+            },
+            Record {
+                tag: Tag::from_str("CLOH").unwrap(),
+                flags: RecordFlags::empty(),
+                fields: vec![
+                    (Tag::from_str("NAMF").unwrap(), Field::U8List(b"namename".iter().copied().collect())),
+                    (Tag::from_str("IDID").unwrap(), Field::U8List(b"idid\0".iter().copied().collect())),
+                ]
+            }
+        ]
+    }
+
+    #[test]
+    fn serialize_file_without_description() {
+        let err = code::serialize(&test_file_without_description(), CodePage::Russian, true).err().unwrap();
+        let msg = match err {
+            code::ser::Error::Custom(s) => s,
+            _ => panic!("unexpected error '{}'", err)
+        };
+        assert_eq!(
+            msg,
+            "empty string list cannot be serialized bacause it is indistinguishable from list with one empty string"
+        );
+    }
+
     #[test]
     fn race_fnam() {
         let mut bytes = &[
