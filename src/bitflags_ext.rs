@@ -32,7 +32,7 @@ macro_rules! bitflags_ext {
         }
 
         impl ::std::fmt::Display for $flags {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
                 let mut start = true;
                 $(
                     if self.contains($flags::$name) {

@@ -1,5 +1,5 @@
 use std::char::{self};
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::str::{FromStr};
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -20,13 +20,13 @@ impl From<u32> for Tag {
 }
 
 impl Debug for Tag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         Display::fmt(self, f)
     }
 }
 
 impl Display for Tag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let c0 = char::from(self.dword as u8);
         let c1 = char::from((self.dword >> 8) as u8);
         let c2 = char::from((self.dword >> 16) as u8);
@@ -77,7 +77,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -115,7 +115,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -153,7 +153,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -192,7 +192,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))

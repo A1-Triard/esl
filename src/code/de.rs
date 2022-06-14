@@ -1,5 +1,5 @@
 use serde::{Deserializer};
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Formatter};
 use encoding::{DecoderTrap};
 use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 use serde::serde_if_integer128;
@@ -19,7 +19,7 @@ pub enum Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
             Error::Io(e) => Display::fmt(e, f),
@@ -54,7 +54,7 @@ pub enum ExtError<'de> {
 }
 
 impl<'de> Display for ExtError<'de> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             ExtError::Error(s) => Display::fmt(s, f),
             ExtError::Unread(b) => write!(f, "not all input read, {} bytes left", b.len()),

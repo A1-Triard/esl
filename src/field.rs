@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::Error as de_Error;
 use serde::de::{self, Unexpected, VariantAccess};
 use std::convert::TryFrom;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
@@ -96,7 +96,7 @@ macro_attr! {
 }
 
 impl Display for EffectRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             EffectRange::Self_ => write!(f, "Self"),
             EffectRange::Touch => write!(f, "Touch"),
@@ -654,7 +654,7 @@ struct NpcNHRDeserializer;
 impl<'de> de::Visitor<'de> for NpcNHRDeserializer {
     type Value = Npc;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "NPC")
     }
 
@@ -1437,7 +1437,7 @@ pub struct Color {
 }
 
 impl Display for Color {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "#{:02X}{:02X}{:02X}", self.r, self.g, self.b)
     }
 }

@@ -1,6 +1,6 @@
 use serde::{Serializer, Serialize};
 use std::mem::{replace};
-use std::fmt::{self, Display, Debug};
+use std::fmt::{self, Display, Debug, Formatter};
 use encoding::{EncoderTrap};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct};
 use serde::ser::{SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
@@ -21,7 +21,7 @@ pub enum Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
             Error::LargeObject(size) => write!(f, "object has too large size ({} B)", size),
@@ -51,7 +51,7 @@ pub enum IoError {
 }
 
 impl Display for IoError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             IoError::Io(e) => Display::fmt(e, f),
             IoError::Other(e) => Display::fmt(e, f),

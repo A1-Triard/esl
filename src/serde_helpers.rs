@@ -1,4 +1,4 @@
-use std::fmt::{self, Display};
+use std::fmt::{self, Display, Formatter};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, SeqAccess};
 use serde::de::Error as de_Error;
@@ -150,7 +150,7 @@ struct FloatsDeserializer;
 impl<'de> de::Visitor<'de> for FloatsDeserializer {
     type Value = Vec<f32>;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "list of floats")
     }
 
@@ -187,7 +187,7 @@ struct FloatHRDeserializer;
 impl<'de> de::Visitor<'de> for FloatHRDeserializer {
     type Value = f32;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "32-bit float value or 'nanXXXXXXXX' (where X is hex digit)")
     }
 
@@ -255,7 +255,7 @@ struct StringNHRDeserializer { len: usize }
 impl<'de> de::Visitor<'de> for StringNHRDeserializer {
     type Value = String;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{} character string", self.len)
     }
 
@@ -339,7 +339,7 @@ struct StringListNHRDeserializer<'a> { len: Option<usize>, separator: &'a str }
 impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
     type Value = Vec<String>;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         if let Some(len) = self.len {
             write!(f, "{} character string", len)
         } else {

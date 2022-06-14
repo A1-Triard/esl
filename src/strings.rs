@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Formatter};
 use std::iter::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::ser::SerializeSeq;
@@ -52,7 +52,7 @@ struct StringZDeserializer {
 impl<'de> de::Visitor<'de> for StringZDeserializer {
     type Value = StringZ;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "string")
     }
 
@@ -139,7 +139,7 @@ struct StringZListHRDeserializer;
 impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
     type Value = StringZList;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "string sequence")
     }
 
@@ -161,7 +161,7 @@ struct StringZListNHRDeserializer;
 impl<'de> de::Visitor<'de> for StringZListNHRDeserializer {
     type Value = StringZList;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "string")
     }
 

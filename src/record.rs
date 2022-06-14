@@ -1,5 +1,5 @@
 use either::{Either, Left, Right};
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Formatter};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
@@ -448,7 +448,7 @@ struct Base64Deserializer;
 impl<'de> de::Visitor<'de> for Base64Deserializer {
     type Value = Vec<u8>;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "base64") }
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, "base64") }
 
     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
         base64::decode(s).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))
@@ -460,7 +460,7 @@ struct ZlibEncoderDeserializer;
 impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
     type Value = Vec<u8>;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "bytes") }
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, "bytes") }
 
     fn visit_bytes<E>(self, bytes: &[u8]) -> Result<Self::Value, E> where E: de::Error {
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
@@ -576,7 +576,7 @@ struct FieldDeserializer {
 impl<'de> de::Visitor<'de> for FieldDeserializer {
     type Value = Either<RecordFlags, (Tag, Field)>;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "record flags or field")
     }
 
@@ -611,7 +611,7 @@ struct RecordBodyDeserializer {
 impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
     type Value = Record;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "field list")
     }
 
@@ -650,7 +650,7 @@ struct RecordDeserializer {
 impl<'de> de::Visitor<'de> for RecordDeserializer {
     type Value = Record;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "record")
     }
 
@@ -751,7 +751,7 @@ struct DialogTypeOptionNHRDeserializer;
 impl<'de> de::Visitor<'de> for DialogTypeOptionNHRDeserializer {
     type Value = DialogTypeOption;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "32-bit integer or dialog type")
     }
 
@@ -851,7 +851,7 @@ struct PositionOrCellNHRDeserializer;
 impl<'de> de::Visitor<'de> for PositionOrCellNHRDeserializer {
     type Value = PositionOrCell;
 
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "position or cell")
     }
 
