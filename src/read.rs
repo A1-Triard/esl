@@ -29,6 +29,7 @@ struct Void(!);
 impl PartialEq for Void {
     fn eq(&self, _: &Self) -> bool { self.0 }
 
+    #[allow(clippy::partialeq_ne_impl)]
     fn ne(&self, _: &Self) -> bool { self.0 }
 }
 
