@@ -3,20 +3,26 @@
 A library for reading, writing and processing ESM/ESP/ESS files.
 
 ```rust
+use esl::code::CodePage;
+use esl::read::{RecordReadMode, Records};
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+
 fn main() {
-    let input = std::fs::File::open(file.clone()).unwrap(); 
-    let mut input = std::io::BufReader::new(input);
-    let records = Records::new(CodePage::Russian, 0, &mut input);
-    let records = records.map(|x| {
-        match x {
-            Ok(mut x) => {
-                x.fit();
-                x
-            },
-            Err(e) => panic!(format!("{}", e))
-        }
-    }).collect::<Vec<_>>();
-    let output = std::fs::File::create(file + ".yaml").unwrap();
-    serde_yaml::to_writer(std::io::BufWriter::new(output), &records).unwrap();
+    if let Ok(input) = File::open("Morrowind.esm") {
+        let mut input = BufReader::new(input);
+        let records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut input);
+        let records = records.map(|x| {
+            match x {
+                Ok(mut x) => {
+                    x.fit();
+                    x
+                },
+                Err(e) => panic!("{}", e)
+            }
+        }).collect::<Vec<_>>();
+        let output = File::create("Morrowind.esm.yaml").unwrap();
+        serde_yaml::to_writer(BufWriter::new(output), &records).unwrap();
+    }
 }
 ```
