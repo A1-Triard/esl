@@ -35,13 +35,13 @@ impl<I> ParseError<I> for Void {
 
     fn or(self, _other: Self) -> Self { unreachable!() }
 
-    fn add_context(_input: I, _ctx: &'static str, _other: Self) -> Self { unreachable!() }
+    fn from_char(_input: I, _: char) -> Self { unreachable!() }
 }
 
-fn map_err<I: Clone, O, E, X, F>(f: F, m: impl Fn(E, I) -> X)
-    -> impl Fn(I) -> IResult<I, O, X> where
-    F: Fn(I) -> IResult<I, O, E> {
-    
+fn map_err<I: Clone, O, E, X, F>(
+    mut f: F,
+    m: impl Fn(E, I) -> X
+) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, E> {
     move |input: I| {
         match f(input.clone()) {
             Err(nom::Err::Error(e)) => Err(nom::Err::Error(m(e, input))),
@@ -52,19 +52,19 @@ fn map_err<I: Clone, O, E, X, F>(f: F, m: impl Fn(E, I) -> X)
     }
 }
 
-fn no_err<I: Clone, O, X, F>(f: F) -> impl Fn(I) -> IResult<I, O, X> where
-    F: Fn(I) -> IResult<I, O, Void> {
-
+fn no_err<I: Clone, O, X, F>(
+    f: F
+) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, Void> {
     map_err(
         f,
         |x, _| x.unreachable()
     )
 }
 
-fn set_err<I: Clone, O, X, F>(f: F, m: impl Fn(I) -> X)
-                                 -> impl Fn(I) -> IResult<I, O, X> where
-    F: Fn(I) -> IResult<I, O, ()> {
-
+fn set_err<I: Clone, O, X, F>(
+    mut f: F,
+    m: impl Fn(I) -> X
+) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, ()> {
     move |input: I| {
         match f(input.clone()) {
             Err(nom::Err::Error(())) => Err(nom::Err::Error(m(input))),
@@ -75,10 +75,10 @@ fn set_err<I: Clone, O, X, F>(f: F, m: impl Fn(I) -> X)
     }
 }
 
-fn map_res<I: Clone, O, E, R, F>(f: F, m: impl Fn(O, I) -> Result<R, nom::Err<E>>)
-    -> impl Fn(I) -> IResult<I, R, E> where
-    F: Fn(I) -> IResult<I, O, E> {
-
+fn map_res<I: Clone, O, E, R, F>(
+    mut f: F,
+    m: impl Fn(O, I) -> Result<R, nom::Err<E>>
+) -> impl FnMut(I) -> IResult<I, R, E> where F: FnMut(I) -> IResult<I, O, E> {
     move |input: I| {
         match f(input.clone()) {
             Err(nom::Err::Error(e)) => Err(nom::Err::Error(e)),
@@ -113,7 +113,7 @@ macro_rules! impl_parse_error {
         
             fn or(self, _other: Self) -> Self { panic!() }
         
-            fn add_context(_input: $input, _ctx: &'static str, _other: Self) -> Self { panic!() }
+            fn from_char(_input: $input, _: char) -> Self { panic!() }
         }
     };
     (<$($lifetime:lifetime),+>, $input:ty, $name:ident<$($name_lt:lifetime),+>) => {
@@ -124,7 +124,7 @@ macro_rules! impl_parse_error {
         
             fn or(self, _other: Self) -> Self { panic!() }
         
-            fn add_context(_input: $input, _ctx: &'static str, _other: Self) -> Self { panic!() }
+            fn from_char(_input: $input, _: char) -> Self { panic!() }
         }
     }
 }
@@ -178,9 +178,9 @@ fn string_z_field<E>(code_page: CodePage) -> impl Fn(&[u8]) -> IResult<&[u8], St
     }
 }
 
-fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8]) 
-    -> IResult<&'a [u8], StringZList, E> {
-    
+fn string_z_list_field<'a, E>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], StringZList, E> {
     no_err(
         map(
             string_z_field(code_page),
@@ -189,13 +189,16 @@ fn string_z_list_field<'a, E>(code_page: CodePage) -> impl Fn(&'a [u8])
     )
 }
 
-fn string_len<'a>(code_page: CodePage, length: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], String, ()> {
+fn string_len<'a>(
+    code_page: CodePage,
+    length: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, ()> {
     map(take(length), move |bytes| decode_string(code_page, trim_end_nulls(bytes)))
 }
 
-fn file_metadata_field<'a>(code_page: CodePage)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], FileMetadata, FieldBodyError> {
-
+fn file_metadata_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], FileMetadata, FieldBodyError> {
     map(
         tuple((
             set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
@@ -230,9 +233,10 @@ fn string_len_field<'a>(code_page: CodePage, mode: RecordReadMode, length: u32) 
     }
 }
 
-fn multiline_field<'a, E>(code_page: CodePage, linebreaks: Newline)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
-
+fn multiline_field<'a, E>(
+    code_page: CodePage,
+    linebreaks: Newline
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<String>, E> {
     no_err(
         map(
             string_field(code_page),
@@ -241,7 +245,9 @@ fn multiline_field<'a, E>(code_page: CodePage, linebreaks: Newline)
     )
 }
 
-fn item_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
+fn item_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
     set_err(
         map(
             pair(
@@ -425,9 +431,9 @@ fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> 
     )(input)
 }
 
-fn sound_chance_field<'a>(code_page: CodePage)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], SoundChance, FieldBodyError> {
-
+fn sound_chance_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], SoundChance, FieldBodyError> {
     map(
         set_err(
             pair(
@@ -440,9 +446,9 @@ fn sound_chance_field<'a>(code_page: CodePage)
     )
 }
 
-fn script_metadata_field<'a>(code_page: CodePage)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], ScriptMetadata, FieldBodyError> {
-
+fn script_metadata_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], ScriptMetadata, FieldBodyError> {
     map(
         set_err(
             tuple((
@@ -700,7 +706,10 @@ fn sound_field(input: &[u8]) -> IResult<&[u8], Sound, FieldBodyError> {
     )(input)
 }
 
-fn color_component<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], u8, FieldBodyError> {
+fn color_component<'a>(
+    field_size: u32,
+    offset: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u8, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |w, _| w.try_into().map_err(|_| nom::Err::Error(FieldBodyError::InvalidValue(Invalid::ColorComponent(w), offset)))
@@ -945,7 +954,9 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
     )(input)
 }
 
-fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiTarget, FieldBodyError> {
+fn ai_target_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiTarget, FieldBodyError> {
     map(
         tuple((
             set_err(
@@ -958,7 +969,9 @@ fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a 
             bool_u8(48, 46),
             map_res(
                 set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(48)),
-                |b, _| AiTargetFlags::from_bits(b).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::AiTargetFlags(b), 46)))
+                |b, _| AiTargetFlags::from_bits(b).ok_or(nom::Err::Error(
+                    FieldBodyError::UnknownValue(Unknown::AiTargetFlags(b), 46)
+                ))
             )
         )),
         |((x, y, z, duration, actor_id), reset, flags)| AiTarget {
@@ -967,7 +980,10 @@ fn ai_target_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a 
     )
 }
 
-fn bool_u8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+fn bool_u8<'a>(
+    field_size: u32,
+    offset: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
     map_res(
         set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |b, _| match b {
@@ -978,7 +994,10 @@ fn bool_u8<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a
     )
 }
 
-fn bool_u32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
+fn bool_u32<'a>(
+    field_size: u32,
+    offset: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |w, _| match w {
@@ -989,7 +1008,9 @@ fn bool_u32<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'
     )
 }
 
-fn none_u8_field<'a>(none: u8) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (), FieldBodyError> {
+fn none_u8_field<'a>(
+    none: u8
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (), FieldBodyError> {
     map_res(
         set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(1)),
         move |b, _| if b == none {
@@ -1000,7 +1021,9 @@ fn none_u8_field<'a>(none: u8) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (), Fie
     )
 }
 
-fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
+fn ai_activate_field<'a>(
+    code_page: CodePage
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
     map(
         pair(
             set_err(string_len(code_page, 32), |_| FieldBodyError::UnexpectedEndOfField(33)),
@@ -1012,14 +1035,20 @@ fn ai_activate_field<'a>(code_page: CodePage) -> impl Fn(&'a [u8]) -> IResult<&'
     )
 }
 
-fn attribute<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Attribute, FieldBodyError> {
+fn attribute<'a>(
+    field_size: u32,
+    offset: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Attribute, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |w, _| Attribute::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset)))
     )
 }
 
-fn skill<'a>(field_size: u32, offset: u32) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Skill, FieldBodyError> {
+fn skill<'a>(
+    field_size: u32,
+    offset: u32
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Skill, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
         move |w, _| Skill::n(w).ok_or(nom::Err::Error(FieldBodyError::UnknownValue(Unknown::Skill(w), offset)))
@@ -1539,7 +1568,11 @@ fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
     )(input)
 }
 
-fn field<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
+fn field<'a>(
+    code_page: CodePage,
+    mode: RecordReadMode,
+    record_tag: Tag
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     map_res(
         field_bytes,
         move |(field_tag, field_size, field_bytes), _| {
@@ -1553,7 +1586,9 @@ fn field<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag) -> impl
                 }
             )(field_bytes)?;
             if !remaining_field_bytes.is_empty() {
-                return Err(nom::Err::Error(FieldError::FieldSizeMismatch(field_tag, field_size - remaining_field_bytes.len() as u32, field_size)));
+                return Err(nom::Err::Error(
+                    FieldError::FieldSizeMismatch(field_tag, field_size - remaining_field_bytes.len() as u32, field_size)
+                ));
             }
             Ok((field_tag, field_body))
         }
@@ -1901,14 +1936,17 @@ struct RecordBodyError<'a>(FieldError, &'a [u8]);
 
 impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
 
-fn record_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag) 
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
-    
+fn record_body<'a>(
+    code_page: CodePage,
+    mode: RecordReadMode,
+    record_tag: Tag
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
     many0(
         preceded(
-            |input| {
+            |input: &'a [u8]| {
                 if input.is_empty() {
-                    Err(nom::Err::Error(RecordBodyError(FieldError::UnexpectedEndOfRecord(0), input))) // error type doesn't matter
+                    // error type doesn't matter
+                    Err(nom::Err::Error(RecordBodyError(FieldError::UnexpectedEndOfRecord(0), input)))
                 } else {
                     Ok((input, ()))
                 }
