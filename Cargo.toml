@@ -25,7 +25,6 @@ flate2 = "1.0.14"
 macro-attr-2018 = "2.1.2"
 nameof = "1.2.1"
 nom = "7.1.1"
-once_cell = "1.4.0"
 serde = { version = "1.0.114", features = ["derive"] }
 
 [build-dependencies]

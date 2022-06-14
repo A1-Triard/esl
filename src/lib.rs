@@ -1,4 +1,5 @@
 #![feature(never_type)]
+#![feature(once_cell)]
 #![feature(stmt_expr_attributes)]
 #![feature(type_alias_impl_trait)]
 
