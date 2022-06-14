@@ -9,6 +9,9 @@
 
 #![recursion_limit="512"]
 
+#[doc=include_str!("../README.md")]
+type _DocTestReadme = ();
+
 #[macro_use]
 mod tag;
 
