@@ -16,7 +16,7 @@ use flate2::Compression;
 use either::{Right, Left, Either};
 use std::cmp::Ordering;
 use std::convert::TryInto;
-use std::lazy::SyncLazy;
+use std::sync::LazyLock;
 
 use crate::strings::*;
 use crate::field::*;
@@ -2049,7 +2049,7 @@ pub struct ReadRecordError {
     bytes: Vec<u8>
 }
 
-static INVALID_DATA_IO_ERROR: SyncLazy<io::Error> = SyncLazy::new(|| io::Error::from(io::ErrorKind::InvalidData));
+static INVALID_DATA_IO_ERROR: LazyLock<io::Error> = LazyLock::new(|| io::Error::from(io::ErrorKind::InvalidData));
 
 impl ReadRecordError {
     pub fn as_io_error(&self) -> &io::Error {
