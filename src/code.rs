@@ -83,7 +83,7 @@ pub fn serialize_into<T: Serialize + ?Sized>(v: &T, writer: &mut (impl Write + ?
 }
 
 pub fn serialize_into_slice<'a, 'b: 'a, T: Serialize + ?Sized>(v: &T, bytes: &'b mut &'a mut [u8], code_page: CodePage, isolated: bool) -> Result<(), ser::IoError> {
-    let mut writer = SliceWriter::new(*bytes);
+    let mut writer = SliceWriter::new(bytes);
     let serializer = EslSerializer::new(isolated, code_page, &mut writer);
     v.serialize(serializer)?;
     let written = writer.written();
