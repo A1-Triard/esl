@@ -379,12 +379,12 @@ mod tests {
     fn deserialize_float_field() {
         let yaml = "\
 - GMST:
-    - FLTV: 3.0
-    - FLTV: .nan
-    - FLTV: nanFFEEEEEE
-    - FLTV: 0.1
-    - FLTV: -0.0
-        ";
+  - FLTV: 3.0
+  - FLTV: .nan
+  - FLTV: nanFFEEEEEE
+  - FLTV: 0.1
+  - FLTV: -0.0
+";
         let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 5);
@@ -399,7 +399,7 @@ mod tests {
         assert_eq!(res[0].fields[3].1, Field::F32(0.1));
         assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
         let res_yaml = serde_yaml::to_string(&res).unwrap();
-        assert_eq!(res_yaml, format!("---\n{}", yaml).trim_matches(' '));
+        assert_eq!(res_yaml, yaml);
     }
 
     #[allow(clippy::float_cmp)]
@@ -407,14 +407,14 @@ mod tests {
     fn deserialize_light_field() {
         let yaml = "\
 - LIGH:
-    - LHDT:
-        weight: 0.1
-        value: 3
-        time: 0
-        radius: 128
-        color: \"#F58C28\"
-        flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
-        ";
+  - LHDT:
+      weight: 0.1
+      value: 3
+      time: 0
+      radius: 128
+      color: '#F58C28'
+      flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
+";
         let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 1);
@@ -424,6 +424,6 @@ mod tests {
             panic!()
         }
         let res_yaml = serde_yaml::to_string(&res).unwrap();
-        assert_eq!(res_yaml, format!("---\n{}", yaml).trim_matches(' '));
+        assert_eq!(res_yaml, yaml);
     }
 }
