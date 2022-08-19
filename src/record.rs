@@ -73,7 +73,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
             },
             FieldType::U8List => if let Field::U8List(v) = self.field {
-                serializer.serialize_bytes(v)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(&format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
