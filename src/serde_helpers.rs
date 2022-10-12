@@ -33,7 +33,7 @@ pub fn serialize_bool_u8<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> w
     if serializer.is_human_readable() {
         serializer.serialize_bool(v)
     } else {
-        serializer.serialize_u8(if v { 1 } else { 0 })
+        serializer.serialize_u8(v.into())
     }
 }
 
@@ -54,7 +54,7 @@ pub fn serialize_bool_u32<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> 
     if serializer.is_human_readable() {
         serializer.serialize_bool(v)
     } else {
-        serializer.serialize_u32(if v { 1 } else { 0 })
+        serializer.serialize_u32(v.into())
     }
 }
 

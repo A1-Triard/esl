@@ -468,7 +468,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn is_human_readable(&self) -> bool { false }
     
     fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-        self.serialize_u8(if v { 1 } else { 0 })
+        self.serialize_u8(v.into())
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
