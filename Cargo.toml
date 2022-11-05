@@ -25,10 +25,10 @@ flate2 = "1.0.24"
 macro-attr-2018 = "2.1.2"
 nameof = "1.2.2"
 nom = "7.1.1"
-serde = { version = "1.0.137", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
 
 [build-dependencies]
-serde = { version = "1.0.137", features = ["derive"] }
+serde = { version = "1.0.147", features = ["derive"] }
 
 [dev-dependencies]
 serde_yaml = "0.9.9"
