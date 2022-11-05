@@ -55,27 +55,27 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                     serializer.serialize_str(s)
                 }
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have string type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have string type", self.record_tag, self.field_tag)))
             },
             FieldType::StringZ => if let Field::StringZ(s) = self.field {
                 s.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
                 serialize_string_list(s, newline.as_str(), None, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
             FieldType::StringZList => if let Field::StringZList(s) = self.field {
                 s.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
             },
             FieldType::U8List => if let Field::U8List(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
             FieldType::U8ListZip => if let Field::U8List(v) = self.field {
                 if serializer.is_human_readable() {
@@ -89,117 +89,117 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                     serializer.serialize_bytes(&uncompressed)
                 }
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
             FieldType::Item => if let Field::Item(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have item type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have item type", self.record_tag, self.field_tag)))
             },
             FieldType::Skill => if let Field::Skill(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have skill type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have skill type", self.record_tag, self.field_tag)))
             },
             FieldType::Ingredient => if let Field::Ingredient(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have ingredient type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have ingredient type", self.record_tag, self.field_tag)))
             },
             FieldType::ScriptMetadata => if let Field::ScriptMetadata(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have script metadata type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have script metadata type", self.record_tag, self.field_tag)))
             },
             FieldType::ScriptVars => if let Field::ScriptVars(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have script vars type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have script vars type", self.record_tag, self.field_tag)))
             },
             FieldType::FileMetadata => if let Field::FileMetadata(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have file metadata type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have file metadata type", self.record_tag, self.field_tag)))
             },
             FieldType::NpcState => if let Field::NpcState(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have saved npc type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have saved npc type", self.record_tag, self.field_tag)))
             },
             FieldType::Effect => if let Field::Effect(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have effect type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have effect type", self.record_tag, self.field_tag)))
             },
             FieldType::Npc => if let Field::Npc(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have NPC type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have NPC type", self.record_tag, self.field_tag)))
             },
             FieldType::DialogMetadata => match self.field {
                 &Field::DialogType(v) => DialogTypeOption::Some(v).serialize(serializer),
                 &Field::I32(v) => DialogTypeOption::None(v).serialize(serializer),
-                _ => Err(S::Error::custom(&format!("{} {} field should have dialog or 32-bit int type", self.record_tag, self.field_tag)))
+                _ => Err(S::Error::custom(format!("{} {} field should have dialog or 32-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::PositionOrCell => match &self.field {
                 &Field::Position(v) => PositionOrCell::Position(v.clone()).serialize(serializer),
                 &Field::Cell(v) => PositionOrCell::Cell(v.clone()).serialize(serializer),
-                _ => Err(S::Error::custom(&format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
+                _ => Err(S::Error::custom(format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
             },
             FieldType::Spell => if let Field::Spell(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have spell type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have spell type", self.record_tag, self.field_tag)))
             },
             FieldType::Ai => if let Field::Ai(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have AI type", self.record_tag, self.field_tag)))
             },
             FieldType::AiWander => if let Field::AiWander(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI wander type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have AI wander type", self.record_tag, self.field_tag)))
             },
             FieldType::AiTravel => if let Field::AiTravel(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI travel type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have AI travel type", self.record_tag, self.field_tag)))
             },
             FieldType::AiTarget => if let Field::AiTarget(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI target type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have AI target type", self.record_tag, self.field_tag)))
             },
             FieldType::AiActivate => if let Field::AiActivate(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have AI activate type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have AI activate type", self.record_tag, self.field_tag)))
             },
             FieldType::NpcFlags => if let Field::NpcFlags(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have NPC flags type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have NPC flags type", self.record_tag, self.field_tag)))
             },
             FieldType::CreatureFlags => if let Field::CreatureFlags(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have creature flags type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have creature flags type", self.record_tag, self.field_tag)))
             },
             FieldType::Book => if let Field::Book(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have book type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have book type", self.record_tag, self.field_tag)))
             },
             FieldType::Info => if let Field::Info(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have info type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have info type", self.record_tag, self.field_tag)))
             },
             FieldType::Tool => if let Field::Tool(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have tool type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have tool type", self.record_tag, self.field_tag)))
             },
             FieldType::RepairItem => if let Field::Tool(v) = self.field {
                 if serializer.is_human_readable() {
@@ -208,187 +208,187 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                     RepairItem::from(v.clone()).serialize(serializer)
                 }
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have tool type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have tool type", self.record_tag, self.field_tag)))
             },
             FieldType::Creature => if let Field::Creature(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have creature type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have creature type", self.record_tag, self.field_tag)))
             },
             FieldType::ContainerFlags => if let Field::ContainerFlags(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have container flags type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have container flags type", self.record_tag, self.field_tag)))
             },
             FieldType::Light => if let Field::Light(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have light type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have light type", self.record_tag, self.field_tag)))
             },
             FieldType::Interior => if let Field::Interior(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have interior type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have interior type", self.record_tag, self.field_tag)))
             },
             FieldType::MiscItem => if let Field::MiscItem(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have misc item type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have misc item type", self.record_tag, self.field_tag)))
             },
             FieldType::Apparatus => if let Field::Apparatus(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have apparatus type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have apparatus type", self.record_tag, self.field_tag)))
             },
             FieldType::Weapon => if let Field::Weapon(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have weapon type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have weapon type", self.record_tag, self.field_tag)))
             },
             FieldType::Armor => if let Field::Armor(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
             },
             FieldType::Position => if let Field::Position(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have position type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have position type", self.record_tag, self.field_tag)))
             },
             FieldType::BipedObject => if let Field::BipedObject(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have biped object type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have biped object type", self.record_tag, self.field_tag)))
             },
             FieldType::BodyPart => if let Field::BodyPart(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have body part type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have body part type", self.record_tag, self.field_tag)))
             },
             FieldType::Clothing => if let Field::Clothing(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have clothing type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have clothing type", self.record_tag, self.field_tag)))
             },
             FieldType::Enchantment => if let Field::Enchantment(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have enchantment type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have enchantment type", self.record_tag, self.field_tag)))
             },
             FieldType::Weather => if let Field::Weather(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have weather type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have weather type", self.record_tag, self.field_tag)))
             },
             FieldType::SoundChance => if let Field::SoundChance(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have sound chance type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have sound chance type", self.record_tag, self.field_tag)))
             },
             FieldType::Color => if let Field::Color(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have color type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have color type", self.record_tag, self.field_tag)))
             },
             FieldType::Sound => if let Field::Sound(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have sound type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have sound type", self.record_tag, self.field_tag)))
             },
             FieldType::Potion => if let Field::Potion(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have potion type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have potion type", self.record_tag, self.field_tag)))
             },
             FieldType::Class => if let Field::Class(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have class type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have class type", self.record_tag, self.field_tag)))
             },
             FieldType::Grid => if let Field::Grid(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have grid type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have grid type", self.record_tag, self.field_tag)))
             },
             FieldType::PathGrid => if let Field::PathGrid(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have path grid type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have path grid type", self.record_tag, self.field_tag)))
             },
             FieldType::SoundGen => if let Field::SoundGen(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have sound gen type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have sound gen type", self.record_tag, self.field_tag)))
             },
             FieldType::EffectIndex => if let Field::EffectIndex(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have effect index type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have effect index type", self.record_tag, self.field_tag)))
             },
             FieldType::EffectMetadata => if let Field::EffectMetadata(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have effect metadata type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have effect metadata type", self.record_tag, self.field_tag)))
             },
             FieldType::Race => if let Field::Race(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have race type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have race type", self.record_tag, self.field_tag)))
             },
             FieldType::Faction => if let Field::Faction(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have faction type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have faction type", self.record_tag, self.field_tag)))
             },
             FieldType::SkillMetadata => if let Field::SkillMetadata(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have skill metadata type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have skill metadata type", self.record_tag, self.field_tag)))
             },
             FieldType::F32 => if let &Field::F32(v) = self.field {
                 serialize_f32_as_is(v, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
             FieldType::MarkerU8(none) => if let Field::None = self.field {
                 serialize_none_u8(none, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have none type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have none type", self.record_tag, self.field_tag)))
             },
             FieldType::I32 => if let &Field::I32(v) = self.field {
                 serializer.serialize_i32(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 32-bit int type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 32-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::I16 => if let &Field::I16(v) = self.field {
                 serializer.serialize_i16(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 16-bit int type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 16-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::I64 => if let &Field::I64(v) = self.field {
                 serializer.serialize_i64(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::F32List => if let Field::F32List(v) = self.field {
                 serialize_f32_s_as_is(v, serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
             },
             FieldType::I32List => if let Field::I32List(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 32-bit int list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 32-bit int list type", self.record_tag, self.field_tag)))
             },
             FieldType::I16List => if let Field::I16List(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have 16-bit int list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have 16-bit int list type", self.record_tag, self.field_tag)))
             },
             FieldType::U8 => if let &Field::U8(v) = self.field {
                 serializer.serialize_u8(v)
             } else {
-                Err(S::Error::custom(&format!("{} {} field should have byte type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have byte type", self.record_tag, self.field_tag)))
             },
         }
     }

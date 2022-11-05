@@ -92,7 +92,7 @@ pub fn serialize_option_index<I: Copy + Eq + Display, T: Copy, S>(
             Left(Some(i)) => {
                 if i == none || from(i).is_some() {
                     let err = format!("{} is not valid undefined {} value", i, name);
-                    return Err(S::Error::custom(&err));
+                    return Err(S::Error::custom(err));
                 }
                 i
             },
@@ -241,7 +241,7 @@ pub fn serialize_string_tuple<S>(s: &str, len: usize, serializer: S) -> Result<S
             s_len += 1;
         }
         if s_len > len {
-            return Err(S::Error::custom(&format!("string length is above {} chars", len)));
+            return Err(S::Error::custom(format!("string length is above {} chars", len)));
         }
         for _ in s_len .. len {
             serializer.serialize_element(&'\0')?;
@@ -327,7 +327,7 @@ pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<u
                 text_len += 1;
             }
             if text_len > len {
-                return Err(S::Error::custom(&format!("string list total length is above {} chars", len)));
+                return Err(S::Error::custom(format!("string list total length is above {} chars", len)));
             }
             for _ in text_len .. len {
                 serializer.serialize_element(&'\0')?;
