@@ -1913,7 +1913,7 @@ struct CellHRSurrogate {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 struct CellNHRSurrogate {
     pub flags: CellFlags,
-    pub position: ExteriorPosition,
+    pub position: (i32, i32),
 }
 
 impl From<CellHRSurrogate> for Cell {
@@ -1939,8 +1939,8 @@ impl Serialize for Cell {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let is_interior = self.flags.contains(CellFlags::INTERIOR);
         let position_is_interior = match self.position {
-            CellPosition::Interior(_) => true,
-            CellPosition::Exterior(_) => false,
+            CellPosition::Interior { .. } => true,
+            CellPosition::Exterior { .. } => false,
         };
         if is_interior != position_is_interior {
             return Err(S::Error::custom("cell INTERIOR flag and position type do not match"));
@@ -1969,50 +1969,44 @@ impl<'de> Deserialize<'de> for Cell {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Educe, Serialize, Deserialize)]
+#[educe(Eq, PartialEq)]
 pub enum CellPosition {
-    Interior(InteriorPosition),
-    Exterior(ExteriorPosition)
+    Interior {
+        #[educe(PartialEq(method="eq_f32"))]
+        #[serde(with = "float_32")]
+        x: f32,
+        #[educe(PartialEq(method="eq_f32"))]
+        #[serde(with = "float_32")]
+        y: f32
+    },
+    Exterior { x: i32, y: i32 }
 }
 
 impl CellPosition {
-    fn from_exterior(is_interior: bool, position: ExteriorPosition) -> Self {
+    fn from_exterior(is_interior: bool, position: (i32, i32)) -> Self {
         if is_interior {
-            CellPosition::Interior(InteriorPosition {
-                x: unsafe { transmute(position.x) },
-                y: unsafe { transmute(position.x) },
-            })
+            CellPosition::Interior {
+                x: unsafe { transmute(position.0) },
+                y: unsafe { transmute(position.1) },
+            }
         } else {
-            CellPosition::Exterior(position)
-        }
-    }
-
-    fn to_exterior(&self) -> ExteriorPosition {
-        match self {
-            CellPosition::Exterior(position) => position.clone(),
-            CellPosition::Interior(position) => ExteriorPosition {
-                x: unsafe { transmute(position.x) },
-                y: unsafe { transmute(position.y) }
+            CellPosition::Exterior {
+                x: position.0,
+                y: position.1
             }
         }
     }
-}
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ExteriorPosition {
-    pub x: i32,
-    pub y: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
-#[educe(Eq, PartialEq)]
-pub struct InteriorPosition {
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
-    pub x: f32,
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
-    pub y: f32,
+    fn to_exterior(&self) -> (i32, i32) {
+        match self {
+            &CellPosition::Exterior { x, y } => (x, y),
+            &CellPosition::Interior { x, y } => (
+                unsafe { transmute(x) },
+                unsafe { transmute(y) }
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]

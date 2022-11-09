@@ -305,7 +305,7 @@ mod tests {
             flags: RecordFlags::empty(),
             fields: vec![
                 (NAME, Field::StringZ("".into())),
-                (DATA, Field::Cell(Cell { flags:CellFlags::HAS_WATER, grid: Grid { x: 20, y: 4} })),
+                (DATA, Field::Cell(Cell { flags:CellFlags::HAS_WATER, position: CellPosition::Exterior { x: 20, y: 4 } })),
                 (RGNN, Field::StringZ("Coast Region".into())),
                 (FRMR, Field::I32(347140)),
                 (NAME, Field::StringZ("crab".into())),

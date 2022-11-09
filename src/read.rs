@@ -643,12 +643,12 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
         ),
         |(flags, (x, y))| {
             let position = if flags.contains(CellFlags::INTERIOR) {
-                CellPosition::Interior(InteriorPosition {
+                CellPosition::Interior {
                     x: unsafe { transmute(x) },
                     y: unsafe { transmute(y) }
-                })
+                }
             } else {
-                CellPosition::Exterior(ExteriorPosition { x, y })
+                CellPosition::Exterior { x, y }
             };
             Cell { flags, position }
         }
