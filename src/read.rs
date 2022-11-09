@@ -642,7 +642,7 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
             )
         ),
         |(flags, (x, y))| Cell {
-            flags, grid: Grid { x, y }
+            flags, x, y
         }
     )(input)
 }

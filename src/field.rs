@@ -1899,7 +1899,8 @@ enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Cell {
     pub flags: CellFlags,
-    pub grid: Grid,
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
