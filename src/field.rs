@@ -2418,6 +2418,7 @@ fn allow_fit(record_tag: Tag, field_tag: Tag) -> bool {
         | (BSGN, DESC)
         | (ACTI, FNAM)
         | (TES3, HEDR)
+        | (CELL, NAME)
         | (JOUR, NAME)
         | (SSCR, NAME)
         | (INFO, NNAM)
