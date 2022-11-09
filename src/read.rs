@@ -10,7 +10,7 @@ use std::io::{self, Read, Write};
 use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
 use std::hash::{Hash, Hasher};
-use std::mem::replace;
+use std::mem::{replace, transmute};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Right, Left, Either};
@@ -641,8 +641,16 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
                 |_| FieldBodyError::UnexpectedEndOfField(12)
             )
         ),
-        |(flags, (x, y))| Cell {
-            flags, x, y
+        |(flags, (x, y))| {
+            let position = if flags.contains(CellFlags::INTERIOR) {
+                CellPosition::Interior(InteriorPosition {
+                    x: unsafe { transmute(x) },
+                    y: unsafe { transmute(y) }
+                })
+            } else {
+                CellPosition::Exterior(ExteriorPosition { x, y })
+            };
+            Cell { flags, position }
         }
     )(input)
 }

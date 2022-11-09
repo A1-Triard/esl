@@ -7,8 +7,10 @@ use nameof::name_of;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::Error as de_Error;
 use serde::de::{self, Unexpected, VariantAccess};
+use serde::ser::Error as ser_Error;
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::mem::transmute;
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
@@ -1896,11 +1898,121 @@ bitflags_ext! {
 
 enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Cell {
     pub flags: CellFlags,
+    pub position: CellPosition,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct CellHRSurrogate {
+    pub flags: CellFlags,
+    pub position: CellPosition,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+struct CellNHRSurrogate {
+    pub flags: CellFlags,
+    pub position: ExteriorPosition,
+}
+
+impl From<CellHRSurrogate> for Cell {
+    fn from(cell: CellHRSurrogate) -> Cell {
+        Cell {
+            flags: cell.flags,
+            position: cell.position,
+        }
+    }
+}
+
+impl From<CellNHRSurrogate> for Cell {
+    fn from(cell: CellNHRSurrogate) -> Cell {
+        let position = CellPosition::from_exterior(
+            cell.flags.contains(CellFlags::INTERIOR),
+            cell.position
+        );
+        Cell { flags: cell.flags, position }
+    }
+}
+
+impl Serialize for Cell {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let is_interior = self.flags.contains(CellFlags::INTERIOR);
+        let position_is_interior = match self.position {
+            CellPosition::Interior(_) => true,
+            CellPosition::Exterior(_) => false,
+        };
+        if is_interior != position_is_interior {
+            return Err(S::Error::custom("cell INTERIOR flag and position type do not match"));
+        }
+        if serializer.is_human_readable() {
+            CellHRSurrogate {
+                flags: self.flags,
+                position: self.position.clone()
+            }.serialize(serializer)
+        } else {
+            CellNHRSurrogate {
+                flags: self.flags,
+                position: self.position.to_exterior()
+            }.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Cell {
+    fn deserialize<D>(deserializer: D) -> Result<Cell, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            CellHRSurrogate::deserialize(deserializer).map(Cell::from)
+        } else {
+            CellNHRSurrogate::deserialize(deserializer).map(Cell::from)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum CellPosition {
+    Interior(InteriorPosition),
+    Exterior(ExteriorPosition)
+}
+
+impl CellPosition {
+    fn from_exterior(is_interior: bool, position: ExteriorPosition) -> Self {
+        if is_interior {
+            CellPosition::Interior(InteriorPosition {
+                x: unsafe { transmute(position.x) },
+                y: unsafe { transmute(position.x) },
+            })
+        } else {
+            CellPosition::Exterior(position)
+        }
+    }
+
+    fn to_exterior(&self) -> ExteriorPosition {
+        match self {
+            CellPosition::Exterior(position) => position.clone(),
+            CellPosition::Interior(position) => ExteriorPosition {
+                x: unsafe { transmute(position.x) },
+                y: unsafe { transmute(position.y) }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ExteriorPosition {
     pub x: i32,
     pub y: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
+pub struct InteriorPosition {
+    #[educe(PartialEq(method="eq_f32"))]
+    #[serde(with = "float_32")]
+    pub x: f32,
+    #[educe(PartialEq(method="eq_f32"))]
+    #[serde(with = "float_32")]
+    pub y: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
