@@ -1971,6 +1971,7 @@ impl<'de> Deserialize<'de> for Cell {
 
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Eq, PartialEq)]
+#[serde(tag="kind")]
 pub enum CellPosition {
     Interior {
         #[educe(PartialEq(method="eq_f32"))]
