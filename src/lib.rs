@@ -12,6 +12,8 @@
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::option_map_unit_fn)]
 #![allow(clippy::match_ref_pats)]
+#![allow(clippy::transmute_float_to_int)]
+#![allow(clippy::transmute_int_to_float)]
 
 #![recursion_limit="512"]
 
