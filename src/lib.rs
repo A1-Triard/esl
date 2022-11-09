@@ -306,11 +306,11 @@ mod tests {
             tag: CELL,
             flags: RecordFlags::empty(),
             fields: vec![
-                (NAME, Field::String("".into())),
+                (NAME, Field::StringZ("".into())),
                 (DATA, Field::Cell(Cell { flags:CellFlags::HAS_WATER, position: CellPosition::Exterior { x: 20, y: 4 } })),
                 (RGNN, Field::StringZ("Coast Region".into())),
                 (FRMR, Field::I32(347140)),
-                (NAME, Field::String("crab".into())),
+                (NAME, Field::StringZ("crab".into())),
                 (DATA, Field::Position(Position { x: 165898.0, y: 38710.484, z: 198.8868, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
             ]
         };
