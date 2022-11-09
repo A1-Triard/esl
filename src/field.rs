@@ -265,6 +265,7 @@ impl FieldType {
             (CELL, NAM8) => FieldType::U8ListZip,
             (CELL, NAM9) => FieldType::I32,
             (PCDT, NAM9) => FieldType::I32,
+            (CELL, NAME) => FieldType::String(None),
             (GMST, NAME) => FieldType::String(None),
             (INFO, NAME) => FieldType::String(None),
             (JOUR, NAME) => FieldType::Multiline(Newline::Unix),
