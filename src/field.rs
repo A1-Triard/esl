@@ -924,6 +924,7 @@ bitflags_ext! {
         FEMALE = 0x01,
         ESSENTIAL = 0x02,
         RESPAWN = 0x04,
+        _8 = 0x08,
         AUTO_CALCULATE_STATS = 0x10
     }
 }
