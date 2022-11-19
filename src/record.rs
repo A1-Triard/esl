@@ -146,6 +146,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 &Field::Cell(v) => PositionOrCell::Cell(v.clone()).serialize(serializer),
                 _ => Err(S::Error::custom(format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
             },
+            FieldType::I32OrI64 => match &self.field {
+                &Field::I32(v) => I32OrI64::I32(v).serialize(serializer),
+                &Field::I64(v) => I32OrI64::I64(v).serialize(serializer),
+                _ => Err(S::Error::custom(format!("{} {} field should have i32 or i64 type", self.record_tag, self.field_tag)))
+            },
             FieldType::Spell => if let Field::Spell(v) = self.field {
                 v.serialize(serializer)
             } else {
