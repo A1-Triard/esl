@@ -1587,7 +1587,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::Npc => match field_size {
                 52 => map(npc_52_field, Field::Npc)(input),
                 12 => map(npc_12_field, Field::Npc)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
             FieldType::Class => map(class_field, Field::Class)(input),
@@ -1595,17 +1595,17 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::DialogMetadata => match field_size {
                 4 => map(i32_field, Field::I32)(input),
                 1 => map(dialog_type_field, Field::DialogType)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::PositionOrCell => match field_size {
                 24 => map(position_field, Field::Position)(input),
                 12 => map(cell_field, Field::Cell)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::Weather => match field_size {
                 8 => map(weather_field, Field::Weather)(input),
                 10 => map(weather_ex_field, Field::Weather)(input),
-                x => Err(nom::Err::Error(FieldBodyError::UnexpectedFieldSize(x))),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
         }
     }
@@ -2337,11 +2337,11 @@ mod tests {
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
         let result = field(CodePage::English, RecordReadMode::Strict, DIAL)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+        if let nom::Err::Failure(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 6);
         } else {
-            panic!()
+            panic!("{:?}", error)
         }
     }
 
@@ -2357,7 +2357,7 @@ mod tests {
             assert_eq!(expected, 4);
             assert_eq!(actual, 2);
         } else {
-            panic!()
+            panic!("{:?}", error)
         }
     }
 
@@ -2438,7 +2438,7 @@ mod tests {
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
         let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
+        if let nom::Err::Failure(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
             assert_eq!(val, 0x100000);
             assert_eq!(offset, 4);
         } else {
@@ -2456,7 +2456,7 @@ mod tests {
         if let nom::Err::Error(FieldBodyError::UnexpectedEndOfField(size)) = error {
             assert_eq!(size, 300);
         } else {
-            panic!()
+            panic!("{:?}", error)
         }
     }
     
