@@ -220,6 +220,7 @@ impl FieldType {
             (GLOB, FNAM) => FieldType::String(None),
             (PCDT, FNAM) => FieldType::U8ListZip,
             (_, FNAM) => FieldType::StringZ,
+            (PLAY, FRMR) => FieldType::I64,
             (_, FRMR) => FieldType::I32,
             (_, GMDT) => FieldType::U8ListZip,
             (TES3, HEDR) => FieldType::FileMetadata,
