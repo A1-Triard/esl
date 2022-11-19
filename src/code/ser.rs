@@ -542,18 +542,26 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     }
 
     fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let v = self.code_page.encoding()
-            .encode(&v.to_string(), EncoderTrap::Strict)
-            .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?;
-        debug_assert_eq!(v.len(), 1);
-        self.serialize_u8(v[0])
+        let bytes = if let Some(encoding) = self.code_page.encoding() {
+            encoding
+                .encode(&v.to_string(), EncoderTrap::Strict)
+                .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?
+        } else {
+            v.to_string().into_bytes()
+        };
+        self.writer.write_all(&bytes)?;
+        Ok(())
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let bytes = self.code_page.encoding()
-            .encode(v, EncoderTrap::Strict)
-            .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?;
-        self.serialize_bytes(&bytes)
+        if let Some(encoding) = self.code_page.encoding() {
+            let bytes = encoding
+                .encode(v, EncoderTrap::Strict)
+                .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?;
+            self.serialize_bytes(&bytes)
+        } else {
+            self.serialize_bytes(v.as_bytes())
+        }
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
@@ -715,25 +723,24 @@ mod tests {
     #[derive(Serialize)]
     struct Abcd {
         a: i16,
-        b: char,
         c: u32,
         d: String
     }
 
     #[test]
     fn vec_serialize_struct() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 90, 0, 0, 0, 83]);
     }
 
     #[test]
     fn vec_serialize_struct_not_isolated() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         s.serialize(EslSerializer::new(false, CodePage::Russian, &mut v)).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
     #[derive(Hash, Eq, PartialEq)]
@@ -817,20 +824,20 @@ mod tests {
 
     #[test]
     fn serialize_struct() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
         s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 90, 0, 0, 0, 83]);
     }
 
     #[test]
     fn serialize_struct_not_isolated() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
+        let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
         s.serialize(EslSerializer::new(false, CodePage::Russian, &mut w)).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
+        assert_eq!(v, [5, 0, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
     #[test]

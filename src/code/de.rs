@@ -7,6 +7,7 @@ use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::str::{self};
 
 use crate::code::code_page::*;
 
@@ -16,6 +17,7 @@ pub enum Error {
     Io(io::Error),
     InvalidBoolEncoding(u8),
     InvalidSize { actual: usize, expected: u32 },
+    Utf8,
 }
 
 impl Display for Error {
@@ -25,6 +27,7 @@ impl Display for Error {
             Error::Io(e) => Display::fmt(e, f),
             Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({})", b),
             Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {}, expected = {})", actual, expected),
+            Error::Utf8 => write!(f, "invalid UTF-8 encoded string"),
         }
     }
 }
@@ -365,19 +368,48 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
     }
     
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let b = self.reader.read_u8()?;
-        let v = self.code_page.encoding().decode(&[b], DecoderTrap::Strict).unwrap();
-        visitor.visit_char(v.chars().next().unwrap())
+        let c = if let Some(encoding) = self.code_page.encoding() {
+            let b = self.reader.read_u8()?;
+            encoding.decode(&[b], DecoderTrap::Strict).unwrap()
+        } else {
+            let b = self.reader.read_u8()?;
+            let tail = if b & 0x80 == 0x00 {
+                0
+            } else if b & 0xE0 == 0xC0 {
+                1
+            } else if b & 0xF0 == 0xE0 {
+                2
+            } else if b & 0xF8 == 0xF0 {
+                3
+            } else {
+                return Err(Error::Utf8);
+            };
+            let mut bytes = self.reader.read_bytes(tail)?.into_owned();
+            bytes.insert(0, b);
+            String::from_utf8(bytes).map_err(|_| Error::Utf8)?
+        };
+        visitor.visit_char(c.chars().next().unwrap())
     }
 
-    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        self.deserialize_string(visitor)
+    fn deserialize_str<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        let size = self.deserialize_size()? as usize;
+        let bytes = self.reader.read_bytes(size)?;
+        if let Some(encoding) = self.code_page.encoding() {
+            let s = encoding.decode(&bytes, DecoderTrap::Strict).unwrap();
+            visitor.visit_string(s)
+        } else {
+            visitor.visit_str(str::from_utf8(&bytes).map_err(|_| Error::Utf8)?)
+        }
     }
 
     fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         let size = self.deserialize_size()? as usize;
         let bytes = self.reader.read_bytes(size)?;
-        let s = self.code_page.encoding().decode(&bytes, DecoderTrap::Strict).unwrap();
+        let s = if let Some(encoding) = self.code_page.encoding() {
+            encoding.decode(&bytes, DecoderTrap::Strict).unwrap()
+        } else {
+            String::from_utf8(bytes.into_owned()).map_err(|_| Error::Utf8)?
+        };
         visitor.visit_string(s)
     }
 
@@ -507,14 +539,13 @@ mod tests {
     #[derive(Deserialize, Eq, PartialEq, Debug)]
     struct Abcd {
         a: i16,
-        b: char,
         c: u32,
         d: String
     }
 
     #[test]
     fn vec_deserialize_struct() {
-        let data = [5, 0, 219, 90, 0, 0, 0, 83];
+        let data = [5, 0, 90, 0, 0, 0, 83];
         let d = Abcd::deserialize(EslDeserializer {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
@@ -522,12 +553,12 @@ mod tests {
             code_page: CodePage::English,
             phantom: PhantomData
         }).unwrap();
-        assert_eq!(d, Abcd { a: 5, b: '\u{DB}', c: 90, d: "S".into() });
+        assert_eq!(d, Abcd { a: 5, c: 90, d: "S".into() });
     }
 
     #[test]
     fn vec_serialize_struct_not_isolated() {
-        let data = [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83];
+        let data = [5, 0, 90, 0, 0, 0, 1, 0, 0, 0, 83];
         let d = Abcd::deserialize(EslDeserializer {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
@@ -535,7 +566,7 @@ mod tests {
             code_page: CodePage::Russian,
             phantom: PhantomData
         }).unwrap();
-        assert_eq!(d, Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() });
+        assert_eq!(d, Abcd { a: 5, c: 90, d: "S".into() });
     }
 
     #[derive(Hash, Eq, PartialEq)]
@@ -606,115 +637,4 @@ mod tests {
             Key { variant: Variant::Variant1, s: "стр".into() }
         )], 22);
     }
-
-    /*#[derive(Serialize, Hash, Eq, PartialEq)]
-    struct Key2((Key, Key));
-
-    #[test]
-    fn vec_serialize_newtype_key() {
-        let mut s: HashMap<Key2, u64> = HashMap::new();
-        s.insert(Key2((
-            Key { variant: Variant::Variant2, s: "str".into() },
-            Key { variant: Variant::Variant1, s: "стр".into() }
-        )), 22);
-        let mut v = Vec::new();
-        s.serialize(VecEslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
-            1, 3, 0, 0, 0, 241, 242, 240,
-            8, 0, 0, 0,
-            22, 0, 0, 0, 0, 0, 0, 0
-        ]);
-    }
-
-    #[test]
-    fn serialize_struct() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
-        let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 83]);
-    }
-
-    #[test]
-    fn serialize_struct_not_isolated() {
-        let s = Abcd { a: 5, b: 'Ы', c: 90, d: "S".into() };
-        let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: false,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, [5, 0, 219, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
-    }
-
-    #[test]
-    fn serialize_map() {
-        let mut s = Map {
-            map: HashMap::new(),
-            unit: (),
-            i: -3
-        };
-        s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
-        let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
-            5, 0, 0, 0, 118, 97, 108, 117, 101,
-            253
-        ]);
-    }
-
-    #[test]
-    fn serialize_tuple_key() {
-        let mut s: HashMap<(Key, Key), u64> = HashMap::new();
-        s.insert((
-            Key { variant: Variant::Variant2, s: "str".into() },
-            Key { variant: Variant::Variant1, s: "стр".into() }
-        ), 22);
-        let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
-            8, 0, 0, 0,
-            1, 3, 0, 0, 0, 241, 242, 240,
-            22, 0, 0, 0, 0, 0, 0, 0
-        ]);
-    }
-
-    #[test]
-    fn serialize_newtype_key() {
-        let mut s: HashMap<Key2, u64> = HashMap::new();
-        s.insert(Key2((
-            Key { variant: Variant::Variant2, s: "str".into() },
-            Key { variant: Variant::Variant1, s: "стр".into() }
-        )), 22);
-        let mut v = Vec::new();
-        s.serialize(EslSerializer {
-            isolated: true,
-            code_page: CodePage::Russian,
-            writer: &mut v
-        }).unwrap();
-        assert_eq!(v, vec![
-            2, 3, 0, 0, 0, 115, 116, 114,
-            1, 3, 0, 0, 0, 241, 242, 240,
-            8, 0, 0, 0,
-            22, 0, 0, 0, 0, 0, 0, 0
-        ]);
-    }*/
 }
