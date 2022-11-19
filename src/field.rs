@@ -502,7 +502,7 @@ pub struct ScriptVars {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ScriptMetadata {
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub name: String,
     pub vars: ScriptVars,
     pub data_size: u32,
@@ -527,9 +527,9 @@ pub struct FileMetadata {
     pub version: u32,
     #[serde(rename="type")]
     pub file_type: FileType,
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub author: String,
-    #[serde(with = "multiline_256_dos")]
+    #[serde(with="multiline_256_dos")]
     pub description: Vec<String>,
     pub records: u32
 }
@@ -747,7 +747,7 @@ impl From<NpcNHRSurrogate12> for Npc {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Item {
     pub count: i32,
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub item_id: String,
 }
 
@@ -891,18 +891,18 @@ pub struct AiTarget {
     #[serde(with="float_32")]
     pub z: f32,
     pub duration: u16,
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub actor_id: String,
-    #[serde(with = "bool_u8")]
+    #[serde(with="bool_u8")]
     pub reset: bool,
     pub flags: AiTargetFlags
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct AiActivate {
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub object_id: String,
-    #[serde(with = "bool_u8")]
+    #[serde(with="bool_u8")]
     pub reset: bool
 }
 
@@ -1530,7 +1530,7 @@ enum_serde!(LightFlags, "light flags", u32, bits, try from_bits, Unsigned, u64);
 #[educe(Eq, PartialEq)]
 pub struct Light {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     pub time: i32,
@@ -1543,10 +1543,10 @@ pub struct Light {
 #[educe(Eq, PartialEq)]
 pub struct MiscItem {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    #[serde(with = "bool_u32")]
+    #[serde(with="bool_u32")]
     pub is_key: bool,
 }
 
@@ -1570,10 +1570,10 @@ pub struct Apparatus {
     #[serde(rename="type")]
     pub apparatus_type: ApparatusType,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub quality: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
 }
@@ -1605,7 +1605,7 @@ pub struct Armor {
     #[serde(rename="type")]
     pub armor_type: ArmorType,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     pub health: u32,
@@ -1650,17 +1650,17 @@ enum_serde!(WeaponFlags, "weapon flags", u32, bits, try from_bits, Unsigned, u64
 #[educe(Eq, PartialEq)]
 pub struct Weapon {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     #[serde(rename="type")]
     pub weapon_type: WeaponType,
     pub health: u16,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub speed: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub reach: f32,
     pub enchantment: u16,
     pub chop_min: u8,
@@ -1779,7 +1779,7 @@ enum_serde!(ClothingType, "clothing type", as u32, Unsigned, u64);
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct BodyPart {
     pub kind: BodyPartKind,
-    #[serde(with = "bool_u8")]
+    #[serde(with="bool_u8")]
     pub vampire: bool,
     pub flags: BodyPartFlags,
     #[serde(rename="type")]
@@ -1792,7 +1792,7 @@ pub struct Clothing {
     #[serde(rename="type")]
     pub clothing_type: ClothingType,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u16,
     pub enchantment: u16,
@@ -1818,7 +1818,7 @@ pub struct Enchantment {
     pub enchantment_type: EnchantmentType,
     pub cost: u32,
     pub charge_amount: u32,
-    #[serde(with = "bool_either_i16")]
+    #[serde(with="bool_either_i16")]
     pub auto_calculate: Either<bool, bool>,
     pub padding: u16,
 }
@@ -1827,11 +1827,11 @@ pub struct Enchantment {
 #[educe(Eq, PartialEq)]
 pub struct Tool {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub quality: f32,
     pub uses: u32,
 }
@@ -1840,12 +1840,12 @@ pub struct Tool {
 #[educe(Eq, PartialEq)]
 pub(crate) struct RepairItem {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
     pub uses: u32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub quality: f32,
 }
 
@@ -1865,22 +1865,22 @@ impl From<Tool> for RepairItem {
 #[educe(Eq, PartialEq)]
 pub struct Position {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub x: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub y: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub z: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub x_rot: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub y_rot: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub z_rot: f32,
 }
 
@@ -1906,12 +1906,14 @@ pub struct Cell {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename="Cell")]
 struct CellHRSurrogate {
     pub flags: CellFlags,
     pub position: CellPosition,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename="Cell")]
 struct CellNHRSurrogate {
     pub flags: CellFlags,
     pub position: (i32, i32),
@@ -1976,10 +1978,10 @@ impl<'de> Deserialize<'de> for Cell {
 pub enum CellPosition {
     Interior {
         #[educe(PartialEq(method="eq_f32"))]
-        #[serde(with = "float_32")]
+        #[serde(with="float_32")]
         x: f32,
         #[educe(PartialEq(method="eq_f32"))]
-        #[serde(with = "float_32")]
+        #[serde(with="float_32")]
         y: f32
     },
     Exterior { x: i32, y: i32 }
@@ -2018,7 +2020,7 @@ pub struct Interior {
     pub sunlight: Color,
     pub fog: Color,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub fog_density: f32,
 }
 
@@ -2056,7 +2058,7 @@ pub struct WeatherEx {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct SoundChance {
-    #[serde(with = "string_32")]
+    #[serde(with="string_32")]
     pub sound_id: String,
     pub chance: u8,
 }
@@ -2065,10 +2067,10 @@ pub struct SoundChance {
 #[educe(Eq, PartialEq)]
 pub struct Potion {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub weight: f32,
     pub value: u32,
-    #[serde(with = "bool_u32")]
+    #[serde(with="bool_u32")]
     pub auto_calculate_value: bool,
 }
 
@@ -2144,10 +2146,10 @@ impl IndexMut<Sex> for RaceAttribute {
 #[educe(Eq, PartialEq)]
 pub struct RaceParameter {
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub male: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub female: f32,
 }
 
@@ -2305,16 +2307,16 @@ pub struct SkillMetadata {
     pub governing_attribute: Attribute,
     pub specialization: Specialization,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub use_value_1: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub use_value_2: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub use_value_3: f32,
     #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with = "float_32")]
+    #[serde(with="float_32")]
     pub use_value_4: f32,
 }
 
