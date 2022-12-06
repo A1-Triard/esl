@@ -21,7 +21,7 @@ pub fn deserialize_none_u8<'de, D>(none: u8, deserializer: D) -> Result<(), D::E
     } else {
         let d = u8::deserialize(deserializer)?;
         if d != none {
-            let e: &str = &format!("{}", none);
+            let e: &str = &format!("{none}");
             Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &e))
         } else {
             Ok(())
@@ -91,7 +91,7 @@ pub fn serialize_option_index<I: Copy + Eq + Display, T: Copy, S>(
         let v = match v {
             Left(Some(i)) => {
                 if i == none || from(i).is_some() {
-                    let err = format!("{} is not valid undefined {} value", i, name);
+                    let err = format!("{i} is not valid undefined {name} value");
                     return Err(S::Error::custom(err));
                 }
                 i
@@ -175,7 +175,7 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
         if d == 0xFFFFFFFF {
             serializer.serialize_f32(v)
         } else {
-            serializer.serialize_str(&format!("nan{:08X}", d))
+            serializer.serialize_str(&format!("nan{d:08X}"))
         }
     } else {
         serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap().copysign(v as f64))
@@ -241,7 +241,7 @@ pub fn serialize_string_tuple<S>(s: &str, len: usize, serializer: S) -> Result<S
             s_len += 1;
         }
         if s_len > len {
-            return Err(S::Error::custom(format!("string length is above {} chars", len)));
+            return Err(S::Error::custom(format!("string length is above {len} chars")));
         }
         for _ in s_len .. len {
             serializer.serialize_element(&'\0')?;
@@ -327,7 +327,7 @@ pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<u
                 text_len += 1;
             }
             if text_len > len {
-                return Err(S::Error::custom(format!("string list total length is above {} chars", len)));
+                return Err(S::Error::custom(format!("string list total length is above {len} chars")));
             }
             for _ in text_len .. len {
                 serializer.serialize_element(&'\0')?;
@@ -351,7 +351,7 @@ impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         if let Some(len) = self.len {
-            write!(f, "{} character string", len)
+            write!(f, "{len} character string")
         } else {
             write!(f, "string")
         }

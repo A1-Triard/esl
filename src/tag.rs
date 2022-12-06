@@ -31,7 +31,7 @@ impl Display for Tag {
         let c1 = char::from((self.dword >> 8) as u8);
         let c2 = char::from((self.dword >> 16) as u8);
         let c3 = char::from((self.dword >> 24) as u8);
-        write!(f, "{}{}{}{}", c0, c1, c2, c3)
+        write!(f, "{c0}{c1}{c2}{c3}")
     }
 }
 

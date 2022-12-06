@@ -25,8 +25,8 @@ impl Display for Error {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
             Error::Io(e) => Display::fmt(e, f),
-            Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({})", b),
-            Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {}, expected = {})", actual, expected),
+            Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({b})"),
+            Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {actual}, expected = {expected})"),
             Error::Utf8 => write!(f, "invalid UTF-8 encoded string"),
         }
     }
@@ -43,7 +43,7 @@ impl std::error::Error for Error {
 }
 
 impl de::Error for Error {
-    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{}", msg)) }
+    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{msg}")) }
 }
 
 impl From<io::Error> for Error {

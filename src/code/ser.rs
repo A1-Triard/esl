@@ -24,11 +24,11 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
-            Error::LargeObject(size) => write!(f, "object has too large size ({} B)", size),
-            Error::UnrepresentableChar(c, p) => write!(f, "the '{}' char is not representable in {:?} code page", c, p),
+            Error::LargeObject(size) => write!(f, "object has too large size ({size} B)"),
+            Error::UnrepresentableChar(c, p) => write!(f, "the '{c}' char is not representable in {p:?} code page"),
             Error::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
             Error::VariantIndexMismatch { variant_index, variant_size } =>
-                write!(f, "variant index ({}) should be equal to variant size ({})", variant_index, variant_size),
+                write!(f, "variant index ({variant_index}) should be equal to variant size ({variant_size})"),
             Error::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
         }
     }
@@ -41,7 +41,7 @@ impl std::error::Error for Error {
 }
 
 impl ser::Error for Error {
-    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{}", msg)) }
+    fn custom<T: Display>(msg: T) -> Self { Error::Custom(format!("{msg}")) }
 }
 
 #[derive(Debug)]

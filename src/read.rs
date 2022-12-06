@@ -95,7 +95,7 @@ impl<E> Maybe<E> {
 }
 
 impl<I, E> ParseError<I> for Maybe<E> {
-    fn from_error_kind(_input: I, kind: ErrorKind) -> Self { panic!("{:?}", kind) }
+    fn from_error_kind(_input: I, kind: ErrorKind) -> Self { panic!("{kind:?}") }
 
     fn append(_input: I, _kind: ErrorKind, _other: Self) -> Self { panic!() }
 
@@ -230,7 +230,7 @@ fn decode_string(code_page: CodePage, bytes: &[u8], offset: u32) -> Result<Strin
     }
 }
 
-fn consume<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], &'a [u8], E> {
+fn consume<E>(input: &[u8]) -> IResult<&[u8], &[u8], E> {
     Ok((&input[input.len()..], input))
 }
 
@@ -1857,41 +1857,41 @@ pub enum Unknown {
 impl Display for Unknown {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Unknown::FileType(v) => write!(f, "file type {:08X}h", v),
-            Unknown::EffectRange(v) => write!(f, "effect range {}", v),
-            Unknown::DialogType(v) => write!(f, "dialog type {}", v),
-            Unknown::SpellType(v) => write!(f, "spell type {}", v),
-            Unknown::SpellFlags(v) => write!(f, "spell flags {:08X}h", v),
-            Unknown::AiServices(v) => write!(f, "AI services {:08X}h", v),
-            Unknown::NpcFlags(v) => write!(f, "NPC flags {:02X}h", v),
-            Unknown::CreatureFlags(v) => write!(f, "creature flags {:02X}h", v),
-            Unknown::Blood(v) => write!(f, "blood {}", v),
-            Unknown::ContainerFlags(v) => write!(f, "container flags {:08X}h", v),
-            Unknown::CreatureType(v) => write!(f, "creature type {}", v),
-            Unknown::LightFlags(v) => write!(f, "light flags {:08X}h", v),
-            Unknown::ApparatusType(v) => write!(f, "apparatus type {}", v),
-            Unknown::WeaponFlags(v) => write!(f, "weapon flags {:08X}h", v),
-            Unknown::WeaponType(v) => write!(f, "weapon type {}", v),
-            Unknown::ArmorType(v) => write!(f, "armor type {}", v),
-            Unknown::BodyPartKind(v) => write!(f, "body part kind {}", v),
-            Unknown::BodyPartType(v) => write!(f, "body part type {}", v),
-            Unknown::BodyPartFlags(v) => write!(f, "body part flags {:02X}h", v),
-            Unknown::BipedObject(v) => write!(f, "biped object {}", v),
-            Unknown::ClothingType(v) => write!(f, "clothing type {}", v),
-            Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {:08X}h", v),
-            Unknown::AiTargetFlags(v) => write!(f, "AI travel flags {:02X}h", v),
-            Unknown::EnchantmentType(v) => write!(f, "enchantment type {}", v),
-            Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {}", v),
-            Unknown::CellFlags(v) => write!(f, "cell flags {:08X}h", v),
-            Unknown::EffectFlags(v) => write!(f, "effect flags {:08X}h", v),
-            Unknown::RaceFlags(v) => write!(f, "race flags {:08X}h", v),
-            Unknown::Specialization(v) => write!(f, "specialization {}", v),
-            Unknown::Attribute(v) => write!(f, "attribute {}", v),
-            Unknown::Skill(v) => write!(f, "skill {}", v),
-            Unknown::School(v) => write!(f, "school {}", v),
-            Unknown::SoundGen(v) => write!(f, "sound gen {}", v),
-            Unknown::EffectIndex(v) => write!(f, "effect index {}", v),
-            Unknown::BookFlags(v) => write!(f, "book flags {:08X}h", v),
+            Unknown::FileType(v) => write!(f, "file type {v:08X}h"),
+            Unknown::EffectRange(v) => write!(f, "effect range {v}"),
+            Unknown::DialogType(v) => write!(f, "dialog type {v}"),
+            Unknown::SpellType(v) => write!(f, "spell type {v}"),
+            Unknown::SpellFlags(v) => write!(f, "spell flags {v:08X}h"),
+            Unknown::AiServices(v) => write!(f, "AI services {v:08X}h"),
+            Unknown::NpcFlags(v) => write!(f, "NPC flags {v:02X}h"),
+            Unknown::CreatureFlags(v) => write!(f, "creature flags {v:02X}h"),
+            Unknown::Blood(v) => write!(f, "blood {v}"),
+            Unknown::ContainerFlags(v) => write!(f, "container flags {v:08X}h"),
+            Unknown::CreatureType(v) => write!(f, "creature type {v}"),
+            Unknown::LightFlags(v) => write!(f, "light flags {v:08X}h"),
+            Unknown::ApparatusType(v) => write!(f, "apparatus type {v}"),
+            Unknown::WeaponFlags(v) => write!(f, "weapon flags {v:08X}h"),
+            Unknown::WeaponType(v) => write!(f, "weapon type {v}"),
+            Unknown::ArmorType(v) => write!(f, "armor type {v}"),
+            Unknown::BodyPartKind(v) => write!(f, "body part kind {v}"),
+            Unknown::BodyPartType(v) => write!(f, "body part type {v}"),
+            Unknown::BodyPartFlags(v) => write!(f, "body part flags {v:02X}h"),
+            Unknown::BipedObject(v) => write!(f, "biped object {v}"),
+            Unknown::ClothingType(v) => write!(f, "clothing type {v}"),
+            Unknown::AiTravelFlags(v) => write!(f, "AI travel flags {v:08X}h"),
+            Unknown::AiTargetFlags(v) => write!(f, "AI travel flags {v:02X}h"),
+            Unknown::EnchantmentType(v) => write!(f, "enchantment type {v}"),
+            Unknown::EnchantmentAutoCalculate(v) => write!(f, "enchantment 'Auto Calculate' value {v}"),
+            Unknown::CellFlags(v) => write!(f, "cell flags {v:08X}h"),
+            Unknown::EffectFlags(v) => write!(f, "effect flags {v:08X}h"),
+            Unknown::RaceFlags(v) => write!(f, "race flags {v:08X}h"),
+            Unknown::Specialization(v) => write!(f, "specialization {v}"),
+            Unknown::Attribute(v) => write!(f, "attribute {v}"),
+            Unknown::Skill(v) => write!(f, "skill {v}"),
+            Unknown::School(v) => write!(f, "school {v}"),
+            Unknown::SoundGen(v) => write!(f, "sound gen {v}"),
+            Unknown::EffectIndex(v) => write!(f, "effect index {v}"),
+            Unknown::BookFlags(v) => write!(f, "book flags {v:08X}h"),
         }
     }
 }
@@ -1935,10 +1935,10 @@ pub enum Invalid {
 impl Display for Invalid {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Invalid::Color(v) => write!(f, "RGB color {:08X}h", v),
-            Invalid::ColorComponent(v) => write!(f, "RGB color component {}", v),
-            Invalid::Bool(v) => write!(f, "boolean {}", v),
-            Invalid::MarkerU8(v) => write!(f, "one-byte marker {}", v),
+            Invalid::Color(v) => write!(f, "RGB color {v:08X}h"),
+            Invalid::ColorComponent(v) => write!(f, "RGB color component {v}"),
+            Invalid::Bool(v) => write!(f, "boolean {v}"),
+            Invalid::MarkerU8(v) => write!(f, "one-byte marker {v}"),
         }
     }
 }
