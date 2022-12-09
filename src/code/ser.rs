@@ -677,7 +677,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
         let is_fixed_string_serializer = if len == 1 {
-            if variant_index != FIXED_STRING_INDEX {
+            if variant_index != FIXED_STRING_VARIANT_INDEX {
                 return Err(Error::InvalidFixedStringVariantIndex(variant_index).into());
             }
             true
@@ -1439,6 +1439,33 @@ mod tests {
             1, 3, 0, 0, 0, 241, 242, 240,
             8, 0, 0, 0,
             22, 0, 0, 0, 0, 0, 0, 0
+        ]);
+    }
+
+    struct String32(String);
+
+    impl Serialize for String32 {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut serializer = serializer.serialize_tuple(2)?;
+            serializer.serialize_element(&[0u8; 32])?;
+            serializer.serialize_element(&self.0)?;
+            serializer.end()
+        }
+    }
+
+    #[test]
+    fn serialize_fixed_sting() {
+        let mut v = Vec::new();
+        let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
+        let s = EslSerializer::new(true, CodePage::Russian, &mut w);
+        let mut s = s.serialize_tuple_variant("", FIXED_STRING_VARIANT_INDEX, "", 1).unwrap();
+        <StructSerializer<_> as SerializeTupleVariant>::serialize_field(&mut s, &String32("AbcdEfgh".into())).unwrap();
+        s.end().unwrap();
+        assert_eq!(v, vec![
+            65, 98, 99, 100, 69, 102, 103, 104,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
         ]);
     }
 }
