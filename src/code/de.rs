@@ -575,6 +575,8 @@ pub(crate) struct FixedStringDeserializer<'a, 'de, R: Reader<'de>> {
 impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for FixedStringDeserializer<'a, 'de, R> {
     type Error = Error;
 
+    fn size_hint(&self) -> Option<usize> { Some(2) }
+
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         let Some(field) = self.field else { return Ok(None); };
         self.field = match field {
@@ -772,6 +774,8 @@ pub(crate) struct FixedStringZeroesDeserializer<'de> {
 impl<'de> SeqAccess<'de> for FixedStringZeroesDeserializer<'de> {
     type Error = Error;
 
+    fn size_hint(&self) -> Option<usize> { Some(self.size) }
+
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.size == 0 { return Ok(None); }
         self.size -= 1;
@@ -889,5 +893,58 @@ mod tests {
             Key { variant: Variant::Variant2, s: "str".into() },
             Key { variant: Variant::Variant1, s: "стр".into() }
         )], 22);
+    }
+
+    #[derive(Debug, Eq, PartialEq, Hash)]
+    struct FixedString32(String);
+
+    struct FixedString32Deserializer;
+
+    impl<'de> Deserialize<'de> for FixedString32 {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_enum("", &[""], FixedString32Deserializer)
+        }
+    }
+
+    impl<'de> Visitor<'de> for FixedString32Deserializer {
+        type Value = FixedString32;
+
+        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+            write!(f, "FixedString32")
+        }
+
+        fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
+            let (variant_index, data): (u32, _) = data.variant()?;
+            assert_eq!(variant_index, FIXED_STRING_VARIANT_INDEX);
+            data.tuple_variant(2, self)
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            assert_eq!(seq.size_hint(), Some(2));
+            let zeroes: [u8; 32] = seq.next_element()?.unwrap();
+            let string: String = seq.next_element()?.unwrap();
+            assert!(zeroes.iter().copied().all(|x| x == 0));
+            Ok(FixedString32(string))
+        }
+    }
+
+    #[test]
+    fn vec_deserialize_fixed_string() {
+        let data = vec![
+            65, 98, 99, 100, 69, 102, 103, 104,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0
+        ];
+        let d: HashMap<FixedString32, ()> = HashMap::deserialize(EslDeserializer {
+            reader: &mut (&data[..]),
+            map_entry_value_size: None,
+            isolated: Some(data.len() as u32),
+            code_page: CodePage::Russian,
+            phantom: PhantomData
+        }).unwrap();
+        let d = d.into_keys().collect::<Vec<_>>();
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].0, "AbcdEfgh");
     }
 }
