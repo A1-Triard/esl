@@ -18,6 +18,7 @@ pub enum Error {
     InvalidBoolEncoding(u8),
     InvalidSize { actual: usize, expected: u32 },
     Utf8,
+    InvalidFixedStringDeserializerUsage,
 }
 
 impl Display for Error {
@@ -28,6 +29,7 @@ impl Display for Error {
             Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({b})"),
             Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {actual}, expected = {expected})"),
             Error::Utf8 => write!(f, "invalid UTF-8 encoded string"),
+            Error::InvalidFixedStringDeserializerUsage => write!(f, "invalid fixed string deserializer usage"),
         }
     }
 }
@@ -227,7 +229,7 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
 
 #[derive(Debug)]
 pub(crate) struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
-    size: u32,
+    size: Option<u32>,
     code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>
@@ -236,12 +238,20 @@ pub(crate) struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
 impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R> {
     type Error = Error;
 
-    fn unit_variant(self) -> Result<(), Self::Error> { Ok(()) }
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        if self.size.is_none() {
+            return Err(Error::InvalidFixedStringDeserializerUsage);
+        }
+        Ok(())
+    }
     
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error> where T: DeserializeSeed<'de> {
+        let Some(size) = self.size else {
+            return Err(Error::InvalidFixedStringDeserializerUsage);
+        };
         seed.deserialize(EslDeserializer {
             map_entry_value_size: None,
-            isolated: Some(self.size),
+            isolated: Some(size),
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData
@@ -249,21 +259,37 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
     }
 
     fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        visitor.visit_seq(StructDeserializer {
-            len,
-            map_entry_value_size: None,
-            isolated: Some((self.reader.pos(), self.size)),
-            code_page: self.code_page,
-            reader: self.reader,
-            phantom: PhantomData,
-        })
+        if let Some(size) = self.size {
+            visitor.visit_seq(StructDeserializer {
+                len,
+                map_entry_value_size: None,
+                isolated: Some((self.reader.pos(), size)),
+                code_page: self.code_page,
+                reader: self.reader,
+                phantom: PhantomData,
+            })
+        } else {
+            if len != 2 {
+                return Err(Error::InvalidFixedStringDeserializerUsage);
+            }
+            visitor.visit_seq(FixedStringDeserializer {
+                size: 0,
+                field: Some(FixedStringField::Zeroes),
+                code_page: self.code_page,
+                reader: self.reader,
+                phantom: PhantomData,
+            })
+        }
     }
 
     fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        let Some(size) = self.size else {
+            return Err(Error::InvalidFixedStringDeserializerUsage);
+        };
         visitor.visit_seq(StructDeserializer {
             len: fields.len(),
             map_entry_value_size: None,
-            isolated: Some((self.reader.pos(), self.size)),
+            isolated: Some((self.reader.pos(), size)),
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
@@ -305,6 +331,14 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
 
     fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         panic!("deserialize_any not supported")
+    }
+
+    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_identifier not supported")
+    }
+    
+    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_ignored_any not supported")
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
@@ -501,14 +535,6 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
     fn deserialize_enum<V>(self, _: &'static str, _: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         visitor.visit_enum(self)
     }
-
-    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("deserialize_identifier");
-    }
-    
-    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("deserialize_ignored_any not supported")
-    }
 }
 
 impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, 'de, R> {
@@ -516,14 +542,241 @@ impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, '
     type Variant = EnumDeserializer<'a, 'de, R>;
 
     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> where V: DeserializeSeed<'de> {
-        let variant_index = self.deserialize_size()?;
-        let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
+        let (size, res) = if let Some(map_entry_value_size) = self.map_entry_value_size {
+            *map_entry_value_size = Some(0);
+            let res: Result<V::Value, Self::Error> = seed.deserialize(FIXED_STRING_VARIANT_INDEX.into_deserializer());
+            (None, res)
+        } else {
+            let variant_index = self.deserialize_size()?;
+            let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
+            (Some(variant_index), res)
+        };
         Ok((res?, EnumDeserializer {
-            size: variant_index,
+            size,
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         }))
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
+enum FixedStringField { Zeroes, String }
+
+#[derive(Debug)]
+pub(crate) struct FixedStringDeserializer<'a, 'de, R: Reader<'de>> {
+    field: Option<FixedStringField>,
+    size: usize,
+    code_page: CodePage,
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>,
+}
+
+impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for FixedStringDeserializer<'a, 'de, R> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
+        let Some(field) = self.field else { return Ok(None); };
+        self.field = match field {
+            FixedStringField::Zeroes => Some(FixedStringField::String),
+            FixedStringField::String => None,
+        };
+        let element = seed.deserialize(FixedStringFieldDeserializer {
+            size: &mut self.size,
+            field, code_page: self.code_page, reader: self.reader, phantom: PhantomData
+        })?;
+        Ok(Some(element))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct FixedStringFieldDeserializer<'r, 'a, 'de, R: Reader<'de>> {
+    field: FixedStringField,
+    size: &'r mut usize,
+    code_page: CodePage,
+    reader: &'a mut R,
+    phantom: PhantomData<&'de ()>,
+}
+
+impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for FixedStringFieldDeserializer<'r, 'a, 'de, R> {
+    type Error = Error;
+
+    fn is_human_readable(&self) -> bool { false }
+
+    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_any not supported")
+    }
+
+    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_identifier not supported")
+    }
+    
+    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_ignored_any not supported")
+    }
+
+    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+    
+    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    serde_if_integer128! {
+        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+            Err(Error::InvalidFixedStringDeserializerUsage)
+        }
+
+        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+            Err(Error::InvalidFixedStringDeserializerUsage)
+        }
+    }
+
+    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        if self.field != FixedStringField::String {
+            return Err(Error::InvalidFixedStringDeserializerUsage);
+        }
+        let bytes = self.reader.read_bytes(*self.size)?;
+        let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
+        let bytes = &bytes[.. bytes.len() - trim];
+        if let Some(encoding) = self.code_page.encoding() {
+            let s = encoding.decode(&bytes, DecoderTrap::Strict).unwrap();
+            visitor.visit_string(s)
+        } else {
+            visitor.visit_str(str::from_utf8(bytes).map_err(|_| Error::Utf8)?)
+        }
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        if self.field == FixedStringField::Zeroes {
+            *self.size = len;
+            visitor.visit_seq(FixedStringZeroesDeserializer {
+                size: len, phantom: PhantomData
+            })
+        } else {
+            Err(Error::InvalidFixedStringDeserializerUsage)
+        }
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        _: &'static str,
+        _: usize,
+        _: V
+    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _: &'static str,
+        _: &'static [&'static str],
+        _: V
+    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        _: &'static str,
+        _: &'static [&'static str],
+        _: V
+    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        Err(Error::InvalidFixedStringDeserializerUsage)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct FixedStringZeroesDeserializer<'de> {
+    size: usize,
+    phantom: PhantomData<&'de ()>,
+}
+
+impl<'de> SeqAccess<'de> for FixedStringZeroesDeserializer<'de> {
+    type Error = Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
+        if self.size == 0 { return Ok(None); }
+        self.size -= 1;
+        let res: Result<T::Value, Self::Error> = seed.deserialize(0u8.into_deserializer());
+        Ok(Some(res?))
     }
 }
 
