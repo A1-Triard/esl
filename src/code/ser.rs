@@ -271,11 +271,11 @@ impl Writer for Size {
 pub(crate) struct FixedStringSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
-    size: Option<usize>,
+    size: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct FixedStringSizeSerializer<'a> {
+pub(crate) struct FixedStringZeroesSerializer<'a> {
     size: &'a mut usize,
 }
 
@@ -311,9 +311,12 @@ pub(crate) struct MapSerializer<'a, W: Writer> {
     value_buf_and_pos: Option<(W::Buf, usize)>,
 }
 
+#[derive(Debug, Copy, Clone)]
+enum FixedStringField { Zeroes, String(usize) }
+
 #[derive(Debug)]
 pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
-    is_fixed_string_serializer: bool,
+    fixed_string_field: Option<Option<FixedStringField>>,
     code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
@@ -391,11 +394,21 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
             if *len == 0 { panic!() }
             *len -= 1;
         }
-        if self.is_fixed_string_serializer {
-            v.serialize(FixedStringSerializer {
-                writer: self.writer, code_page: self.code_page,
-                size: None
-            })?;
+        if let Some(fixed_string_field) = self.fixed_string_field {
+            let Some(fixed_string_field) = fixed_string_field else {
+                return Err(Error::InvalidFixedStringSerializerUsage.into());
+            };
+            match fixed_string_field {
+                FixedStringField::Zeroes => {
+                    let mut size = 0;
+                    v.serialize(FixedStringZeroesSerializer { size: &mut size })?;
+                    self.fixed_string_field = Some(Some(FixedStringField::String(size)));
+                },
+                FixedStringField::String(size) => {
+                    v.serialize(FixedStringSerializer { size, code_page: self.code_page, writer: self.writer })?;
+                    self.fixed_string_field = Some(None);
+                },
+            }
         } else {
             v.serialize(EslSerializer {
                 isolated: self.len.map_or(false, |len| len == 0),
@@ -676,21 +689,21 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        let is_fixed_string_serializer = if len == 1 {
-            if variant_index != FIXED_STRING_VARIANT_INDEX {
+        let fixed_string_field = if self.map_entry_value_buf.is_some() {
+            if len != 2 || variant_index != FIXED_STRING_VARIANT_INDEX {
                 return Err(Error::InvalidFixedStringVariantIndex(variant_index).into());
             }
-            true
+            Some(Some(FixedStringField::Zeroes))
         } else {
-            false
+            None
         };
         if !self.isolated {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
-            is_fixed_string_serializer,
+            fixed_string_field,
             len: Some(len),
-            start_pos_and_variant_index: if is_fixed_string_serializer {
+            start_pos_and_variant_index: if fixed_string_field.is_some() {
                 None
             } else {
                 Some((self.writer.pos(), variant_index))
@@ -707,7 +720,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
-            is_fixed_string_serializer: false,
+            fixed_string_field: None,
             len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
             writer: self.writer, code_page: self.code_page,
@@ -717,7 +730,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(StructSerializer {
-            is_fixed_string_serializer: false,
+            fixed_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -727,7 +740,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_tuple_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
         Ok(StructSerializer {
-            is_fixed_string_serializer: false,
+            fixed_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -737,7 +750,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(StructSerializer {
-            is_fixed_string_serializer: false,
+            fixed_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -913,11 +926,11 @@ impl Serializer for FixedStringZeroSerializer {
     }
 }
 
-impl<'a> Serializer for FixedStringSizeSerializer<'a> {
+impl<'a> Serializer for FixedStringZeroesSerializer<'a> {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = Impossible<(), Self::Error>;
-    type SerializeTuple = FixedStringSizeSerializer<'a>;
+    type SerializeTuple = FixedStringZeroesSerializer<'a>;
     type SerializeTupleStruct = Impossible<(), Self::Error>;
     type SerializeTupleVariant = Impossible<(), Self::Error>;
     type SerializeStruct = Impossible<(), Self::Error>;
@@ -1060,7 +1073,7 @@ impl<'a> Serializer for FixedStringSizeSerializer<'a> {
     }
 }
 
-impl<'a> SerializeTuple for FixedStringSizeSerializer<'a> {
+impl<'a> SerializeTuple for FixedStringZeroesSerializer<'a> {
     type Ok = ();
     type Error = IoError;
 
@@ -1077,7 +1090,7 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = Impossible<(), Self::Error>;
-    type SerializeTuple = FixedStringSerializer<'a, W>;
+    type SerializeTuple = Impossible<(), Self::Error>;
     type SerializeTupleStruct = Impossible<(), Self::Error>;
     type SerializeTupleVariant = Impossible<(), Self::Error>;
     type SerializeStruct = Impossible<(), Self::Error>;
@@ -1149,9 +1162,6 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let Some(size) = self.size else {
-            return Err(Error::InvalidFixedStringSerializerUsage.into());
-        };
         let mut bytes = if let Some(encoding) = self.code_page.encoding() {
             encoding
                 .encode(v, EncoderTrap::Strict)
@@ -1162,10 +1172,10 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
         if bytes.last() == Some(&0) {
             return Err(Error::FixedStringTailZero.into());
         }
-        if bytes.len() > size {
-            return Err(Error::FixedStringNotFit { max_len: size, len: bytes.len() }.into());
+        if bytes.len() > self.size {
+            return Err(Error::FixedStringNotFit { max_len: self.size, len: bytes.len() }.into());
         }
-        for _ in bytes.len() .. size {
+        for _ in bytes.len() .. self.size {
             bytes.push(0);
         }
         self.writer.write_all(&bytes)?;
@@ -1218,11 +1228,8 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
         Err(Error::InvalidFixedStringSerializerUsage.into())
     }
 
-    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        if len != 2 {
-            return Err(Error::InvalidFixedStringSerializerUsage.into());
-        }
-        Ok(self)
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
     }
 
     fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
@@ -1239,26 +1246,6 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
         Err(Error::InvalidFixedStringSerializerUsage.into())
-    }
-}
-
-impl<'a, W: Writer> SerializeTuple for FixedStringSerializer<'a, W> {
-    type Ok = ();
-    type Error = IoError;
-
-    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        if self.size.is_none() {
-            let mut size = 0;
-            v.serialize(FixedStringSizeSerializer { size: &mut size })?;
-            self.size = Some(size);
-            Ok(())
-        } else {
-            v.serialize(FixedStringSerializer { size: self.size, code_page: self.code_page, writer: self.writer })
-        }
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(())
     }
 }
 
