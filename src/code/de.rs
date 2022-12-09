@@ -896,21 +896,21 @@ mod tests {
     }
 
     #[derive(Debug, Eq, PartialEq, Hash)]
-    struct FixedString32(String);
+    struct String32(String);
 
-    struct FixedString32Deserializer;
+    struct String32Deserializer;
 
-    impl<'de> Deserialize<'de> for FixedString32 {
+    impl<'de> Deserialize<'de> for String32 {
         fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            deserializer.deserialize_enum("", &[""], FixedString32Deserializer)
+            deserializer.deserialize_enum("", &[""], String32Deserializer)
         }
     }
 
-    impl<'de> Visitor<'de> for FixedString32Deserializer {
-        type Value = FixedString32;
+    impl<'de> Visitor<'de> for String32Deserializer {
+        type Value = String32;
 
         fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "FixedString32")
+            write!(f, "String32")
         }
 
         fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
@@ -924,7 +924,7 @@ mod tests {
             let zeroes: [u8; 32] = seq.next_element()?.unwrap();
             let string: String = seq.next_element()?.unwrap();
             assert!(zeroes.iter().copied().all(|x| x == 0));
-            Ok(FixedString32(string))
+            Ok(String32(string))
         }
     }
 
@@ -936,7 +936,7 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         ];
-        let d: HashMap<FixedString32, ()> = HashMap::deserialize(EslDeserializer {
+        let d: HashMap<String32, ()> = HashMap::deserialize(EslDeserializer {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
             isolated: Some(data.len() as u32),
