@@ -2,7 +2,7 @@ use serde::{Serializer, Serialize};
 use std::mem::{replace};
 use std::fmt::{self, Display, Debug, Formatter};
 use encoding::{EncoderTrap};
-use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct};
+use serde::ser::{self, Impossible, SerializeSeq, SerializeTuple, SerializeTupleStruct};
 use serde::ser::{SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
 use serde::serde_if_integer128;
 use std::io::{self, Write};
@@ -18,6 +18,10 @@ pub enum Error {
     ZeroSizedLastSequenceElement,
     VariantIndexMismatch { variant_index: u32, variant_size: u32 },
     ZeroSizedOptional,
+    InvalidFixedStringVariantIndex(u32),
+    InvalidFixedStringSerializerUsage,
+    FixedStringNotFit { max_len: usize, len: usize },
+    FixedStringTailZero,
 }
 
 impl Display for Error {
@@ -30,6 +34,12 @@ impl Display for Error {
             Error::VariantIndexMismatch { variant_index, variant_size } =>
                 write!(f, "variant index ({variant_index}) should be equal to variant size ({variant_size})"),
             Error::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
+            Error::InvalidFixedStringVariantIndex(variant_index) =>
+                write!(f, "invalid fixed string variant index ({variant_index})"),
+            Error::InvalidFixedStringSerializerUsage => write!(f, "invalid fixed string serializer usage"),
+            Error::FixedStringNotFit { max_len, len } =>
+                write!(f, "fixed string (len = {len}) does not fit (max len = {max_len})"),
+            Error::FixedStringTailZero => write!(f, "fixed string value has tail zero"),
         }
     }
 }
@@ -258,6 +268,21 @@ impl Writer for Size {
 }
 
 #[derive(Debug)]
+pub(crate) struct FixedStringSerializer<'a, W: Writer> {
+    code_page: CodePage,
+    writer: &'a mut W,
+    size: Option<usize>,
+}
+
+#[derive(Debug)]
+pub(crate) struct FixedStringSizeSerializer<'a> {
+    size: &'a mut usize,
+}
+
+#[derive(Debug)]
+pub(crate) struct FixedStringZeroSerializer { }
+
+#[derive(Debug)]
 pub(crate) struct EslSerializer<'r, 'a, W: Writer> {
     isolated: bool,
     code_page: CodePage,
@@ -288,6 +313,7 @@ pub(crate) struct MapSerializer<'a, W: Writer> {
 
 #[derive(Debug)]
 pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
+    is_fixed_string_serializer: bool,
     code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
@@ -365,11 +391,18 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
             if *len == 0 { panic!() }
             *len -= 1;
         }
-        v.serialize(EslSerializer {
-            isolated: self.len.map_or(false, |len| len == 0),
-            writer: self.writer, code_page: self.code_page,
-            map_entry_value_buf: None
-        })?;
+        if self.is_fixed_string_serializer {
+            v.serialize(FixedStringSerializer {
+                writer: self.writer, code_page: self.code_page,
+                size: None
+            })?;
+        } else {
+            v.serialize(EslSerializer {
+                isolated: self.len.map_or(false, |len| len == 0),
+                writer: self.writer, code_page: self.code_page,
+                map_entry_value_buf: None
+            })?;
+        }
         if let &mut Some(ref mut value_buf) = &mut self.value_buf {
             if value_buf.is_none() {
                 **value_buf = Some(self.writer.begin_isolate()?);
@@ -643,12 +676,25 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
+        let is_fixed_string_serializer = if len == 1 {
+            if variant_index != FIXED_STRING_INDEX {
+                return Err(Error::InvalidFixedStringVariantIndex(variant_index).into());
+            }
+            true
+        } else {
+            false
+        };
         if !self.isolated {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
+            is_fixed_string_serializer,
             len: Some(len),
-            start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
+            start_pos_and_variant_index: if is_fixed_string_serializer {
+                None
+            } else {
+                Some((self.writer.pos(), variant_index))
+            },
             writer: self.writer, code_page: self.code_page,
             value_buf: None
         })
@@ -661,6 +707,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
+            is_fixed_string_serializer: false,
             len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
             writer: self.writer, code_page: self.code_page,
@@ -670,6 +717,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(StructSerializer {
+            is_fixed_string_serializer: false,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -679,6 +727,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_tuple_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
         Ok(StructSerializer {
+            is_fixed_string_serializer: false,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -688,6 +737,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
 
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(StructSerializer {
+            is_fixed_string_serializer: false,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -711,6 +761,504 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
         })
+    }
+}
+
+impl Serializer for FixedStringZeroSerializer {
+    type Ok = ();
+    type Error = IoError;
+    type SerializeSeq = Impossible<(), Self::Error>;
+    type SerializeTuple = Impossible<(), Self::Error>;
+    type SerializeTupleStruct = Impossible<(), Self::Error>;
+    type SerializeTupleVariant = Impossible<(), Self::Error>;
+    type SerializeStruct = Impossible<(), Self::Error>;
+    type SerializeStructVariant = Impossible<(), Self::Error>;
+    type SerializeMap = Impossible<(), Self::Error>;
+
+    fn is_human_readable(&self) -> bool { false }
+    
+    fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
+        if v != 0 {
+            return Err(Error::InvalidFixedStringSerializerUsage.into());
+        }
+        Ok(())
+    }
+
+    fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    serde_if_integer128! {
+        fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+
+        fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+    }
+
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_str(self, _: &str) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeTupleVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeStructVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+}
+
+impl<'a> Serializer for FixedStringSizeSerializer<'a> {
+    type Ok = ();
+    type Error = IoError;
+    type SerializeSeq = Impossible<(), Self::Error>;
+    type SerializeTuple = FixedStringSizeSerializer<'a>;
+    type SerializeTupleStruct = Impossible<(), Self::Error>;
+    type SerializeTupleVariant = Impossible<(), Self::Error>;
+    type SerializeStruct = Impossible<(), Self::Error>;
+    type SerializeStructVariant = Impossible<(), Self::Error>;
+    type SerializeMap = Impossible<(), Self::Error>;
+
+    fn is_human_readable(&self) -> bool { false }
+    
+    fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    serde_if_integer128! {
+        fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+
+        fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+    }
+
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_str(self, _: &str) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeTupleVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeStructVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        *self.size = len;
+        Ok(self)
+    }
+
+    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+}
+
+impl<'a> SerializeTuple for FixedStringSizeSerializer<'a> {
+    type Ok = ();
+    type Error = IoError;
+
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
+        v.serialize(FixedStringZeroSerializer { })
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
+    }
+}
+
+impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
+    type Ok = ();
+    type Error = IoError;
+    type SerializeSeq = Impossible<(), Self::Error>;
+    type SerializeTuple = FixedStringSerializer<'a, W>;
+    type SerializeTupleStruct = Impossible<(), Self::Error>;
+    type SerializeTupleVariant = Impossible<(), Self::Error>;
+    type SerializeStruct = Impossible<(), Self::Error>;
+    type SerializeStructVariant = Impossible<(), Self::Error>;
+    type SerializeMap = Impossible<(), Self::Error>;
+
+    fn is_human_readable(&self) -> bool { false }
+    
+    fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    serde_if_integer128! {
+        fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+
+        fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
+            Err(Error::InvalidFixedStringSerializerUsage.into())
+        }
+    }
+
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+        let Some(size) = self.size else {
+            return Err(Error::InvalidFixedStringSerializerUsage.into());
+        };
+        let mut bytes = if let Some(encoding) = self.code_page.encoding() {
+            encoding
+                .encode(v, EncoderTrap::Strict)
+                .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?
+        } else {
+            v.as_bytes().into()
+        };
+        if bytes.last() == Some(&0) {
+            return Err(Error::FixedStringTailZero.into());
+        }
+        if bytes.len() > size {
+            return Err(Error::FixedStringNotFit { max_len: size, len: bytes.len() }.into());
+        }
+        for _ in bytes.len() .. size {
+            bytes.push(0);
+        }
+        self.writer.write_all(&bytes)?;
+        Ok(())
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
+        -> Result<Self::Ok, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeTupleVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
+        -> Result<Self::SerializeStructVariant, Self::Error> {
+
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+        if len != 2 {
+            return Err(Error::InvalidFixedStringSerializerUsage.into());
+        }
+        Ok(self)
+    }
+
+    fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+
+    fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+        Err(Error::InvalidFixedStringSerializerUsage.into())
+    }
+}
+
+impl<'a, W: Writer> SerializeTuple for FixedStringSerializer<'a, W> {
+    type Ok = ();
+    type Error = IoError;
+
+    fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
+        if self.size.is_none() {
+            let mut size = 0;
+            v.serialize(FixedStringSizeSerializer { size: &mut size })?;
+            self.size = Some(size);
+            Ok(())
+        } else {
+            v.serialize(FixedStringSerializer { size: self.size, code_page: self.code_page, writer: self.writer })
+        }
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(())
     }
 }
 
