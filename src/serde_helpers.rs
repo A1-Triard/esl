@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self, Unexpected, SeqAccess};
+use serde::de::{self, Unexpected, EnumAccess, MapAccess, SeqAccess, DeserializeSeed, VariantAccess};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeTuple, SerializeSeq, SerializeTupleVariant};
@@ -243,8 +243,44 @@ impl Serialize for Zeroes {
     }
 }
 
+struct ZeroesDeserializer {
+    len: usize
+}
+
+impl<'de> DeserializeSeed<'de> for ZeroesDeserializer {
+    type Value = Zeroes;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_tuple(self.len, self)
+    }
+}
+
+impl<'de> de::Visitor<'de> for ZeroesDeserializer {
+    type Value = Zeroes;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} zeroes", self.len)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        for _ in 0 .. self.len {
+            let zero: u8 = seq.next_element()?.unwrap();
+            if zero != 0 {
+                return Err(A::Error::invalid_value(Unexpected::Unsigned(zero.into()), &"0"));
+            }
+        }
+        Ok(Zeroes { len: self.len })
+    }
+}
+
 struct ShortStr<'a> {
     string: &'a str,
+    len: usize,
+}
+
+struct ShortString {
+    string: String,
+    #[allow(dead_code)]
     len: usize,
 }
 
@@ -254,6 +290,54 @@ impl<'a> Serialize for ShortStr<'a> {
         serializer.serialize_field(&Zeroes { len: self.len })?;
         serializer.serialize_field(self.string)?;
         serializer.end()
+    }
+}
+
+#[derive(Clone)]
+struct ShortStringDeserializer { len: usize }
+
+impl<'de> DeserializeSeed<'de> for ShortStringDeserializer {
+    type Value = ShortString;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_enum(name_of!(type ShortStr), &[""], self)
+    }
+}
+
+impl<'de> de::Visitor<'de> for ShortStringDeserializer {
+    type Value = ShortString;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{} character string", self.len)
+    }
+
+    fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
+        let (variant_index, variant): (u32, _) = data.variant()?;
+        if variant_index != SHORT_STRING_VARIANT_INDEX {
+            return Err(A::Error::unknown_variant(&variant_index.to_string(), &[""]));
+        }
+        variant.tuple_variant(2, self)
+    }
+
+    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        if seq.next_element_seed(ZeroesDeserializer { len: self.len })?.is_none() {
+            return Err(A::Error::missing_field("0"));
+        }
+        let Some(string): Option<String> = seq.next_element()? else {
+            return Err(A::Error::missing_field("1"));
+        };
+        Ok(ShortString { string, len: self.len })
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let Some(key) = map.next_key_seed(self.clone())? else {
+            return Err(A::Error::custom("missing map entry"));
+        };
+        let _: () = map.next_value()?;
+        if map.next_key_seed(self)?.is_some() {
+            return Err(A::Error::custom("extra map entry"));
+        }
+        Ok(key)
     }
 }
 
@@ -267,43 +351,11 @@ pub fn serialize_short_string<S>(s: &str, len: usize, serializer: S) -> Result<S
     }
 }
 
-struct ShortStringNHRDeserializer { len: usize }
-
-impl<'de> de::Visitor<'de> for ShortStringNHRDeserializer {
-    type Value = String;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} character string", self.len)
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        if let Some(n) = seq.size_hint() {
-            if n != self.len {
-                return Err(A::Error::invalid_length(n, &self));
-            }
-        }
-        let mut string: String = String::with_capacity(self.len); // at least
-        let mut string_len = 0;
-        while let Some(c) = seq.next_element()? {
-            string.push(c);
-            string_len += 1;
-        }
-        if string_len != self.len {
-            Err(A::Error::invalid_length(string_len, &self))
-        } else {
-            let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().next().unwrap().len_utf8());
-            string.truncate(cut_to);
-            string.shrink_to_fit();
-            Ok(string)
-        }
-    }
-}
-
 pub fn deserialize_short_string<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
     if deserializer.is_human_readable() {
         String::deserialize(deserializer)
     } else {
-        deserializer.deserialize_tuple(len, ShortStringNHRDeserializer { len })
+        Ok(deserializer.deserialize_map(ShortStringDeserializer { len })?.string)
     }
 }
 
