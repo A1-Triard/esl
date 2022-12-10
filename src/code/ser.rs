@@ -1191,9 +1191,7 @@ impl<'a, W: Writer> Serializer for ShortStringSerializer<'a, W> {
         if bytes.len() > self.size {
             return Err(Error::ShortStringNotFit { max_len: self.size, len: bytes.len() }.into());
         }
-        for _ in bytes.len() .. self.size {
-            bytes.push(0);
-        }
+        bytes.resize(self.size, 0);
         self.writer.write_all(&bytes)?;
         Ok(())
     }

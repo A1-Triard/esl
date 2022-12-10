@@ -12,10 +12,10 @@ pub fn string_from_utf8_like(mut bytes: &[u8]) -> String {
         bytes = n;
         let c = if b <= 0x7F { // valid one-byte UTF-8
             b.into() // 0x000000 ..= 0x00007F
-        } else if b >= 0xC0 && b <= 0xDF { // two-byte UTF-8 lead byte
+        } else if (0xC0 ..= 0xDF).contains(&b) { // two-byte UTF-8 lead byte
             if let Some((&t, n)) = bytes.split_first() {
                 bytes = n;
-                if t >= 0x80 && t <= 0xBF { // two-byte UTF-8 second byte
+                if (0x80 ..= 0xBF).contains(&t) { // two-byte UTF-8 second byte
                     let c = (u32::from(b & 0x1F) << 6) | u32::from(t & 0x3F);
                     if c <= 0x7F {
                         0x100000u32 | c // 0x100000 ..= 0x10007F

@@ -10,6 +10,7 @@
 #![allow(clippy::bool_to_int_with_if)]
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
+#![allow(clippy::let_unit_value)]
 #![allow(clippy::option_map_unit_fn)]
 #![allow(clippy::match_ref_pats)]
 #![allow(clippy::transmute_float_to_int)]

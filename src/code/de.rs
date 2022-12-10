@@ -657,7 +657,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for ShortStringFieldDeserial
         let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
         let bytes = &bytes[.. bytes.len() - trim];
         let s = if let Some(encoding) = self.code_page.encoding() {
-            encoding.decode(&bytes, DecoderTrap::Strict).unwrap()
+            encoding.decode(bytes, DecoderTrap::Strict).unwrap()
         } else {
             string_from_utf8_like(bytes)
         };
