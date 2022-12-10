@@ -3,9 +3,11 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, SeqAccess};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
-use serde::ser::{SerializeTuple, SerializeSeq};
+use serde::ser::{SerializeMap, SerializeTuple, SerializeSeq, SerializeTupleVariant};
 use either::{Either, Left,  Right};
+use nameof::name_of;
 use std::str::FromStr;
+use crate::code::SHORT_STRING_VARIANT_INDEX;
 
 pub fn serialize_none_u8<S>(none: u8, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if serializer.is_human_readable() {
@@ -227,25 +229,40 @@ pub fn deserialize_f32_as_is<'de, D>(deserializer: D) -> Result<f32, D::Error> w
     }
 }
 
+struct Zeroes {
+    len: usize
+}
+
+impl Serialize for Zeroes {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_tuple(self.len)?;
+        for _ in 0 .. self.len {
+            serializer.serialize_element(&0u8)?;
+        }
+        serializer.end()
+    }
+}
+
+struct ShortStr<'a> {
+    string: &'a str,
+    len: usize,
+}
+
+impl<'a> Serialize for ShortStr<'a> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_tuple_variant(name_of!(type ShortStr), SHORT_STRING_VARIANT_INDEX, "", 2)?;
+        serializer.serialize_field(&Zeroes { len: self.len })?;
+        serializer.serialize_field(self.string)?;
+        serializer.end()
+    }
+}
+
 pub fn serialize_short_string<S>(s: &str, len: usize, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if serializer.is_human_readable() {
         serializer.serialize_str(s)
     } else {
-        if s.as_bytes().last().map_or(false, |&x| x == 0) {
-            return Err(S::Error::custom("string tuple value has tail zero"));
-        }
-        let mut serializer = serializer.serialize_tuple(len)?;
-        let mut s_len = 0;
-        for c in s.chars() {
-            serializer.serialize_element(&c)?;
-            s_len += 1;
-        }
-        if s_len > len {
-            return Err(S::Error::custom(format!("string length is above {len} chars")));
-        }
-        for _ in s_len .. len {
-            serializer.serialize_element(&'\0')?;
-        }
+        let mut serializer = serializer.serialize_map(Some(1))?;
+        serializer.serialize_entry(&ShortStr { string: s, len }, &())?;
         serializer.end()
     }
 }
