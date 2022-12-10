@@ -10,6 +10,7 @@ use std::marker::PhantomData;
 use std::str::{self};
 
 use crate::code::code_page::*;
+use crate::strings::string_from_utf8_like;
 
 #[derive(Debug)]
 pub enum Error {
@@ -17,7 +18,6 @@ pub enum Error {
     Io(io::Error),
     InvalidBoolEncoding(u8),
     InvalidSize { actual: usize, expected: u32 },
-    Utf8,
 }
 
 impl Display for Error {
@@ -27,7 +27,6 @@ impl Display for Error {
             Error::Io(e) => Display::fmt(e, f),
             Error::InvalidBoolEncoding(b) => write!(f, "invalid bool encoding ({b})"),
             Error::InvalidSize { actual, expected } => write!(f, "object size mismatch (actual = {actual}, expected = {expected})"),
-            Error::Utf8 => write!(f, "invalid UTF-8 encoded string"),
         }
     }
 }
@@ -403,15 +402,8 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         panic!("deserialize_char not supported");
     }
 
-    fn deserialize_str<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let size = self.deserialize_size()? as usize;
-        let bytes = self.reader.read_bytes(size)?;
-        if let Some(encoding) = self.code_page.encoding() {
-            let s = encoding.decode(&bytes, DecoderTrap::Strict).unwrap();
-            visitor.visit_string(s)
-        } else {
-            visitor.visit_str(str::from_utf8(&bytes).map_err(|_| Error::Utf8)?)
-        }
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        self.deserialize_string(visitor)
     }
 
     fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
@@ -420,7 +412,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         let s = if let Some(encoding) = self.code_page.encoding() {
             encoding.decode(&bytes, DecoderTrap::Strict).unwrap()
         } else {
-            String::from_utf8(bytes.into_owned()).map_err(|_| Error::Utf8)?
+            string_from_utf8_like(&bytes)
         };
         visitor.visit_string(s)
     }
@@ -654,22 +646,22 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for ShortStringFieldDeserial
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        self.deserialize_string(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         if self.field != ShortStringField::String {
             panic!("invalid short string deserializer usage");
         }
         let bytes = self.reader.read_bytes(*self.size)?;
         let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
         let bytes = &bytes[.. bytes.len() - trim];
-        if let Some(encoding) = self.code_page.encoding() {
-            let s = encoding.decode(&bytes, DecoderTrap::Strict).unwrap();
-            visitor.visit_string(s)
+        let s = if let Some(encoding) = self.code_page.encoding() {
+            encoding.decode(&bytes, DecoderTrap::Strict).unwrap()
         } else {
-            visitor.visit_str(str::from_utf8(bytes).map_err(|_| Error::Utf8)?)
-        }
-    }
-
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        self.deserialize_str(visitor)
+            string_from_utf8_like(bytes)
+        };
+        visitor.visit_string(s)
     }
 
     fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
