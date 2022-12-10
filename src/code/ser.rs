@@ -389,7 +389,6 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
         })?;
         if !self.is_fixed_string_serializer {
             if let Some((value_buf, value_pos)) = self.value_buf_and_pos.take() {
-                //panic!();
                 self.writer.end_isolate(value_buf, value_pos)?;
             }
         }
