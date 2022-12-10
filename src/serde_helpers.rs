@@ -386,72 +386,10 @@ pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<u
         }
         text.truncate(text.len() - separator.len());
         if let Some(len) = len {
-            if text.as_bytes().last().map_or(false, |&x| x == 0) {
-                return Err(S::Error::custom("string list has tail zero"));
-            }
-            let mut serializer = serializer.serialize_tuple(len)?;
-            let mut text_len = 0;
-            for c in text.chars() {
-                serializer.serialize_element(&c)?;
-                text_len += 1;
-            }
-            if text_len > len {
-                return Err(S::Error::custom(format!("string list total length is above {len} chars")));
-            }
-            for _ in text_len .. len {
-                serializer.serialize_element(&'\0')?;
-            }
-            serializer.end()
+            serialize_short_string(&text, len, serializer)
         } else {
-            let text_len = text.chars().count();
-            let mut serializer = serializer.serialize_seq(Some(text_len))?;
-            for c in text.chars() {
-                serializer.serialize_element(&c)?;
-            }
-            serializer.end()
+            text.serialize(serializer)
         }
-    }
-}
-
-struct StringListNHRDeserializer<'a> { len: Option<usize>, separator: &'a str }
-
-impl<'a, 'de> de::Visitor<'de> for StringListNHRDeserializer<'a> {
-    type Value = Vec<String>;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        if let Some(len) = self.len {
-            write!(f, "{len} character string")
-        } else {
-            write!(f, "string")
-        }
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let mut size_hint = seq.size_hint();
-        if let Some(len) = self.len {
-            if let Some(n) = size_hint {
-                if n != len {
-                    return Err(A::Error::invalid_length(n, &self));
-                }
-            } else {
-                size_hint = Some(len);
-            }
-        }
-        let mut string: String = size_hint.map_or_else(String::new, String::with_capacity); // at least
-        let mut string_len = 0;
-        while let Some(c) = seq.next_element()? {
-            string.push(c);
-            string_len += 1;
-        }
-        if let Some(len) = self.len {
-            if string_len != len {
-                return Err(A::Error::invalid_length(string_len, &self));
-            } else {
-                let cut_to = string.rfind(|c| c != '\0').map_or(0, |n| n + string[n..].chars().next().unwrap().len_utf8());
-                string.truncate(cut_to);
-            }
-        }
-        Ok(string.split(self.separator).map(|x| x.into()).collect())
     }
 }
 
@@ -466,10 +404,11 @@ pub fn deserialize_string_list<'de, D>(
         if separator.is_empty() {
             return Err(D::Error::custom("empty string list separator"));
         }
-        if let Some(len) = len {
-            deserializer.deserialize_tuple(len, StringListNHRDeserializer { len: Some(len), separator })
+        let s = if let Some(len) = len {
+            deserialize_short_string(len, deserializer)?
         } else {
-            deserializer.deserialize_seq(StringListNHRDeserializer { len: None, separator })
-        }
+            String::deserialize(deserializer)?
+        };
+        Ok(s.split(separator).map(|x| x.into()).collect())
     }
 }

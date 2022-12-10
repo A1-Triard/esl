@@ -595,16 +595,8 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
         }
     }
 
-    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-        let bytes = if let Some(encoding) = self.code_page.encoding() {
-            encoding
-                .encode(&v.to_string(), EncoderTrap::Strict)
-                .map_err(|_| Error::UnrepresentableChar(v, self.code_page))?
-        } else {
-            v.to_string().into_bytes()
-        };
-        self.writer.write_all(&bytes)?;
-        Ok(())
+    fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
+        panic!("serialize_char not supported");
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {

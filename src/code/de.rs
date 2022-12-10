@@ -399,28 +399,8 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         }
     }
     
-    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let c = if let Some(encoding) = self.code_page.encoding() {
-            let b = self.reader.read_u8()?;
-            encoding.decode(&[b], DecoderTrap::Strict).unwrap()
-        } else {
-            let b = self.reader.read_u8()?;
-            let tail = if b & 0x80 == 0x00 {
-                0
-            } else if b & 0xE0 == 0xC0 {
-                1
-            } else if b & 0xF0 == 0xE0 {
-                2
-            } else if b & 0xF8 == 0xF0 {
-                3
-            } else {
-                return Err(Error::Utf8);
-            };
-            let mut bytes = self.reader.read_bytes(tail)?.into_owned();
-            bytes.insert(0, b);
-            String::from_utf8(bytes).map_err(|_| Error::Utf8)?
-        };
-        visitor.visit_char(c.chars().next().unwrap())
+    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_char not supported");
     }
 
     fn deserialize_str<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
