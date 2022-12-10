@@ -629,6 +629,9 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     fn serialize_unit_variant(self, _: &'static str, variant_index: u32, _: &'static str)
         -> Result<Self::Ok, Self::Error> {
 
+        if self.map_entry_value_buf.is_some() {
+            panic!("invalid short string serializer usage");
+        }
         if variant_index != 0 {
             return Err(Error::VariantIndexMismatch { variant_index, variant_size: 0 }.into());
         }
@@ -678,6 +681,9 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, variant_index: u32, _: &'static str, v: &T)
         -> Result<Self::Ok, Self::Error> {
 
+        if self.map_entry_value_buf.is_some() {
+            panic!("invalid short string serializer usage");
+        }
         if !self.isolated {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
@@ -727,6 +733,9 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     fn serialize_struct_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
         -> Result<Self::SerializeStructVariant, Self::Error> {
 
+        if self.map_entry_value_buf.is_some() {
+            panic!("invalid short string serializer usage");
+        }
         if !self.isolated {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
