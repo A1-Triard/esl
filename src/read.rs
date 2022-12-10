@@ -11,7 +11,6 @@ use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem::{replace, transmute};
-use std::str::{self, Utf8Error};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use either::{Right, Left, Either};
@@ -72,34 +71,6 @@ impl<I> ParseError<I> for Void {
     fn append(_input: I, _kind: ErrorKind, other: Self) -> Self { other.0 }
 
     fn or(self, other: Self) -> Self { other.0 }
-
-    fn from_char(_input: I, _: char) -> Self { panic!() }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Ord, PartialOrd, Hash)]
-enum Maybe<E> {
-    Nothing,
-    Just(E),
-}
-
-use Maybe::*;
-
-impl<E> Maybe<E> {
-    fn unwrap_or(self, fallback: E) -> E {
-        if let Just(e) = self {
-            e
-        } else {
-            fallback
-        }
-    }
-}
-
-impl<I, E> ParseError<I> for Maybe<E> {
-    fn from_error_kind(_input: I, kind: ErrorKind) -> Self { panic!("{kind:?}") }
-
-    fn append(_input: I, _kind: ErrorKind, _other: Self) -> Self { panic!() }
-
-    fn or(self, _other: Self) -> Self { panic!() }
 
     fn from_char(_input: I, _: char) -> Self { panic!() }
 }
@@ -202,7 +173,6 @@ enum FieldBodyError {
     UnknownValue(Unknown, u32),
     UnexpectedFieldSize(u32),
     InvalidValue(Invalid, u32),
-    InvalidUtf8(Utf8Error, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
@@ -222,11 +192,11 @@ fn trim_end_nulls(bytes: &[u8]) -> &[u8] {
     &bytes[..cut_to]
 }
 
-fn decode_string(code_page: CodePage, bytes: &[u8], offset: u32) -> Result<String, FieldBodyError> {
+fn decode_string(code_page: CodePage, bytes: &[u8]) -> String {
     if let Some(encoding) = code_page.encoding() {
-        Ok(encoding.decode(bytes, DecoderTrap::Strict).unwrap())
+        encoding.decode(bytes, DecoderTrap::Strict).unwrap()
     } else {
-        str::from_utf8(bytes).map(|x| x.into()).map_err(|e| FieldBodyError::InvalidUtf8(e, offset))
+        string_from_utf8_like(bytes)
     }
 }
 
@@ -235,23 +205,23 @@ fn consume<E>(input: &[u8]) -> IResult<&[u8], &[u8], E> {
 }
 
 fn string_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, FieldBodyError> {
-    map_res(
+    map(
         consume,
-        move |input, _| decode_string(code_page, input, 0)
+        move |input| decode_string(code_page, input)
     )
 }
 
 fn string_z_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], StringZ, FieldBodyError> {
-    map_res(
+    map(
         consume,
-        move |input, _| {
+        move |input| {
             let has_tail_zero = input.last() == Some(&0);
             let input = if has_tail_zero {
                 &input[..input.len() - 1]                
             } else {
                 input
             };
-            Ok(StringZ { string: decode_string(code_page, input, 0)?, has_tail_zero })
+            StringZ { string: decode_string(code_page, input), has_tail_zero }
         }
     )
 }
@@ -268,11 +238,10 @@ fn string_z_list_field<'a>(
 fn short_string<'a>(
     code_page: CodePage,
     length: u32,
-    offset: u32,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, Maybe<FieldBodyError>> {
-    map_res(
-        set_err(take(length), |_| Nothing),
-        move |bytes, _| decode_string(code_page, trim_end_nulls(bytes), offset).map_err(Just)
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, ()> {
+    map(
+        set_err(take(length), |_| ()),
+        move |bytes| decode_string(code_page, trim_end_nulls(bytes))
     )
 }
 
@@ -286,16 +255,16 @@ fn file_metadata_field<'a>(
                 set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
                 |w, _| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))
             ),
-            map_err(
+            set_err(
                 tuple((
-                    short_string(code_page, 32, 4 + 4),
+                    short_string(code_page, 32),
                     map(
-                        short_string(code_page, 256, 4 + 4 + 32),
+                        short_string(code_page, 256),
                         |s| s.split(Newline::Dos.as_str()).map(String::from).collect()
                     ),
                     le_u32
                 )),
-                |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(300))
+                |_| FieldBodyError::UnexpectedEndOfField(300)
             )
         )),
         |(version, file_type, (author, description, records))| FileMetadata {
@@ -309,7 +278,7 @@ fn short_string_field<'a>(code_page: CodePage, mode: RecordReadMode, length: u32
     
     move |input| {
         let length = if mode == RecordReadMode::Lenient && input.len() < length as usize { input.len() as u32 } else { length };
-        map_err(short_string(code_page, length, 0), move |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(length)))(input)
+        set_err(short_string(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))(input)
     }
 }
 
@@ -326,15 +295,15 @@ fn multiline_field<'a>(
 fn item_field<'a>(
     code_page: CodePage
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
-    map_err(
+    set_err(
         map(
             pair(
                 le_i32,
-                short_string(code_page, 32, 4)
+                short_string(code_page, 32)
             ),
             |(count, item_id)| Item { count, item_id }
         ),
-        |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(4 + 32))
+        |_| FieldBodyError::UnexpectedEndOfField(4 + 32)
     )
 }
 
@@ -513,12 +482,12 @@ fn sound_chance_field<'a>(
     code_page: CodePage
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], SoundChance, FieldBodyError> {
     map(
-        map_err(
+        set_err(
             pair(
-                short_string(code_page, 32, 0),
+                short_string(code_page, 32),
                 le_u8
             ),
-            |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(32 + 1))
+            |_| FieldBodyError::UnexpectedEndOfField(32 + 1)
         ),
         |(sound_id, chance)| SoundChance { sound_id, chance }
     )
@@ -528,13 +497,13 @@ fn script_metadata_field<'a>(
     code_page: CodePage
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], ScriptMetadata, FieldBodyError> {
     map(
-        map_err(
+        set_err(
             tuple((
-                short_string(code_page, 32, 0),
+                short_string(code_page, 32),
                 le_u32, le_u32, le_u32,
                 le_u32, le_u32,
             )),
-            |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(32 + 20))
+            |_| FieldBodyError::UnexpectedEndOfField(32 + 20)
         ),
         |(name, shorts, longs, floats, data_size, var_table_size)| ScriptMetadata {
             name,
@@ -1063,12 +1032,12 @@ fn ai_target_field<'a>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiTarget, FieldBodyError> {
     map(
         tuple((
-            map_err(
+            set_err(
                 tuple((
                     le_f32, le_f32, le_f32, le_u16,
-                    short_string(code_page, 32, 0)
+                    short_string(code_page, 32)
                 )),
-                |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(48))
+                |_| FieldBodyError::UnexpectedEndOfField(48)
             ),
             bool_u8(48, 46),
             map_res(
@@ -1130,7 +1099,7 @@ fn ai_activate_field<'a>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
     map(
         pair(
-            map_err(short_string(code_page, 32, 0), |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(33))),
+            set_err(short_string(code_page, 32), |_| FieldBodyError::UnexpectedEndOfField(33)),
             bool_u8(33, 32)
         ),
         |(object_id, reset)| AiActivate {
@@ -1658,7 +1627,6 @@ enum FieldError {
     UnknownValue(Tag, Unknown, u32),
     UnexpectedFieldSize(Tag, u32),
     InvalidValue(Tag, Invalid, u32),
-    InvalidUtf8(Tag, Utf8Error, u32),
 }
 
 impl_parse_error!(<'a>, &'a [u8], FieldError);
@@ -1693,7 +1661,6 @@ fn field<'a>(
                         FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                         FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
                         FieldBodyError::InvalidValue(v, o) => FieldError::InvalidValue(field_tag, v, o),
-                        FieldBodyError::InvalidUtf8(e, o) => FieldError::InvalidUtf8(field_tag, e, o),
                         FieldBodyError::UnexpectedFieldSize(s) => FieldError::UnexpectedFieldSize(field_tag, s),
                     }
                 )(field_bytes)?;
@@ -1972,38 +1939,9 @@ impl Error for InvalidValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidUtf8 {
-    pub record_offset: u64,
-    pub record_tag: Tag,
-    pub field_offset: u32,
-    pub field_tag: Tag,
-    pub value_offset: u32,
-    pub utf8_error: Utf8Error,
-}
-
-impl Display for InvalidUtf8 {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f, "Invalid UTF-8 encoded string ({}) at {:X}h in {} field started at {:X}h in {} record started at {:X}h",
-            self.utf8_error,
-            self.record_offset + 16 + self.field_offset as u64 + 8 + self.value_offset as u64,
-            self.field_tag,
-            self.record_offset + 16 + self.field_offset as u64,
-            self.record_tag,
-            self.record_offset
-        )
-    }
-}
-
-impl Error for InvalidUtf8 {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { Some(&self.utf8_error) }
-}
-
-#[derive(Debug, Clone)]
 pub enum RecordError {
     FieldSizeMismatch(FieldSizeMismatch),
     InvalidValue(InvalidValue),
-    InvalidUtf8(InvalidUtf8),
     RecordSizeMismatch(RecordSizeMismatch),
     UnexpectedFieldSize(UnexpectedFieldSize),
     UnknownRecordFlags(UnknownRecordFlags),
@@ -2019,7 +1957,6 @@ impl RecordError {
             RecordError::UnexpectedFieldSize(x) => x.record_tag,
             RecordError::UnknownValue(x) => x.record_tag,
             RecordError::InvalidValue(x) => x.record_tag,
-            RecordError::InvalidUtf8(x) => x.record_tag,
         }
     }
 
@@ -2031,7 +1968,6 @@ impl RecordError {
             RecordError::UnexpectedFieldSize(x) => x.record_offset,
             RecordError::UnknownValue(x) => x.record_offset,
             RecordError::InvalidValue(x) => x.record_offset,
-            RecordError::InvalidUtf8(x) => x.record_offset,
         }
     }
 }
@@ -2045,7 +1981,6 @@ impl Display for RecordError {
             RecordError::UnexpectedFieldSize(x) => Display::fmt(x, f),
             RecordError::UnknownValue(x) => Display::fmt(x, f),
             RecordError::InvalidValue(x) => Display::fmt(x, f),
-            RecordError::InvalidUtf8(x) => Display::fmt(x, f),
         }
     }
 }
@@ -2059,7 +1994,6 @@ impl Error for RecordError {
             RecordError::UnexpectedFieldSize(x) => x,
             RecordError::UnknownValue(x) => x,
             RecordError::InvalidValue(x) => x,
-            RecordError::InvalidUtf8(x) => x,
         })
     }
 }
@@ -2133,12 +2067,6 @@ fn read_record_body(record_offset: u64, code_page: CodePage, mode: RecordReadMod
             RecordBodyError(FieldError::InvalidValue(field_tag, value, value_offset), field) =>
                 RecordError::InvalidValue(InvalidValue {
                     record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag, value_offset
-                }),
-            RecordBodyError(FieldError::InvalidUtf8(field_tag, utf8_error, value_offset), field) =>
-                RecordError::InvalidUtf8(InvalidUtf8 {
-                    record_offset, utf8_error,
                     field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
                     record_tag, field_tag, value_offset
                 }),
