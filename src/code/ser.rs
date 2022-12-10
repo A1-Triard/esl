@@ -283,16 +283,17 @@ pub(crate) struct FixedStringZeroesSerializer<'a> {
 pub(crate) struct FixedStringZeroSerializer { }
 
 #[derive(Debug)]
-pub(crate) struct EslSerializer<'r, 'a, W: Writer> {
+pub(crate) struct EslSerializer<'r, 'q, 'a, W: Writer> {
     isolated: bool,
     code_page: CodePage,
     writer: &'a mut W,
-    map_entry_value_buf: Option<&'r mut Option<Option<W::Buf>>>,
+    map_entry_value_buf: Option<&'r mut Option<W::Buf>>,
+    is_fixed_string_serializer: Option<&'q mut bool>,
 }
 
-impl<'r, 'a, W: Writer> EslSerializer<'r, 'a, W> {
+impl<'r, 'q, 'a, W: Writer> EslSerializer<'r, 'q, 'a, W> {
     pub fn new(isolated: bool, code_page: CodePage, writer: &'a mut W) -> Self {
-        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None }
+        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None, is_fixed_string_serializer: None }
     }
 }
 
@@ -309,6 +310,7 @@ pub(crate) struct MapSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     value_buf_and_pos: Option<(W::Buf, usize)>,
+    is_fixed_string_serializer: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -321,7 +323,7 @@ pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
     writer: &'a mut W,
     len: Option<usize>,
     start_pos_and_variant_index: Option<(usize, u32)>,
-    value_buf: Option<&'r mut Option<Option<W::Buf>>>,
+    value_buf: Option<&'r mut Option<W::Buf>>,
 }
 
 impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
@@ -333,7 +335,8 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
         v.serialize(EslSerializer {
             isolated: false,
             writer: self.writer, code_page: self.code_page,
-            map_entry_value_buf: None
+            map_entry_value_buf: None,
+            is_fixed_string_serializer: None,
         })?;
         self.last_element_has_zero_size = self.writer.pos() == element_pos;
         Ok(())
@@ -356,13 +359,16 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
         let mut value_buf = None;
+        let mut is_fixed_string_serializer = false;
         key.serialize(EslSerializer {
             writer: self.writer,
             code_page: self.code_page,
             map_entry_value_buf: Some(&mut value_buf),
-            isolated: false
+            isolated: false,
+            is_fixed_string_serializer: Some(&mut is_fixed_string_serializer),
         })?;
-        if let Some(value_buf) = value_buf {
+        self.is_fixed_string_serializer = is_fixed_string_serializer;
+        if !self.is_fixed_string_serializer {
             let b = replace(&mut self.value_buf_and_pos, Some((if let Some(value_buf) = value_buf {
                 value_buf
             } else {
@@ -378,10 +384,14 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
             isolated: true,
             writer: self.writer,
             code_page: self.code_page,
-            map_entry_value_buf: None
+            map_entry_value_buf: None,
+            is_fixed_string_serializer: None
         })?;
-        if let Some((value_buf, value_pos)) = self.value_buf_and_pos.take() {
-            self.writer.end_isolate(value_buf, value_pos)?;
+        if !self.is_fixed_string_serializer {
+            if let Some((value_buf, value_pos)) = self.value_buf_and_pos.take() {
+                //panic!();
+                self.writer.end_isolate(value_buf, value_pos)?;
+            }
         }
         Ok(())
     }
@@ -416,12 +426,13 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
             v.serialize(EslSerializer {
                 isolated: self.len.map_or(false, |len| len == 0),
                 writer: self.writer, code_page: self.code_page,
-                map_entry_value_buf: None
+                map_entry_value_buf: None,
+                is_fixed_string_serializer: None,
             })?;
-        }
-        if let &mut Some(ref mut value_buf) = &mut self.value_buf {
-            if value_buf.is_none() {
-                **value_buf = Some(Some(self.writer.begin_isolate()?));
+            if let &mut Some(ref mut value_buf) = &mut self.value_buf {
+                if value_buf.is_none() {
+                    **value_buf = Some(self.writer.begin_isolate()?);
+                }
             }
         }
         Ok(())
@@ -503,7 +514,7 @@ impl<'r, 'a, W: Writer> SerializeStructVariant for StructSerializer<'r, 'a, W> {
     }
 }
 
-impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
+impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = SeqSerializer<'a, W>;
@@ -658,7 +669,8 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             isolated: true,
             writer: self.writer,
             code_page: self.code_page,
-            map_entry_value_buf: None
+            map_entry_value_buf: None,
+            is_fixed_string_serializer: None,
         })?;
         if self.writer.pos() == value_pos {
             return Err(Error::ZeroSizedOptional.into());
@@ -680,7 +692,8 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             isolated: true,
             writer: self.writer,
             code_page: self.code_page,
-            map_entry_value_buf: None
+            map_entry_value_buf: None,
+            is_fixed_string_serializer: None,
         })?;
         let variant_size = size(self.writer.pos() - value_pos)?;
         if variant_index != variant_size {
@@ -692,25 +705,25 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        let fixed_string_field = if let Some(value_buf) = self.map_entry_value_buf {
-            *value_buf = Some(None);
+        let (fixed_string_field, size) = if self.map_entry_value_buf.is_some() {
+            *self.is_fixed_string_serializer.unwrap() = true;
             if len != 2 || variant_index != FIXED_STRING_VARIANT_INDEX {
                 return Err(Error::InvalidFixedStringVariantIndex(variant_index).into());
             }
-            Some(Some(FixedStringField::Zeroes))
+            (Some(Some(FixedStringField::Zeroes)), 0)
         } else {
             if !self.isolated {
                 self.writer.write_u32::<LittleEndian>(variant_index)?;
             }
-            None
+            (None, variant_index)
         };
         Ok(StructSerializer {
             fixed_string_field,
             len: Some(len),
-            start_pos_and_variant_index: if fixed_string_field.is_some() {
+            start_pos_and_variant_index: if self.map_entry_value_buf.is_some() {
                 None
             } else {
-                Some((self.writer.pos(), variant_index))
+                Some((self.writer.pos(), size))
             },
             writer: self.writer, code_page: self.code_page,
             value_buf: None
@@ -777,6 +790,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         Ok(MapSerializer {
             value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
+            is_fixed_string_serializer: false,
         })
     }
 }
