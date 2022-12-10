@@ -31,6 +31,8 @@ serde = { version = "1.0.147", features = ["derive"] }
 serde = { version = "1.0.147", features = ["derive"] }
 
 [dev-dependencies]
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
 serde_yaml = "0.9.9"
 
 [badges]

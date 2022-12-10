@@ -257,6 +257,8 @@ impl<'de> Deserialize<'de> for StringZList {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use quickcheck::TestResult;
+    use quickcheck_macros::quickcheck;
 
     #[test]
     fn string_into_string_z() {
@@ -272,5 +274,17 @@ mod tests {
         } else {
             panic!()
         }
+    }
+
+    #[quickcheck]
+    fn utf8_like_string_to_bytes_to_string(s: String) -> TestResult {
+        let Some(b) = string_to_utf8_like(&s) else { return TestResult::discard(); };
+        TestResult::from_bool(string_from_utf8_like(&b) == s)
+    }
+
+    #[quickcheck]
+    fn utf8_like_bytes_to_string_to_bytes(b: Vec<u8>) -> bool {
+        let s = string_from_utf8_like(&b);
+        string_to_utf8_like(&s) == Some(b)
     }
 }
