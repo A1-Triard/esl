@@ -18,8 +18,8 @@ pub enum Error {
     ZeroSizedLastSequenceElement,
     VariantIndexMismatch { variant_index: u32, variant_size: u32 },
     ZeroSizedOptional,
-    FixedStringNotFit { max_len: usize, len: usize },
-    FixedStringTailZero,
+    ShortStringNotFit { max_len: usize, len: usize },
+    ShortStringTailZero,
 }
 
 impl Display for Error {
@@ -32,9 +32,9 @@ impl Display for Error {
             Error::VariantIndexMismatch { variant_index, variant_size } =>
                 write!(f, "variant index ({variant_index}) should be equal to variant size ({variant_size})"),
             Error::ZeroSizedOptional => write!(f, "optional element cannot have zero size"),
-            Error::FixedStringNotFit { max_len, len } =>
-                write!(f, "fixed string (len = {len}) does not fit (max len = {max_len})"),
-            Error::FixedStringTailZero => write!(f, "fixed string value has tail zero"),
+            Error::ShortStringNotFit { max_len, len } =>
+                write!(f, "short string (len = {len}) does not fit (max len = {max_len})"),
+            Error::ShortStringTailZero => write!(f, "short string value has tail zero"),
         }
     }
 }
@@ -263,19 +263,19 @@ impl Writer for Size {
 }
 
 #[derive(Debug)]
-pub(crate) struct FixedStringSerializer<'a, W: Writer> {
+pub(crate) struct ShortStringSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     size: usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct FixedStringZeroesSerializer<'a> {
+pub(crate) struct ShortStringZeroesSerializer<'a> {
     size: &'a mut usize,
 }
 
 #[derive(Debug)]
-pub(crate) struct FixedStringZeroSerializer { }
+pub(crate) struct ShortStringZeroSerializer { }
 
 #[derive(Debug)]
 pub(crate) struct EslSerializer<'r, 'q, 'a, W: Writer> {
@@ -283,12 +283,12 @@ pub(crate) struct EslSerializer<'r, 'q, 'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     map_entry_value_buf: Option<&'r mut Option<W::Buf>>,
-    is_fixed_string_serializer: Option<&'q mut bool>,
+    is_short_string_serializer: Option<&'q mut bool>,
 }
 
 impl<'r, 'q, 'a, W: Writer> EslSerializer<'r, 'q, 'a, W> {
     pub fn new(isolated: bool, code_page: CodePage, writer: &'a mut W) -> Self {
-        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None, is_fixed_string_serializer: None }
+        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None, is_short_string_serializer: None }
     }
 }
 
@@ -305,15 +305,15 @@ pub(crate) struct MapSerializer<'a, W: Writer> {
     code_page: CodePage,
     writer: &'a mut W,
     value_buf_and_pos: Option<(W::Buf, usize)>,
-    is_fixed_string_serializer: bool,
+    is_short_string_serializer: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
-enum FixedStringField { Zeroes, String(usize) }
+enum ShortStringField { Zeroes, String(usize) }
 
 #[derive(Debug)]
 pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
-    fixed_string_field: Option<Option<FixedStringField>>,
+    short_string_field: Option<Option<ShortStringField>>,
     code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
@@ -331,7 +331,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
             isolated: false,
             writer: self.writer, code_page: self.code_page,
             map_entry_value_buf: None,
-            is_fixed_string_serializer: None,
+            is_short_string_serializer: None,
         })?;
         self.last_element_has_zero_size = self.writer.pos() == element_pos;
         Ok(())
@@ -354,16 +354,16 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
 
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), Self::Error> {
         let mut value_buf = None;
-        let mut is_fixed_string_serializer = false;
+        let mut is_short_string_serializer = false;
         key.serialize(EslSerializer {
             writer: self.writer,
             code_page: self.code_page,
             map_entry_value_buf: Some(&mut value_buf),
             isolated: false,
-            is_fixed_string_serializer: Some(&mut is_fixed_string_serializer),
+            is_short_string_serializer: Some(&mut is_short_string_serializer),
         })?;
-        self.is_fixed_string_serializer = is_fixed_string_serializer;
-        if !self.is_fixed_string_serializer {
+        self.is_short_string_serializer = is_short_string_serializer;
+        if !self.is_short_string_serializer {
             let b = replace(&mut self.value_buf_and_pos, Some((if let Some(value_buf) = value_buf {
                 value_buf
             } else {
@@ -380,9 +380,9 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
             writer: self.writer,
             code_page: self.code_page,
             map_entry_value_buf: None,
-            is_fixed_string_serializer: None
+            is_short_string_serializer: None
         })?;
-        if !self.is_fixed_string_serializer {
+        if !self.is_short_string_serializer {
             if let Some((value_buf, value_pos)) = self.value_buf_and_pos.take() {
                 self.writer.end_isolate(value_buf, value_pos)?;
             }
@@ -401,19 +401,19 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
             if *len == 0 { panic!() }
             *len -= 1;
         }
-        if let Some(fixed_string_field) = self.fixed_string_field {
-            let Some(fixed_string_field) = fixed_string_field else {
-                panic!("invalid fixed string serializer usage");
+        if let Some(short_string_field) = self.short_string_field {
+            let Some(short_string_field) = short_string_field else {
+                panic!("invalid short string serializer usage");
             };
-            match fixed_string_field {
-                FixedStringField::Zeroes => {
+            match short_string_field {
+                ShortStringField::Zeroes => {
                     let mut size = 0;
-                    v.serialize(FixedStringZeroesSerializer { size: &mut size })?;
-                    self.fixed_string_field = Some(Some(FixedStringField::String(size)));
+                    v.serialize(ShortStringZeroesSerializer { size: &mut size })?;
+                    self.short_string_field = Some(Some(ShortStringField::String(size)));
                 },
-                FixedStringField::String(size) => {
-                    v.serialize(FixedStringSerializer { size, code_page: self.code_page, writer: self.writer })?;
-                    self.fixed_string_field = Some(None);
+                ShortStringField::String(size) => {
+                    v.serialize(ShortStringSerializer { size, code_page: self.code_page, writer: self.writer })?;
+                    self.short_string_field = Some(None);
                 },
             }
         } else {
@@ -421,7 +421,7 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
                 isolated: self.len.map_or(false, |len| len == 0),
                 writer: self.writer, code_page: self.code_page,
                 map_entry_value_buf: None,
-                is_fixed_string_serializer: None,
+                is_short_string_serializer: None,
             })?;
             if let &mut Some(ref mut value_buf) = &mut self.value_buf {
                 if value_buf.is_none() {
@@ -664,7 +664,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
             writer: self.writer,
             code_page: self.code_page,
             map_entry_value_buf: None,
-            is_fixed_string_serializer: None,
+            is_short_string_serializer: None,
         })?;
         if self.writer.pos() == value_pos {
             return Err(Error::ZeroSizedOptional.into());
@@ -687,7 +687,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
             writer: self.writer,
             code_page: self.code_page,
             map_entry_value_buf: None,
-            is_fixed_string_serializer: None,
+            is_short_string_serializer: None,
         })?;
         let variant_size = size(self.writer.pos() - value_pos)?;
         if variant_index != variant_size {
@@ -699,12 +699,12 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     fn serialize_tuple_variant(self, _: &'static str, variant_index: u32, _: &'static str, len: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        let (fixed_string_field, size) = if self.map_entry_value_buf.is_some() {
-            *self.is_fixed_string_serializer.unwrap() = true;
-            if len != 2 || variant_index != FIXED_STRING_VARIANT_INDEX {
-                panic!("invalid fixed string variant index");
+        let (short_string_field, size) = if self.map_entry_value_buf.is_some() {
+            *self.is_short_string_serializer.unwrap() = true;
+            if len != 2 || variant_index != SHORT_STRING_VARIANT_INDEX {
+                panic!("invalid short string variant index");
             }
-            (Some(Some(FixedStringField::Zeroes)), 0)
+            (Some(Some(ShortStringField::Zeroes)), 0)
         } else {
             if !self.isolated {
                 self.writer.write_u32::<LittleEndian>(variant_index)?;
@@ -712,7 +712,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
             (None, variant_index)
         };
         Ok(StructSerializer {
-            fixed_string_field,
+            short_string_field,
             len: Some(len),
             start_pos_and_variant_index: if self.map_entry_value_buf.is_some() {
                 None
@@ -731,7 +731,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
             self.writer.write_u32::<LittleEndian>(variant_index)?;
         }
         Ok(StructSerializer {
-            fixed_string_field: None,
+            short_string_field: None,
             len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
             writer: self.writer, code_page: self.code_page,
@@ -741,7 +741,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(StructSerializer {
-            fixed_string_field: None,
+            short_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -751,7 +751,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
 
     fn serialize_tuple_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
         Ok(StructSerializer {
-            fixed_string_field: None,
+            short_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -761,7 +761,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
 
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(StructSerializer {
-            fixed_string_field: None,
+            short_string_field: None,
             len: if self.isolated { Some(len) } else { None },
             writer: self.writer, code_page: self.code_page,
             start_pos_and_variant_index: None,
@@ -784,12 +784,12 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
         Ok(MapSerializer {
             value_buf_and_pos: None,
             writer: self.writer, code_page: self.code_page,
-            is_fixed_string_serializer: false,
+            is_short_string_serializer: false,
         })
     }
 }
 
-impl Serializer for FixedStringZeroSerializer {
+impl Serializer for ShortStringZeroSerializer {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = Impossible<(), Self::Error>;
@@ -803,146 +803,146 @@ impl Serializer for FixedStringZeroSerializer {
     fn is_human_readable(&self) -> bool { false }
     
     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
         if v != 0 {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
         Ok(())
     }
 
     fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     serde_if_integer128! {
         fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
 
         fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
     }
 
     fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_str(self, _: &str) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeStructVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 }
 
-impl<'a> Serializer for FixedStringZeroesSerializer<'a> {
+impl<'a> Serializer for ShortStringZeroesSerializer<'a> {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = Impossible<(), Self::Error>;
-    type SerializeTuple = FixedStringZeroesSerializer<'a>;
+    type SerializeTuple = ShortStringZeroesSerializer<'a>;
     type SerializeTupleStruct = Impossible<(), Self::Error>;
     type SerializeTupleVariant = Impossible<(), Self::Error>;
     type SerializeStruct = Impossible<(), Self::Error>;
@@ -952,115 +952,115 @@ impl<'a> Serializer for FixedStringZeroesSerializer<'a> {
     fn is_human_readable(&self) -> bool { false }
     
     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     serde_if_integer128! {
         fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
 
         fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
     }
 
     fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_str(self, _: &str) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeStructVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
@@ -1069,28 +1069,28 @@ impl<'a> Serializer for FixedStringZeroesSerializer<'a> {
     }
 
     fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 }
 
-impl<'a> SerializeTuple for FixedStringZeroesSerializer<'a> {
+impl<'a> SerializeTuple for ShortStringZeroesSerializer<'a> {
     type Ok = ();
     type Error = IoError;
 
     fn serialize_element<T: Serialize + ?Sized>(&mut self, v: &T) -> Result<(), Self::Error> {
-        v.serialize(FixedStringZeroSerializer { })
+        v.serialize(ShortStringZeroSerializer { })
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
@@ -1098,7 +1098,7 @@ impl<'a> SerializeTuple for FixedStringZeroesSerializer<'a> {
     }
 }
 
-impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
+impl<'a, W: Writer> Serializer for ShortStringSerializer<'a, W> {
     type Ok = ();
     type Error = IoError;
     type SerializeSeq = Impossible<(), Self::Error>;
@@ -1112,65 +1112,65 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
     fn is_human_readable(&self) -> bool { false }
     
     fn serialize_bool(self, _: bool) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_bytes(self, _: &[u8]) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u8(self, _: u8) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i8(self, _: i8) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u16(self, _: u16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i16(self, _: i16) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u32(self, _: u32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i32(self, _: i32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f32(self, _: f32) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_u64(self, _: u64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_i64(self, _: i64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_f64(self, _: f64) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     serde_if_integer128! {
         fn serialize_u128(self, _: u128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
 
         fn serialize_i128(self, _: i128) -> Result<Self::Ok, Self::Error> {
-            panic!("invalid fixed string serializer usage");
+            panic!("invalid short string serializer usage");
         }
     }
 
     fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
@@ -1182,10 +1182,10 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
             v.as_bytes().into()
         };
         if bytes.last() == Some(&0) {
-            return Err(Error::FixedStringTailZero.into());
+            return Err(Error::ShortStringTailZero.into());
         }
         if bytes.len() > self.size {
-            return Err(Error::FixedStringNotFit { max_len: self.size, len: bytes.len() }.into());
+            return Err(Error::ShortStringNotFit { max_len: self.size, len: bytes.len() }.into());
         }
         for _ in bytes.len() .. self.size {
             bytes.push(0);
@@ -1195,69 +1195,69 @@ impl<'a, W: Writer> Serializer for FixedStringSerializer<'a, W> {
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_struct(self, _: &'static str) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_unit_variant(self, _: &'static str, _: u32, _: &'static str)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> Result<Self::Ok, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _: &'static str, _: u32, _: &'static str, _: &T)
         -> Result<Self::Ok, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeTupleVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct_variant(self, _: &'static str, _: u32, _: &'static str, _: usize)
         -> Result<Self::SerializeStructVariant, Self::Error> {
 
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple(self, _: usize) -> Result<Self::SerializeTuple, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_tuple_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_struct(self, _: &'static str, _: usize) -> Result<Self::SerializeStruct, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_seq(self, _: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 
     fn serialize_map(self, _: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        panic!("invalid fixed string serializer usage");
+        panic!("invalid short string serializer usage");
     }
 }
 
@@ -1446,7 +1446,7 @@ mod tests {
 
     impl Serialize for String32 {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            let mut serializer = serializer.serialize_tuple_variant("", FIXED_STRING_VARIANT_INDEX, "", 2)?;
+            let mut serializer = serializer.serialize_tuple_variant("", SHORT_STRING_VARIANT_INDEX, "", 2)?;
             serializer.serialize_field(&[0u8; 32])?;
             serializer.serialize_field(&self.0)?;
             serializer.end()
@@ -1454,7 +1454,7 @@ mod tests {
     }
 
     #[test]
-    fn serialize_fixed_string() {
+    fn serialize_short_string() {
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
         let s = EslSerializer::new(true, CodePage::Russian, &mut w);

@@ -227,7 +227,7 @@ pub fn deserialize_f32_as_is<'de, D>(deserializer: D) -> Result<f32, D::Error> w
     }
 }
 
-pub fn serialize_string_tuple<S>(s: &str, len: usize, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+pub fn serialize_short_string<S>(s: &str, len: usize, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     if serializer.is_human_readable() {
         serializer.serialize_str(s)
     } else {
@@ -250,9 +250,9 @@ pub fn serialize_string_tuple<S>(s: &str, len: usize, serializer: S) -> Result<S
     }
 }
 
-struct StringNHRDeserializer { len: usize }
+struct ShortStringNHRDeserializer { len: usize }
 
-impl<'de> de::Visitor<'de> for StringNHRDeserializer {
+impl<'de> de::Visitor<'de> for ShortStringNHRDeserializer {
     type Value = String;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -282,11 +282,11 @@ impl<'de> de::Visitor<'de> for StringNHRDeserializer {
     }
 }
 
-pub fn deserialize_string_tuple<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
+pub fn deserialize_short_string<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
     if deserializer.is_human_readable() {
         String::deserialize(deserializer)
     } else {
-        deserializer.deserialize_tuple(len, StringNHRDeserializer { len })
+        deserializer.deserialize_tuple(len, ShortStringNHRDeserializer { len })
     }
 }
 

@@ -518,11 +518,11 @@ mod string_32 {
     use crate::serde_helpers::*;
 
     pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_string_tuple(s, 32, serializer)
+        serialize_short_string(s, 32, serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-        deserialize_string_tuple(32, deserializer)
+        deserialize_short_string(32, deserializer)
     }
 }
 

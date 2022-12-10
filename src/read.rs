@@ -265,7 +265,7 @@ fn string_z_list_field<'a>(
     )
 }
 
-fn string_len<'a>(
+fn short_string<'a>(
     code_page: CodePage,
     length: u32,
     offset: u32,
@@ -288,9 +288,9 @@ fn file_metadata_field<'a>(
             ),
             map_err(
                 tuple((
-                    string_len(code_page, 32, 4 + 4),
+                    short_string(code_page, 32, 4 + 4),
                     map(
-                        string_len(code_page, 256, 4 + 4 + 32),
+                        short_string(code_page, 256, 4 + 4 + 32),
                         |s| s.split(Newline::Dos.as_str()).map(String::from).collect()
                     ),
                     le_u32
@@ -304,12 +304,12 @@ fn file_metadata_field<'a>(
     )
 }
 
-fn string_len_field<'a>(code_page: CodePage, mode: RecordReadMode, length: u32) -> impl Fn(&'a [u8])
+fn short_string_field<'a>(code_page: CodePage, mode: RecordReadMode, length: u32) -> impl Fn(&'a [u8])
     -> IResult<&'a [u8], String, FieldBodyError> {
     
     move |input| {
         let length = if mode == RecordReadMode::Lenient && input.len() < length as usize { input.len() as u32 } else { length };
-        map_err(string_len(code_page, length, 0), move |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(length)))(input)
+        map_err(short_string(code_page, length, 0), move |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(length)))(input)
     }
 }
 
@@ -330,7 +330,7 @@ fn item_field<'a>(
         map(
             pair(
                 le_i32,
-                string_len(code_page, 32, 4)
+                short_string(code_page, 32, 4)
             ),
             |(count, item_id)| Item { count, item_id }
         ),
@@ -515,7 +515,7 @@ fn sound_chance_field<'a>(
     map(
         map_err(
             pair(
-                string_len(code_page, 32, 0),
+                short_string(code_page, 32, 0),
                 le_u8
             ),
             |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(32 + 1))
@@ -530,7 +530,7 @@ fn script_metadata_field<'a>(
     map(
         map_err(
             tuple((
-                string_len(code_page, 32, 0),
+                short_string(code_page, 32, 0),
                 le_u32, le_u32, le_u32,
                 le_u32, le_u32,
             )),
@@ -1066,7 +1066,7 @@ fn ai_target_field<'a>(
             map_err(
                 tuple((
                     le_f32, le_f32, le_f32, le_u16,
-                    string_len(code_page, 32, 0)
+                    short_string(code_page, 32, 0)
                 )),
                 |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(48))
             ),
@@ -1130,7 +1130,7 @@ fn ai_activate_field<'a>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
     map(
         pair(
-            map_err(string_len(code_page, 32, 0), |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(33))),
+            map_err(short_string(code_page, 32, 0), |e, _| e.unwrap_or(FieldBodyError::UnexpectedEndOfField(33))),
             bool_u8(33, 32)
         ),
         |(object_id, reset)| AiActivate {
@@ -1560,7 +1560,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
             FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
             FieldType::Item => map(item_field(code_page), Field::Item)(input),
-            FieldType::String(Some(len)) => map(string_len_field(code_page, mode, len), Field::String)(input),
+            FieldType::String(Some(len)) => map(short_string_field(code_page, mode, len), Field::String)(input),
             FieldType::String(None) => map(string_field(code_page), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),

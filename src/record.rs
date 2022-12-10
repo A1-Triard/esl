@@ -50,7 +50,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
         match FieldType::from_tags(self.record_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
                 if let Some(len) = len {
-                    serialize_string_tuple(s, len as usize, serializer)
+                    serialize_short_string(s, len as usize, serializer)
                 } else {
                     serializer.serialize_str(s)
                 }
@@ -490,7 +490,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         } else {
             match FieldType::from_tags(self.record_tag, self.field_tag) {
                 FieldType::String(len) => if let Some(len) = len {
-                    deserialize_string_tuple(len as usize, deserializer)
+                    deserialize_short_string(len as usize, deserializer)
                 } else {
                     String::deserialize(deserializer)
                 }.map(Field::String),
