@@ -292,6 +292,21 @@ fn multiline_field<'a>(
     )
 }
 
+fn time_field(input: &[u8]) -> IResult<&[u8], Time, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32,
+                le_u32,
+                le_u32,
+                le_u32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(16)
+        ),
+        |(hour, day, month, year)| Time { hour, day, month, year }
+    )(input)
+}
+
 fn item_field<'a>(
     code_page: CodePage
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
@@ -1132,6 +1147,13 @@ fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
     skill(4, 0)(input)
 }
 
+fn effect_arg_field(input: &[u8]) -> IResult<&[u8], EffectArg, FieldBodyError> {
+    map_res(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
+        move |w, _| EffectArg::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectArg(w), 0))
+    )(input)
+}
+
 fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
@@ -1529,6 +1551,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
             FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
             FieldType::Item => map(item_field(code_page), Field::Item)(input),
+            FieldType::Time => map(time_field, Field::Time)(input),
             FieldType::String(Some(len)) => map(short_string_field(code_page, mode, len), Field::String)(input),
             FieldType::String(None) => map(string_field(code_page), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
@@ -1551,6 +1574,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
             FieldType::Position => map(position_field, Field::Position)(input),
             FieldType::Skill => map(skill_field, Field::Skill)(input),
+            FieldType::EffectArg => map(effect_arg_field, Field::EffectArg)(input),
             FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
             FieldType::EffectMetadata => map(effect_metadata_field, Field::EffectMetadata)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
@@ -1574,6 +1598,8 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::I16 => map(i16_field, Field::I16)(input),
             FieldType::I64 => map(i64_field, Field::I64)(input),
             FieldType::U8 => map(u8_field, Field::U8)(input),
+            FieldType::Bool8 => map(bool_u8(1, 0), Field::Bool)(input),
+            FieldType::Bool32 => map(bool_u32(4, 0), Field::Bool)(input),
             FieldType::MarkerU8(none) => map(none_u8_field(none), |()| Field::None)(input),
             FieldType::F32 => map(f32_field, Field::F32)(input),
             FieldType::I32List => map(i32_list_field, Field::I32List)(input),
@@ -1803,6 +1829,7 @@ pub enum Unknown {
     CreatureType(u32),
     DialogType(u32),
     EffectFlags(u32),
+    EffectArg(u32),
     EffectIndex(u32),
     EffectRange(u32),
     EnchantmentAutoCalculate(i16),
@@ -1858,6 +1885,7 @@ impl Display for Unknown {
             Unknown::School(v) => write!(f, "school {v}"),
             Unknown::SoundGen(v) => write!(f, "sound gen {v}"),
             Unknown::EffectIndex(v) => write!(f, "effect index {v}"),
+            Unknown::EffectArg(v) => write!(f, "effect arg {v}"),
             Unknown::BookFlags(v) => write!(f, "book flags {v:08X}h"),
         }
     }

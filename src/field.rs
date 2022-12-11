@@ -131,14 +131,16 @@ pub(crate) enum FieldType {
     F32, I32, I16, I64, U8,
     I32OrI64,
     MarkerU8(u8),
+    Bool8, Bool32,
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
     Ai, AiWander, AiTravel, AiTarget, AiActivate, NpcFlags, CreatureFlags, Book, ContainerFlags,
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
-    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior
+    Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior,
+    Time, EffectArg,
 }
-
+ 
 impl FieldType {
     pub fn from_tags(record_tag: Tag, field_tag: Tag) -> FieldType {
         match (record_tag, field_tag) {
@@ -147,6 +149,7 @@ impl FieldType {
             (_, ACDT) => FieldType::U8ListZip,
             (_, ACSC) => FieldType::U8ListZip,
             (_, ACSL) => FieldType::U8ListZip,
+            (_, ACT_) => FieldType::String(None),
             (_, ACTN) => FieldType::I32,
             (_, AI_A) => FieldType::AiActivate,
             (_, AI_E) => FieldType::AiTarget,
@@ -154,23 +157,29 @@ impl FieldType {
             (_, AI_T) => FieldType::AiTravel,
             (_, AI_W) => FieldType::AiWander,
             (_, AIDT) => FieldType::Ai,
+            (_, AISE) => FieldType::Bool8,
             (ALCH, ALDT) => FieldType::Potion,
             (CELL, AMBI) => FieldType::Interior,
             (FACT, ANAM) => FieldType::String(None),
             (_, ANAM) => FieldType::StringZ,
             (ARMO, AODT) => FieldType::Armor,
             (REFR, APUD) => FieldType::String(None), // TODO
+            (_, ARG_) => FieldType::EffectArg,
             (_, ASND) => FieldType::StringZ,
             (_, AVFX) => FieldType::StringZ,
+            (_, BASE) => FieldType::F32,
             (BOOK, BKDT) => FieldType::Book,
             (ARMO, BNAM) => FieldType::String(None),
             (BODY, BNAM) => FieldType::String(None),
             (CLOT, BNAM) => FieldType::String(None),
             (INFO, BNAM) => FieldType::Multiline(Newline::Dos),
             (_, BNAM) => FieldType::StringZ,
+            (_, BNDS) => FieldType::I32List,
             (_, BSND) => FieldType::StringZ,
             (_, BVFX) => FieldType::StringZ,
             (BODY, BYDT) => FieldType::BodyPart,
+            (_, CAST) => FieldType::I32,
+            (_, CFLG) => FieldType::I32,
             (_, CHRD) => FieldType::U8ListZip,
             (CLAS, CLDT) => FieldType::Class,
             (ARMO, CNAM) => FieldType::String(None),
@@ -180,15 +189,21 @@ impl FieldType {
             (_, CNAM) => FieldType::StringZ,
             (CELL, CNDT) => FieldType::Grid,
             (CONT, CNDT) => FieldType::F32,
+            (DCOU, COUN) => FieldType::I32,
+            (STLN, COUN) => FieldType::I32,
             (_, COUN) => FieldType::I32OrI64,
             (CELL, CRED) => FieldType::U8ListZip,
+            (_, CREG) => FieldType::StringZ,
             (CELL, CSHN) => FieldType::StringZ,
             (_, CSND) => FieldType::StringZ,
             (CELL, CSTN) => FieldType::StringZ,
             (CLOT, CTDT) => FieldType::Clothing,
+            (_, CURD) => FieldType::I32,
             (_, CVFX) => FieldType::StringZ,
+            (_, CWTH) => FieldType::I32,
             (CELL, DATA) => FieldType::PositionOrCell,
             (DIAL, DATA) => FieldType::DialogMetadata,
+            (GMAP, DATA) => FieldType::U8ListZip,
             (INFO, DATA) => FieldType::Info,
             (LAND, DATA) => FieldType::I32,
             (LEVC, DATA) => FieldType::I32,
@@ -202,18 +217,31 @@ impl FieldType {
             (TES3, DATA) => FieldType::I64,
             (QUES, DATA) => FieldType::StringZ,
             (_, DELE) => FieldType::I32,
+            (_, DEPE) => FieldType::String(None),
             (BSGN, DESC) => FieldType::StringZ,
             (_, DESC) => FieldType::String(None),
+            (CSTA, DISP) => FieldType::String(None),
+            (PLAY, DISP) => FieldType::String(None),
+            (_, DISP) => FieldType::I32,
             (_, DNAM) => FieldType::StringZ,
             (_, DODT) => FieldType::Position,
+            (_, DURA) => FieldType::F32,
+            (_, EFID) => FieldType::EffectIndex,
+            (_, EIND) => FieldType::I32,
             (ALCH, ENAM) => FieldType::Effect,
             (ENCH, ENAM) => FieldType::Effect,
             (PCDT, ENAM) => FieldType::I64,
             (SPEL, ENAM) => FieldType::Effect,
             (_, ENAM) => FieldType::StringZ,
             (ENCH, ENDT) => FieldType::Enchantment,
+            (_, EQIP) => FieldType::I32List,
+            (_, FACT) => FieldType::String(None),
             (FACT, FADT) => FieldType::Faction,
+            (_, FARA) => FieldType::I32,
+            (_, FARE) => FieldType::I32,
+            (_, FAST) => FieldType::Bool8,
             (CELL, FGTN) => FieldType::StringZ,
+            (CAM_, FIRS) => FieldType::Bool8,
             (CONT, FLAG) => FieldType::ContainerFlags,
             (CREA, FLAG) => FieldType::CreatureFlags,
             (NPC_, FLAG) => FieldType::NpcFlags,
@@ -221,15 +249,19 @@ impl FieldType {
             (_, FLTV) => FieldType::F32,
             (GLOB, FNAM) => FieldType::String(None),
             (PCDT, FNAM) => FieldType::U8ListZip,
+            (STLN, FNAM) => FieldType::String(None),
             (_, FNAM) => FieldType::StringZ,
             (_, FORM) => FieldType::I32,
             (CELL, FRMR) => FieldType::I32,
             (_, FRMR) => FieldType::I32List,
             (_, GMDT) => FieldType::U8ListZip,
+            (_, GRAV) => FieldType::I32,
             (TES3, HEDR) => FieldType::FileMetadata,
             (_, HSND) => FieldType::StringZ,
             (_, HVFX) => FieldType::StringZ,
+            (_, ID__) => FieldType::String(None),
             (_, INAM) => FieldType::StringZ,
+            (_, INCR) => FieldType::I32List,
             (ARMO, INDX) => FieldType::BipedObject,
             (CLOT, INDX) => FieldType::BipedObject,
             (MGEF, INDX) => FieldType::EffectIndex,
@@ -241,23 +273,43 @@ impl FieldType {
             (LEVI, INTV) => FieldType::I16,
             (_, INTV) => FieldType::I32,
             (INGR, IRDT) => FieldType::Ingredient,
+            (_, ITEM) => FieldType::I32List,
             (_, ITEX) => FieldType::StringZ,
+            (_, JEDA) => FieldType::I32,
+            (_, JEDM) => FieldType::I32,
+            (_, JEMO) => FieldType::I32,
+            (_, JETY) => FieldType::I32,
             (PCDT, KNAM) => FieldType::U8ListZip,
             (_, KNAM) => FieldType::StringZ,
+            (_, LAST) => FieldType::I32,
+            (_, LEFT) => FieldType::F32,
+            (ENAB, LEVT) => FieldType::Bool8,
+            (_, LHAT) => FieldType::String(None),
             (LIGH, LHDT) => FieldType::Light,
+            (_, LHIT) => FieldType::String(None),
             (PCDT, LNAM) => FieldType::I64,
             (LOCK, LKDT) => FieldType::Tool,
+            (_, LKEP) => FieldType::F32List,
+            (_, LOCA) => FieldType::String(None),
+            (_, LPRO) => FieldType::I32,
             (CELL, LSHN) => FieldType::StringZ,
             (CELL, LSTN) => FieldType::StringZ,
+            (_, LUAS) => FieldType::String(None),
+            (_, LUAW) => FieldType::I64,
             (_, LVCR) => FieldType::U8,
+            (_, MAGN) => FieldType::F32,
             (FMAP, MAPD) => FieldType::U8ListZip,
             (FMAP, MAPH) => FieldType::I64,
+            (_, MARK) => FieldType::F32List,
             (TES3, MAST) => FieldType::StringZ,
             (MISC, MCDT) => FieldType::MiscItem,
             (MGEF, MEDT) => FieldType::EffectMetadata,
+            (_, MGEF) => FieldType::EffectIndex,
             (PCDT, MNAM) => FieldType::StringZ,
             (CELL, MNAM) => FieldType::U8,
+            (_, MODI) => FieldType::F32,
             (_, MODL) => FieldType::StringZ,
+            (_, MRK_) => FieldType::Grid,
             (CELL, MVRF) => FieldType::I32,
             (CELL, NAM0) => FieldType::I32,
             (PCDT, NAM0) => FieldType::StringZ,
@@ -270,10 +322,12 @@ impl FieldType {
             (CELL, NAM9) => FieldType::I32,
             (PCDT, NAM9) => FieldType::I32,
             (GMST, NAME) => FieldType::String(None),
+            (GSCR, NAME) => FieldType::String(None),
             (INFO, NAME) => FieldType::String(None),
             (JOUR, NAME) => FieldType::Multiline(Newline::Unix),
             (SPLM, NAME) => FieldType::I32,
             (SSCR, NAME) => FieldType::String(None),
+            (STLN, NAME) => FieldType::String(None),
             (_, NAME) => FieldType::StringZ,
             (_, ND3D) => FieldType::U8,
             (LEVC, NNAM) => FieldType::U8,
@@ -285,27 +339,43 @@ impl FieldType {
             (NPC_, NPDT) => FieldType::Npc,
             (NPCC, NPDT) => FieldType::NpcState,
             (_, NPCS) => FieldType::String(Some(32)),
+            (_, NWTH) => FieldType::I32,
+            (STLN, ONAM) => FieldType::String(None),
             (_, ONAM) => FieldType::StringZ,
             (PROB, PBDT) => FieldType::Tool,
             (_, PGRC) => FieldType::U8ListZip,
             (_, PGRP) => FieldType::U8ListZip,
+            (_, PLCE) => FieldType::String(None),
+            (_, PLCN) => FieldType::String(None),
+            (_, PLLE) => FieldType::I32,
+            (_, PLNA) => FieldType::String(None),
             (PCDT, PNAM) => FieldType::U8ListZip,
             (_, PNAM) => FieldType::StringZ,
             (_, PTEX) => FieldType::StringZ,
+            (_, QFIN) => FieldType::Bool8,
+            (_, QSTA) => FieldType::I32,
+            (_, QWTH) => FieldType::I32,
             (RACE, RADT) => FieldType::Race,
+            (_, REPU) => FieldType::I32,
+            (_, RGNC) => FieldType::U8,
             (_, RGNN) => FieldType::StringZ,
+            (_, RGNW) => FieldType::I32,
             (REPA, RIDT) => FieldType::RepairItem,
             (FACT, RNAM) => FieldType::String(Some(32)),
             (SCPT, RNAM) => FieldType::I32,
             (_, RNAM) => FieldType::StringZ,
+            (_, RUN_) => FieldType::Bool32,
             (SCPT, SCDT) => FieldType::U8ListZip,
             (SCPT, SCHD) => FieldType::ScriptMetadata,
             (TES3, SCRD) => FieldType::U8ListZip,
             (_, SCRI) => FieldType::StringZ,
+            (_, SCRN) => FieldType::U8ListZip,
             (TES3, SCRS) => FieldType::U8ListZip,
             (_, SCTX) => FieldType::Multiline(Newline::Dos),
             (SCPT, SCVR) => FieldType::StringZList,
             (_, SCVR) => FieldType::String(None),
+            (_, SELE) => FieldType::I32,
+            (_, SIGN) => FieldType::String(None),
             (SKIL, SKDT) => FieldType::SkillMetadata,
             (_, SLCS) => FieldType::ScriptVars,
             (_, SLFD) => FieldType::F32List,
@@ -314,16 +384,33 @@ impl FieldType {
             (PCDT, SNAM) => FieldType::U8ListZip,
             (REGN, SNAM) => FieldType::SoundChance,
             (_, SNAM) => FieldType::StringZ,
+            (_, SPAC) => FieldType::String(None),
             (SPLM, SPDT) => FieldType::U8ListZip,
             (SPEL, SPDT) => FieldType::Spell,
-            (_, STPR) => FieldType::U8ListZip,
+            (_, SPEL) => FieldType::String(None),
+            (_, STBA) => FieldType::F32,
+            (_, STCU) => FieldType::F32,
+            (_, STDF) => FieldType::F32,
+            (_, STMO) => FieldType::F32,
+            (CELL, STPR) => FieldType::U8ListZip,
+            (REFR, STPR) => FieldType::U8ListZip,
+            (_, STPR) => FieldType::F32,
             (_, STRV) => FieldType::String(None),
+            (_, TARG) => FieldType::String(None),
+            (ENAB, TELE) => FieldType::Bool8,
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
+            (JOUR, TEXT) => FieldType::String(None),
             (_, TEXT) => FieldType::StringZ,
+            (_, TMPS) => FieldType::I32,
             (_, TNAM) => FieldType::StringZ,
+            (_, TOPI) => FieldType::String(None),
+            (_, TRFC) => FieldType::I32,
+            (_, TSTM) => FieldType::Time,
+            (_, TYPE) => FieldType::I32,
             (INFO, QSTF) => FieldType::MarkerU8(1),
             (INFO, QSTN) => FieldType::MarkerU8(1),
             (INFO, QSTR) => FieldType::MarkerU8(1),
+            (_, USED) => FieldType::String(None),
             (_, VCLR) => FieldType::U8ListZip,
             (_, VHGT) => FieldType::U8ListZip,
             (_, VNML) => FieldType::U8ListZip,
@@ -333,6 +420,7 @@ impl FieldType {
             (_, WIDX) => FieldType::I64,
             (_, WNAM) => FieldType::U8ListZip,
             (WEAP, WPDT) => FieldType::Weapon,
+            (_, WUPD) => FieldType::I32,
             (_, XCHG) => FieldType::F32,
             (_, XHLT) => FieldType::I32,
             (_, XIDX) => FieldType::I32,
@@ -340,6 +428,8 @@ impl FieldType {
             (SPLM, XNAM) => FieldType::U8,
             (_, XSCL) => FieldType::F32,
             (_, XSOL) => FieldType::StringZ,
+            (_, YEIN) => FieldType::String(None),
+            (_, YETO) => FieldType::String(None),
             (REFR, YNAM) => FieldType::I32,
             (CELL, ZNAM) => FieldType::U8,
             _ => FieldType::U8List
@@ -495,6 +585,17 @@ mod bool_either_i16 {
             }
         }
     }
+}
+
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(Eq, PartialEq)]
+pub struct Time {
+    #[educe(PartialEq(method="eq_f32"))]
+    #[serde(with="float_32")]
+    pub hour: f32,
+    pub day: u32,
+    pub month: u32,
+    pub year: u32
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -1129,6 +1230,79 @@ macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
     #[repr(u32)]
+    pub enum EffectArg {
+        #[allow(non_camel_case_types)]
+        Strength_Block = 0,
+        #[allow(non_camel_case_types)]
+        Armorer_Intelligence = 1,
+        #[allow(non_camel_case_types)]
+        MediumArmor_Willpower = 2,
+        #[allow(non_camel_case_types)]
+        HeavyArmor_Agility = 3,
+        #[allow(non_camel_case_types)]
+        BluntWeapon_Speed = 4,
+        #[allow(non_camel_case_types)]
+        LongBlade_Endurance = 5,
+        #[allow(non_camel_case_types)]
+        Axe_Personality = 6,
+        #[allow(non_camel_case_types)]
+        Spear_Luck = 7,
+        Athletics = 8,
+        Enchant = 9,
+        Destruction = 10,
+        Alteration = 11,
+        Illusion = 12,
+        Conjuration = 13,
+        Mysticism = 14,
+        Restoration = 15,
+        Alchemy = 16,
+        Unarmored = 17,
+        Security = 18,
+        Sneak = 19,
+        Acrobatics = 20,
+        LightArmor = 21,
+        ShortBlade = 22,
+        Marksman = 23,
+        Mercantile = 24,
+        Speechcraft = 25,
+        HandToHand = 26
+    }
+}
+
+enum_serde!(EffectArg, "effect arg", as u32, Unsigned, u64);
+
+impl From<Skill> for EffectArg {
+    fn from(skill: Skill) -> EffectArg {
+        EffectArg::n(skill as u32).unwrap()
+    }
+}
+
+impl From<Attribute> for EffectArg {
+    fn from(attribute: Attribute) -> EffectArg {
+        EffectArg::n(attribute as u32).unwrap()
+    }
+}
+
+impl TryFrom<EffectArg> for Skill {
+    type Error = ();
+
+    fn try_from(arg: EffectArg) -> Result<Skill, ()> {
+        Skill::n(arg as u32).ok_or(())
+    }
+}
+
+impl TryFrom<EffectArg> for Attribute {
+    type Error = ();
+
+    fn try_from(arg: EffectArg) -> Result<Attribute, ()> {
+        Attribute::n(arg as u32).ok_or(())
+    }
+}
+
+macro_attr! {
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u32)]
     pub enum Skill {
         Block = 0,
         Armorer = 1,
@@ -1340,6 +1514,11 @@ impl TryFrom<Skill> for School {
     }
 }
 
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+pub enum EffectArgType {
+    Attribute, Skill
+}
+
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
@@ -1376,6 +1555,26 @@ macro_attr! {
         SummonCenturionSphere = 134, SunDamage = 135, StuntedMagicka = 136, SummonFabricant = 137,
         SummonCreature01 = 138, SummonCreature02 = 139, SummonCreature03 = 140, SummonCreature04 = 141,
         SummonCreature05 = 142
+    }
+}
+
+impl EffectIndex {
+    pub fn arg_type(self) -> Option<EffectArgType> {
+        match self {
+            EffectIndex::AbsorbAttribute |
+            EffectIndex::DamageAttribute |
+            EffectIndex::DrainAttribute |
+            EffectIndex::FortifyAttribute |
+            EffectIndex::RestoreAttribute =>
+                Some(EffectArgType::Attribute),
+            EffectIndex::AbsorbSkill |
+            EffectIndex::DamageSkill |
+            EffectIndex::DrainSkill |
+            EffectIndex::FortifySkill |
+            EffectIndex::RestoreSkill =>
+                Some(EffectArgType::Skill),
+            _ => None
+         }
     }
 }
 
@@ -2410,9 +2609,12 @@ define_field!(
     StringZList(StringZList),
     Tool(Tool),
     U8(u8),
+    Bool(bool),
     U8List(Vec<u8>),
     Weapon(Weapon),
     Weather(Weather),
+    Time(Time),
+    EffectArg(EffectArg),
 );
 
 impl From<()> for Field {

@@ -91,6 +91,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
+            FieldType::Time => if let Field::Time(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have time type", self.record_tag, self.field_tag)))
+            },
             FieldType::Item => if let Field::Item(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -100,6 +105,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have skill type", self.record_tag, self.field_tag)))
+            },
+            FieldType::EffectArg => if let Field::EffectArg(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have effect arg type", self.record_tag, self.field_tag)))
             },
             FieldType::Ingredient => if let Field::Ingredient(v) = self.field {
                 v.serialize(serializer)
@@ -360,6 +370,16 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have none type", self.record_tag, self.field_tag)))
             },
+            FieldType::Bool8 => if let &Field::Bool(v) = self.field {
+                serialize_bool_u8(v, serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Bool32 => if let &Field::Bool(v) = self.field {
+                serialize_bool_u32(v, serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
+            },
             FieldType::I32 => if let &Field::I32(v) = self.field {
                 serializer.serialize_i32(v)
             } else {
@@ -508,6 +528,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 }.map(Field::U8List),
                 FieldType::Info => Info::deserialize(deserializer).map(Field::Info),
                 FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
+                FieldType::Time => Time::deserialize(deserializer).map(Field::Time),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
                 FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
                 FieldType::ScriptVars => ScriptVars::deserialize(deserializer).map(Field::ScriptVars),
@@ -523,6 +544,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
+                FieldType::EffectArg => EffectArg::deserialize(deserializer).map(Field::EffectArg),
                 FieldType::EffectIndex => EffectIndex::deserialize(deserializer).map(Field::EffectIndex),
                 FieldType::EffectMetadata => EffectMetadata::deserialize(deserializer).map(Field::EffectMetadata),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
@@ -562,6 +584,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
                 FieldType::MarkerU8(none) => deserialize_none_u8(none, deserializer).map(|()| Field::None),
+                FieldType::Bool8 => deserialize_bool_u8(deserializer).map(Field::Bool),
+                FieldType::Bool32 => deserialize_bool_u32(deserializer).map(Field::Bool),
                 FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
