@@ -312,7 +312,10 @@ mod tests {
                 (RGNN, Field::StringZ("Coast Region".into())),
                 (FRMR, Field::I32(347140)),
                 (NAME, Field::StringZ("crab".into())),
-                (DATA, Field::Position(Position { x: 165898.0, y: 38710.484, z: 198.8868, x_rot: 0.0, y_rot: 0.0, z_rot: 0.0 }))
+                (DATA, Field::PosRot(PosRot {
+                    pos: Pos { x: 165898.0, y: 38710.484, z: 198.8868, },
+                    rot: Rot { x: 0.0, y: 0.0, z: 0.0 }
+                }))
             ]
         };
         let bytes = code::serialize(&record, CodePage::English, false).unwrap();
