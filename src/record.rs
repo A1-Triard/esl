@@ -164,11 +164,6 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 &Field::Cell(v) => PosRotOrCell::Cell(v.clone()).serialize(serializer),
                 _ => Err(S::Error::custom(format!("{} {} field should have pos_rot or cell type", self.record_tag, self.field_tag)))
             },
-            FieldType::I32OrI64 => match &self.field {
-                &Field::I32(v) => I32OrI64::I32(*v).serialize(serializer),
-                &Field::I64(v) => I32OrI64::I64(*v).serialize(serializer),
-                _ => Err(S::Error::custom(format!("{} {} field should have i32 or i64 type", self.record_tag, self.field_tag)))
-            },
             FieldType::Spell => if let Field::Spell(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -573,7 +568,6 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Npc => Npc::deserialize(deserializer).map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
                 FieldType::PosRotOrCell => PosRotOrCell::deserialize(deserializer).map(|x| x.into()),
-                FieldType::I32OrI64 => I32OrI64::deserialize(deserializer).map(|x| x.into()),
                 FieldType::Spell => Spell::deserialize(deserializer).map(Field::Spell),
                 FieldType::Pos => Pos::deserialize(deserializer).map(Field::Pos),
                 FieldType::PosRot => PosRot::deserialize(deserializer).map(Field::PosRot),
@@ -949,104 +943,6 @@ impl<'de> Deserialize<'de> for PosRotOrCell {
                 name_of!(type PosRotOrCell),
                 &[name_of!(const PosRot in PosRotOrCell), name_of!(const Cell in PosRotOrCell)],
                 PosRotOrCellNHRDeserializer
-            )
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum I32OrI64 {
-    I32(i32),
-    I64(i64)
-}
-
-impl From<I32OrI64> for Field {
-    fn from(v: I32OrI64) -> Self {
-        match v {
-            I32OrI64::I32(i) => Field::I32(i),
-            I32OrI64::I64(i) => Field::I64(i),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename="I32OrI64")]
-enum I32OrI64HRSurrogate {
-    I32(i32),
-    I64(i64)
-}
-
-impl From<I32OrI64> for I32OrI64HRSurrogate {
-    fn from(t: I32OrI64) -> Self {
-        match t {
-            I32OrI64::I32(i) => I32OrI64HRSurrogate::I32(i),
-            I32OrI64::I64(i) => I32OrI64HRSurrogate::I64(i),
-        }
-    }
-}
-
-impl From<I32OrI64HRSurrogate> for I32OrI64 {
-    fn from(t: I32OrI64HRSurrogate) -> Self {
-        match t {
-            I32OrI64HRSurrogate::I32(p) => I32OrI64::I32(p),
-            I32OrI64HRSurrogate::I64(c) => I32OrI64::I64(c),
-        }
-    }
-}
-
-const I64_SERDE_SIZE: u32 = 8;
-
-impl Serialize for I32OrI64 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            I32OrI64HRSurrogate::from(self.clone()).serialize(serializer)
-        } else {
-            match self {
-                I32OrI64::I32(i) => serializer.serialize_newtype_variant(
-                    name_of!(type I32OrI64),
-                    I32_SERDE_SIZE,
-                    name_of!(const I32 in I32OrI64),
-                    i
-                ),
-                I32OrI64::I64(i) => serializer.serialize_newtype_variant(
-                    name_of!(type I32OrI64),
-                    I64_SERDE_SIZE,
-                    name_of!(const I64 in I32OrI64),
-                    i
-                ),
-            }
-        }
-    }
-}
-
-struct I32OrI64NHRDeserializer;
-
-impl<'de> de::Visitor<'de> for I32OrI64NHRDeserializer {
-    type Value = I32OrI64;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "i32 or i64")
-    }
-
-    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
-        let (variant_index, variant) = data.variant::<u32>()?;
-        match variant_index {
-            I32_SERDE_SIZE => Ok(I32OrI64::I32(variant.newtype_variant()?)),
-            I64_SERDE_SIZE => Ok(I32OrI64::I64(variant.newtype_variant()?)),
-            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for I32OrI64 {
-    fn deserialize<D>(deserializer: D) -> Result<I32OrI64, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            I32OrI64HRSurrogate::deserialize(deserializer).map(|x| x.into())
-        } else {
-            deserializer.deserialize_enum(
-                name_of!(type I32OrI64),
-                &[name_of!(const I32 in I32OrI64), name_of!(const I64 in I32OrI64)],
-                I32OrI64NHRDeserializer
             )
         }
     }

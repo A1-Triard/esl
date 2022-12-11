@@ -1713,11 +1713,6 @@ fn field_body<'a>(
                 12 => map(cell_field, Field::Cell)(input),
                 x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
-            FieldType::I32OrI64 => match field_size {
-                4 => map(i32_field, Field::I32)(input),
-                8 => map(i64_field, Field::I64)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
-            },
             FieldType::Weather => match field_size {
                 8 => map(weather_field, Field::Weather)(input),
                 10 => map(weather_ex_field, Field::Weather)(input),
