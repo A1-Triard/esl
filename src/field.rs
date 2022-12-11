@@ -128,9 +128,8 @@ pub(crate) enum FieldType {
     String(Option<u32>),
     StringZ, StringZList,
     Multiline(Newline),
-    F32, #[allow(dead_code)] F64, I32, I16, I64, U8,
+    F32, I32, I16, I64, U8,
     I32OrI64,
-    F32OrF64,
     MarkerU8(u8),
     Bool8, Bool32,
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
@@ -402,7 +401,7 @@ impl FieldType {
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (JOUR, TEXT) => FieldType::String(None),
             (_, TEXT) => FieldType::StringZ,
-            (CSTA, TIME) => FieldType::F32OrF64,
+            (CSTA, TIME) => FieldType::I32OrI64,
             (_, TIME) => FieldType::Time,
             (_, TMPS) => FieldType::I32,
             (_, TNAM) => FieldType::StringZ,
@@ -478,10 +477,6 @@ pub(crate) fn eq_f32(a: &f32, b: &f32) -> bool {
     a.to_bits() == b.to_bits()
 }
 
-pub(crate) fn eq_f64(a: &f64, b: &f64) -> bool {
-    a.to_bits() == b.to_bits()
-}
-
 fn eq_f32_list(a: &[f32], b: &[f32]) -> bool {
     if a.len() != b.len() { return false; }
     a.iter().zip(b.iter()).all(|(x, y)| eq_f32(x, y))
@@ -497,19 +492,6 @@ pub(crate) mod float_32 {
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
         deserialize_f32_as_is(deserializer)
-    }
-}
-
-pub(crate) mod float_64 {
-    use serde::{Serializer, Deserializer};
-    use crate::serde_helpers::*;
-
-    pub fn serialize<S>(v: &f64, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_f64_as_is(*v, serializer)
-    }
-    
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<f64, D::Error> where D: Deserializer<'de> {
-        deserialize_f64_as_is(deserializer)
     }
 }
 
@@ -2602,7 +2584,6 @@ define_field!(
     EffectMetadata(EffectMetadata),
     Enchantment(Enchantment),
     F32(#[educe(PartialEq(method="eq_f32"))] f32),
-    F64(#[educe(PartialEq(method="eq_f64"))] f64),
     F32List(#[educe(PartialEq(method="eq_f32_list"))] Vec<f32>),
     Faction(Faction),
     FileMetadata(FileMetadata),

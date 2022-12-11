@@ -1,4 +1,3 @@
-use educe::Educe;
 use either::{Either, Left, Right};
 use std::fmt::{self, Debug, Formatter};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
@@ -166,11 +165,6 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 &Field::I32(v) => I32OrI64::I32(*v).serialize(serializer),
                 &Field::I64(v) => I32OrI64::I64(*v).serialize(serializer),
                 _ => Err(S::Error::custom(format!("{} {} field should have i32 or i64 type", self.record_tag, self.field_tag)))
-            },
-            FieldType::F32OrF64 => match &self.field {
-                &Field::F32(v) => F32OrF64::F32(*v).serialize(serializer),
-                &Field::F64(v) => F32OrF64::F64(*v).serialize(serializer),
-                _ => Err(S::Error::custom(format!("{} {} field should have f32 or f64 type", self.record_tag, self.field_tag)))
             },
             FieldType::Spell => if let Field::Spell(v) = self.field {
                 v.serialize(serializer)
@@ -376,11 +370,6 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
-            FieldType::F64 => if let &Field::F64(v) = self.field {
-                serialize_f64_as_is(v, serializer)
-            } else {
-                Err(S::Error::custom(format!("{} {} field should have 64-bit float type", self.record_tag, self.field_tag)))
-            },
             FieldType::MarkerU8(none) => if let Field::None = self.field {
                 serialize_none_u8(none, serializer)
             } else {
@@ -557,7 +546,6 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
                 FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
                 FieldType::I32OrI64 => I32OrI64::deserialize(deserializer).map(|x| x.into()),
-                FieldType::F32OrF64 => F32OrF64::deserialize(deserializer).map(|x| x.into()),
                 FieldType::Spell => Spell::deserialize(deserializer).map(Field::Spell),
                 FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
@@ -605,7 +593,6 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Bool8 => deserialize_bool_u8(deserializer).map(Field::Bool),
                 FieldType::Bool32 => deserialize_bool_u32(deserializer).map(Field::Bool),
                 FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
-                FieldType::F64 => deserialize_f64_as_is(deserializer).map(Field::F64),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
                 FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
@@ -1021,120 +1008,6 @@ impl<'de> Deserialize<'de> for I32OrI64 {
                 name_of!(type I32OrI64),
                 &[name_of!(const I32 in I32OrI64), name_of!(const I64 in I32OrI64)],
                 I32OrI64NHRDeserializer
-            )
-        }
-    }
-}
-
-#[derive(Debug, Clone, Educe)]
-#[educe(PartialEq, Eq)]
-enum F32OrF64 {
-    F32(#[educe(PartialEq(method="eq_f32"))] f32),
-    F64(#[educe(PartialEq(method="eq_f64"))] f64)
-}
-
-impl From<F32OrF64> for Field {
-    fn from(v: F32OrF64) -> Self {
-        match v {
-            F32OrF64::F32(f) => Field::F32(f),
-            F32OrF64::F64(f) => Field::F64(f),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename="F32OrF64")]
-enum F32OrF64HRSurrogate {
-    F32(#[serde(with="float_32")] f32),
-    F64(#[serde(with="float_64")] f64)
-}
-
-impl From<F32OrF64> for F32OrF64HRSurrogate {
-    fn from(t: F32OrF64) -> Self {
-        match t {
-            F32OrF64::F32(f) => F32OrF64HRSurrogate::F32(f),
-            F32OrF64::F64(f) => F32OrF64HRSurrogate::F64(f),
-        }
-    }
-}
-
-impl From<F32OrF64HRSurrogate> for F32OrF64 {
-    fn from(t: F32OrF64HRSurrogate) -> Self {
-        match t {
-            F32OrF64HRSurrogate::F32(p) => F32OrF64::F32(p),
-            F32OrF64HRSurrogate::F64(c) => F32OrF64::F64(c),
-        }
-    }
-}
-
-const F32_SERDE_SIZE: u32 = 4;
-const F64_SERDE_SIZE: u32 = 8;
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename="F32")]
-struct F32Surrogate(#[serde(with="float_32")] f32);
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename="F64")]
-struct F64Surrogate(#[serde(with="float_64")] f64);
-
-impl Serialize for F32OrF64 {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        if serializer.is_human_readable() {
-            F32OrF64HRSurrogate::from(self.clone()).serialize(serializer)
-        } else {
-            match self {
-                F32OrF64::F32(f) => serializer.serialize_newtype_variant(
-                    name_of!(type F32OrF64),
-                    F32_SERDE_SIZE,
-                    name_of!(const F32 in F32OrF64),
-                    &F32Surrogate(*f)
-                ),
-                F32OrF64::F64(f) => serializer.serialize_newtype_variant(
-                    name_of!(type F32OrF64),
-                    F64_SERDE_SIZE,
-                    name_of!(const F64 in F32OrF64),
-                    &F64Surrogate(*f)
-                ),
-            }
-        }
-    }
-}
-
-struct F32OrF64NHRDeserializer;
-
-impl<'de> de::Visitor<'de> for F32OrF64NHRDeserializer {
-    type Value = F32OrF64;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "f32 or f64")
-    }
-
-    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
-        let (variant_index, variant) = data.variant::<u32>()?;
-        match variant_index {
-            F32_SERDE_SIZE => {
-                let f: F32Surrogate = variant.newtype_variant()?;
-                Ok(F32OrF64::F32(f.0))
-            },
-            F64_SERDE_SIZE => {
-                let f: F64Surrogate = variant.newtype_variant()?;
-                Ok(F32OrF64::F64(f.0))
-            },
-            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for F32OrF64 {
-    fn deserialize<D>(deserializer: D) -> Result<F32OrF64, D::Error> where D: Deserializer<'de> {
-        if deserializer.is_human_readable() {
-            F32OrF64HRSurrogate::deserialize(deserializer).map(|x| x.into())
-        } else {
-            deserializer.deserialize_enum(
-                name_of!(type F32OrF64),
-                &[name_of!(const F32 in F32OrF64), name_of!(const F64 in F32OrF64)],
-                F32OrF64NHRDeserializer
             )
         }
     }

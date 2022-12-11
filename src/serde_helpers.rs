@@ -229,54 +229,6 @@ pub fn deserialize_f32_as_is<'de, D>(deserializer: D) -> Result<f32, D::Error> w
     }
 }
 
-pub fn serialize_f64_as_is<S>(v: f64, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if !serializer.is_human_readable() {
-        serializer.serialize_f64(v)
-    } else if v.is_nan() {
-        let d: u64 = v.to_bits();
-        if d == 0xFFFFFFFFFFFFFFFF {
-            serializer.serialize_f64(v)
-        } else {
-            serializer.serialize_str(&format!("nan{d:016X}"))
-        }
-    } else {
-        serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap().copysign(v as f64))
-    }
-}
-
-struct F64HRDeserializer;
-
-impl<'de> de::Visitor<'de> for F64HRDeserializer {
-    type Value = f64;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "64-bit float value or 'nanXXXXXXXXXXXXXXXX' (where X is hex digit)")
-    }
-
-    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
-        Ok(if v.is_nan() { f64::from_bits(0xFFFFFFFFFFFFFFFFu64) } else { v })
-    }
-
-    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
-        if s.len() != 3 + 16 || !s.starts_with("nan") || &s[4..5] == "+" {
-            return Err(E::invalid_value(Unexpected::Str(s), &self));
-        }
-        let d = u64::from_str_radix(&s[3..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
-        if d == 0xFFFFFFFFFFFFFFFF {
-            return Err(E::invalid_value(Unexpected::Str(s), &self));
-        }
-        Ok(f64::from_bits(d))
-    }
-}
-
-pub fn deserialize_f64_as_is<'de, D>(deserializer: D) -> Result<f64, D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        deserializer.deserialize_any(F64HRDeserializer)
-    } else {
-        f64::deserialize(deserializer)
-    }
-}
-
 struct Zeroes {
     len: usize
 }
