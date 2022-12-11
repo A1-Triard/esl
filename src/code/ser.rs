@@ -1,7 +1,6 @@
 use serde::{Serializer, Serialize};
 use std::mem::{replace};
 use std::fmt::{self, Display, Debug, Formatter};
-use encoding::{EncoderTrap};
 use serde::ser::{self, Impossible, SerializeSeq, SerializeTuple, SerializeTupleStruct};
 use serde::ser::{SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
 use serde::serde_if_integer128;
@@ -9,14 +8,12 @@ use std::io::{self, Write};
 use byteorder::{WriteBytesExt, LittleEndian};
 
 use crate::code::code_page::*;
-use crate::strings::string_to_utf8_like;
 
 #[derive(Debug)]
 pub enum Error {
     Custom(String),
     LargeObject(usize),
-    UnrepresentableChar(char, CodePage),
-    UnrepresentableString(String),
+    StringEncoding(EncodingError, CodePage),
     ZeroSizedLastSequenceElement,
     VariantIndexMismatch { variant_index: u32, variant_size: u32 },
     ZeroSizedOptional,
@@ -29,8 +26,7 @@ impl Display for Error {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
             Error::LargeObject(size) => write!(f, "object has too large size ({size} B)"),
-            Error::UnrepresentableChar(c, p) => write!(f, "the '{c}' char is not representable in {p:?} code page"),
-            Error::UnrepresentableString(s) => write!(f, "the '{s}' string is not represantable in UTF-8-like encoding"),
+            Error::StringEncoding(e, p) => write!(f, "{e} in {p:?} code page"),
             Error::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
             Error::VariantIndexMismatch { variant_index, variant_size } =>
                 write!(f, "variant index ({variant_index}) should be equal to variant size ({variant_size})"),
@@ -44,7 +40,10 @@ impl Display for Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
+        match self {
+            Error::StringEncoding(e, _) => Some(e),
+            _ => None
+        }
     }
 }
 
@@ -603,13 +602,7 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let bytes = if let Some(encoding) = self.code_page.encoding() {
-            encoding
-                .encode(v, EncoderTrap::Strict)
-                .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?
-        } else {
-            string_to_utf8_like(v).ok_or_else(|| Error::UnrepresentableString(v.into()))?
-        };
+        let bytes = self.code_page.encode(v).map_err(|e| Error::StringEncoding(e, self.code_page))?;
         self.serialize_bytes(&bytes)
     }
 
@@ -1178,13 +1171,7 @@ impl<'a, W: Writer> Serializer for ShortStringSerializer<'a, W> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let mut bytes = if let Some(encoding) = self.code_page.encoding() {
-            encoding
-                .encode(v, EncoderTrap::Strict)
-                .map_err(|s| Error::UnrepresentableChar(s.chars().next().unwrap(), self.code_page))?
-        } else {
-            string_to_utf8_like(v).ok_or_else(|| Error::UnrepresentableString(v.into()))?
-        };
+        let mut bytes = self.code_page.encode(v).map_err(|e| Error::StringEncoding(e, self.code_page))?;
         if bytes.last() == Some(&0) {
             return Err(Error::ShortStringTailZero.into());
         }

@@ -5,78 +5,6 @@ use serde::ser::SerializeSeq;
 use serde::ser::Error as ser_Error;
 use serde::de::{self};
 
-pub fn string_from_utf8_like(mut bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len()); // at least
-    loop {
-        let Some((&b, n)) = bytes.split_first() else { break; };
-        bytes = n;
-        let c = if b <= 0x7F { // valid one-byte UTF-8
-            b.into() // 0x000000 ..= 0x00007F
-        } else if (0xC0 ..= 0xDF).contains(&b) { // two-byte UTF-8 lead byte
-            if let Some((&t, n)) = bytes.split_first() {
-                bytes = n;
-                if (0x80 ..= 0xBF).contains(&t) { // two-byte UTF-8 second byte
-                    let c = (u32::from(b & 0x1F) << 6) | u32::from(t & 0x3F);
-                    if c <= 0x7F {
-                        0x100000u32 | c // 0x100000 ..= 0x10007F
-                    } else { // valid two-byte UTF-8
-                        c // 0x000080 ..= 0x0007FF
-                    }
-                } else {
-                    0x100000u32 | (u32::from(b) << 8) | u32::from(t)
-                    // 0x10C000 ..= 0x10DFFF,
-                    // last byte in 0x00 ..= 0x7F or 0xC0 ..= 0xFF
-                }
-            } else { // last char
-                0x100000u32 | u32::from(b) // 0x1000C0 ..= 0x1000DF
-            }
-        } else {
-            0x100000u32 | u32::from(b) // 0x100080 ..= 0x1000BF U 0x1000E0 ..= 0x1000FF
-        };
-        s.push(char::from_u32(c).unwrap());
-    }
-    s
-}
-
-pub fn string_to_utf8_like(s: &str) -> Option<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(s.len());
-    let mut stop = false;
-    for c in s.chars().map(u32::from) {
-        if stop { return None; }
-        match c {
-            0x000000 ..= 0x00007F =>
-                bytes.push(c as u8),
-            0x000080 ..= 0x0007FF => {
-                let h = 0xC0 | ((c & 0x7C0) >> 6) as u8;
-                let t = 0x80 | (c & 0x3F) as u8;
-                bytes.push(h);
-                bytes.push(t);
-            },
-            0x100000 ..= 0x10007F => {
-                let h = 0xC0 | ((c & 0x7C0) >> 6) as u8;
-                let t = 0x80 | (c & 0x3F) as u8;
-                bytes.push(h);
-                bytes.push(t);
-            },
-            0x1000C0 ..= 0x1000DF => {
-                stop = true;
-                bytes.push((c & 0xFF) as u8);
-            },
-            0x100080 ..= 0x1000FF =>
-                bytes.push((c & 0xFF) as u8),
-            0x10C000 ..= 0x10DFFF => {
-                let h = ((c & 0xFF00) >> 8) as u8;
-                let t = (c & 0xFF) as u8;
-                if (0x80 ..= 0xBF).contains(&t) { return None; }
-                bytes.push(h);
-                bytes.push(t);
-            },
-            _ => return None,
-        }
-    }
-    Some(bytes)
-}
-
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct StringZ {
     pub string: String,
@@ -257,8 +185,6 @@ impl<'de> Deserialize<'de> for StringZList {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use quickcheck::TestResult;
-    use quickcheck_macros::quickcheck;
 
     #[test]
     fn string_into_string_z() {
@@ -274,17 +200,5 @@ mod tests {
         } else {
             panic!()
         }
-    }
-
-    #[quickcheck]
-    fn utf8_like_string_to_bytes_to_string(s: String) -> TestResult {
-        let Some(b) = string_to_utf8_like(&s) else { return TestResult::discard(); };
-        TestResult::from_bool(string_from_utf8_like(&b) == s)
-    }
-
-    #[quickcheck]
-    fn utf8_like_bytes_to_string_to_bytes(b: Vec<u8>) -> bool {
-        let s = string_from_utf8_like(&b);
-        string_to_utf8_like(&s) == Some(b)
     }
 }

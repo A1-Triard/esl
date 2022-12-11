@@ -4,7 +4,6 @@ use nom::sequence::{pair, tuple, preceded};
 use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32, le_u16, le_i8};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
-use encoding::{DecoderTrap};
 use nom::multi::many0;
 use std::io::{self, Read, Write};
 use std::error::Error;
@@ -192,14 +191,6 @@ fn trim_end_nulls(bytes: &[u8]) -> &[u8] {
     &bytes[..cut_to]
 }
 
-fn decode_string(code_page: CodePage, bytes: &[u8]) -> String {
-    if let Some(encoding) = code_page.encoding() {
-        encoding.decode(bytes, DecoderTrap::Strict).unwrap()
-    } else {
-        string_from_utf8_like(bytes)
-    }
-}
-
 fn consume<E>(input: &[u8]) -> IResult<&[u8], &[u8], E> {
     Ok((&input[input.len()..], input))
 }
@@ -207,7 +198,7 @@ fn consume<E>(input: &[u8]) -> IResult<&[u8], &[u8], E> {
 fn string_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, FieldBodyError> {
     map(
         consume,
-        move |input| decode_string(code_page, input)
+        move |input| code_page.decode(input)
     )
 }
 
@@ -221,7 +212,7 @@ fn string_z_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'
             } else {
                 input
             };
-            StringZ { string: decode_string(code_page, input), has_tail_zero }
+            StringZ { string: code_page.decode(input), has_tail_zero }
         }
     )
 }
@@ -241,7 +232,7 @@ fn short_string<'a>(
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, ()> {
     map(
         set_err(take(length), |_| ()),
-        move |bytes| decode_string(code_page, trim_end_nulls(bytes))
+        move |bytes| code_page.decode(trim_end_nulls(bytes))
     )
 }
 

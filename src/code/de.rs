@@ -1,6 +1,5 @@
 use serde::{Deserializer};
 use std::fmt::{self, Display, Formatter};
-use encoding::{DecoderTrap};
 use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
 use serde::serde_if_integer128;
 use std::io::{self, Read};
@@ -10,7 +9,6 @@ use std::marker::PhantomData;
 use std::str::{self};
 
 use crate::code::code_page::*;
-use crate::strings::string_from_utf8_like;
 
 #[derive(Debug)]
 pub enum Error {
@@ -409,11 +407,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
     fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         let size = self.deserialize_size()? as usize;
         let bytes = self.reader.read_bytes(size)?;
-        let s = if let Some(encoding) = self.code_page.encoding() {
-            encoding.decode(&bytes, DecoderTrap::Strict).unwrap()
-        } else {
-            string_from_utf8_like(&bytes)
-        };
+        let s = self.code_page.decode(&bytes);
         visitor.visit_string(s)
     }
 
@@ -656,11 +650,7 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for ShortStringFieldDeserial
         let bytes = self.reader.read_bytes(*self.size)?;
         let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
         let bytes = &bytes[.. bytes.len() - trim];
-        let s = if let Some(encoding) = self.code_page.encoding() {
-            encoding.decode(bytes, DecoderTrap::Strict).unwrap()
-        } else {
-            string_from_utf8_like(bytes)
-        };
+        let s = self.code_page.decode(bytes);
         visitor.visit_string(s)
     }
 
