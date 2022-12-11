@@ -1554,11 +1554,21 @@ fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError>
     (input)
 }
 
-fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, field_tag: Tag, field_size: u32)
-    -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
-
+fn field_body<'a>(
+    code_page: CodePage,
+    mode: RecordReadMode,
+    record_tag: Tag,
+    prev_field_tag_is_cast: bool,
+    field_tag: Tag,
+    field_size: u32
+) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
     move |input| {
-        let field_type = FieldType::from_tags(record_tag, field_tag);
+        let fixed_field_tag = if prev_field_tag_is_cast && field_tag == DISP {
+            DISX
+        } else {
+            field_tag
+        };
+        let field_type = FieldType::from_tags(record_tag, fixed_field_tag);
         match field_type {
             FieldType::U8List => map(u8_list_field, Field::U8List)(input),
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
@@ -1689,14 +1699,15 @@ fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
 fn field<'a>(
     code_page: CodePage,
     mode: RecordReadMode,
-    record_tag: Tag
+    record_tag: Tag,
+    prev_field_tag_is_cast: bool,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     map_res(
         and_then(
             field_bytes,
             move |(field_tag, field_size, field_bytes), _| {
                 let (remaining_field_bytes, field_body) = map_err(
-                    field_body(code_page, mode, record_tag, field_tag, field_size),
+                    field_body(code_page, mode, record_tag, prev_field_tag_is_cast, field_tag, field_size),
                     move |e, _| match e {
                         FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                         FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
@@ -2061,13 +2072,42 @@ struct RecordBodyError<'a>(FieldError, &'a [u8]);
 
 impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
 
+fn sliding_many0<I, O, E, F, G, S: Copy, X>(f: G, x: X, s: S) -> impl FnMut(I) -> IResult<I, Vec<O>, E> where
+    I: Clone + nom::InputLength,
+    F: nom::Parser<I, O, E>,
+    G: Fn(S) -> F,
+    E: ParseError<I>,
+    X: Fn(&O) -> S,
+{
+    move |mut i: I| {
+        let mut acc = Vec::with_capacity(4);
+        let mut s = s;
+        loop {
+            let len = i.input_len();
+            match f(s).parse(i.clone()) {
+                Err(nom::Err::Error(_)) => return Ok((i, acc)),
+                Err(e) => return Err(e),
+                Ok((i1, o)) => {
+                    // infinite loop check: the parser must always consume
+                    if i1.input_len() == len {
+                        return Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
+                    }
+                    i = i1;
+                    s = x(&o);
+                    acc.push(o);
+                }
+            }
+        }
+    }
+}
+
 fn record_body<'a>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
-    many0(
-        preceded(
+    sliding_many0(
+        move |prev_field_tag_is_cast: bool| preceded(
             |input: &'a [u8]| {
                 if input.is_empty() {
                     // error type doesn't matter
@@ -2076,8 +2116,10 @@ fn record_body<'a>(
                     Ok((input, ()))
                 }
             },
-            cut(map_err(field(code_page, mode, record_tag), RecordBodyError))
-        )
+            cut(map_err(field(code_page, mode, record_tag, prev_field_tag_is_cast), RecordBodyError))
+        ),
+        |s: &(Tag, Field)| s.0 == CAST,
+        false
     )
 }
 
@@ -2382,7 +2424,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(6u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Failure(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2398,7 +2440,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2414,7 +2456,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2428,7 +2470,7 @@ mod tests {
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
         if let (remaining_input, Field::StringList(result)) =
-                field_body(CodePage::Russian, RecordReadMode::Strict, INFO, BNAM, input.len() as u32)(input).unwrap() {
+                field_body(CodePage::Russian, RecordReadMode::Strict, INFO, false, BNAM, input.len() as u32)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
             assert_eq!(result[0], "123");
@@ -2443,13 +2485,13 @@ mod tests {
     #[test]
     fn read_from_vec() {
         let input: Vec<u8> = Vec::new();
-        field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input).err().unwrap();
+        field_body(CodePage::English, RecordReadMode::Strict, TES3, false, HEDR, input.len() as u32)(&input).err().unwrap();
     }
 
     #[test]
     fn read_from_vec_if_let() {
         let input: Vec<u8> = Vec::new();
-        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input);
+        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, false, HEDR, input.len() as u32)(&input);
         if let Ok((_, _)) = res {
             panic!()
         } else { }
@@ -2463,7 +2505,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description\r\nlines\r\n")));
         input.extend(vec![0x01, 0x02, 0x03, 0x04]);
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, false, HEDR, input.len() as u32)(&input);
         if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.file_type, FileType::ESS);
@@ -2483,7 +2525,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description")));
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, false, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Failure(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
             assert_eq!(val, 0x100000);
@@ -2498,7 +2540,7 @@ mod tests {
         let mut input: Vec<u8> = Vec::new();
         input.extend([0x00, 0x00, 0x00, 0x22].iter());
         input.extend([0x20, 0x00, 0x00].iter());
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, false, HEDR, input.len() as u32)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldBodyError::UnexpectedEndOfField(size)) = error {
             assert_eq!(size, 300);
