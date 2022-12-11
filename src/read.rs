@@ -1174,6 +1174,13 @@ fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyErro
     )(input)
 }
 
+fn tag_field(input: &[u8]) -> IResult<&[u8], Tag, FieldBodyError> {
+    map(
+        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
+        Tag::from
+    )(input)
+}
+
 fn sound_gen_field(input: &[u8]) -> IResult<&[u8], SoundGen, FieldBodyError> {
     map_res(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
@@ -1251,6 +1258,48 @@ fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
         ),
         |(x, y, z, x_rot, y_rot, z_rot)| Position {
             x, y, z, x_rot, y_rot, z_rot
+        }
+    )(input)
+}
+
+fn attributes_field(input: &[u8]) -> IResult<&[u8], Attributes<u32>, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_u32, le_u32, le_u32, le_u32,
+                le_u32, le_u32, le_u32, le_u32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(32)
+        ),
+        |(
+            strength, intelligence, willpower, agility,
+            speed, endurance, personality, luck,
+        )| Attributes {
+            strength, intelligence, willpower, agility,
+            speed, endurance, personality, luck,
+        }
+    )(input)
+}
+
+fn skills_field(input: &[u8]) -> IResult<&[u8], Skills<u32>, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
+                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
+                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(108)
+        ),
+        |(
+            (block, armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear, athletics, enchant),
+            (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
+            (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand),
+        )| Skills {
+            block, armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear,
+            athletics, enchant, destruction, alteration, illusion, conjuration, mysticism,
+            restoration, alchemy, unarmored, security, sneak, acrobatics, light_armor,
+            short_blade, marksman, mercantile, speechcraft, hand_to_hand
         }
     )(input)
 }
@@ -1600,6 +1649,7 @@ fn field_body<'a>(
             FieldType::Skill => map(skill_field, Field::Skill)(input),
             FieldType::EffectArg => map(effect_arg_field, Field::EffectArg)(input),
             FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
+            FieldType::Tag => map(tag_field, Field::Tag)(input),
             FieldType::EffectMetadata => map(effect_metadata_field, Field::EffectMetadata)(input),
             FieldType::Tool => map(tool_field, Field::Tool)(input),
             FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
@@ -1641,6 +1691,8 @@ fn field_body<'a>(
             },
             FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
             FieldType::Class => map(class_field, Field::Class)(input),
+            FieldType::Attributes => map(attributes_field, Field::Attributes)(input),
+            FieldType::Skills => map(skills_field, Field::Skills)(input),
             FieldType::Effect => map(effect_field, Field::Effect)(input),
             FieldType::DialogMetadata => match field_size {
                 4 => map(i32_field, Field::I32)(input),

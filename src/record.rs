@@ -331,6 +331,16 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have class type", self.record_tag, self.field_tag)))
             },
+            FieldType::Attributes => if let Field::Attributes(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have attributes type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Skills => if let Field::Skills(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have skills type", self.record_tag, self.field_tag)))
+            },
             FieldType::Grid => if let Field::Grid(v) = self.field {
                 v.serialize(serializer)
             } else {
@@ -345,6 +355,11 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have sound gen type", self.record_tag, self.field_tag)))
+            },
+            FieldType::Tag => if let Field::Tag(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have tag type", self.record_tag, self.field_tag)))
             },
             FieldType::EffectIndex => if let Field::EffectIndex(v) = self.field {
                 v.serialize(serializer)
@@ -568,6 +583,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
                 FieldType::EffectArg => EffectArg::deserialize(deserializer).map(Field::EffectArg),
                 FieldType::EffectIndex => EffectIndex::deserialize(deserializer).map(Field::EffectIndex),
+                FieldType::Tag => Tag::deserialize(deserializer).map(Field::Tag),
                 FieldType::EffectMetadata => EffectMetadata::deserialize(deserializer).map(Field::EffectMetadata),
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
@@ -603,6 +619,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Creature => Creature::deserialize(deserializer).map(Field::Creature),
                 FieldType::ContainerFlags => ContainerFlags::deserialize(deserializer).map(Field::ContainerFlags),
                 FieldType::Class => Class::deserialize(deserializer).map(Field::Class),
+                FieldType::Attributes => Attributes::deserialize(deserializer).map(Field::Attributes),
+                FieldType::Skills => Skills::deserialize(deserializer).map(Field::Skills),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
                 FieldType::MarkerU8(none) => deserialize_none_u8(none, deserializer).map(|()| Field::None),
