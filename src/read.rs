@@ -1247,7 +1247,19 @@ fn skill_metadata_field(input: &[u8]) -> IResult<&[u8], SkillMetadata, FieldBody
     )(input)
 }
 
-fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
+fn pos_field(input: &[u8]) -> IResult<&[u8], Pos, FieldBodyError> {
+    map(
+        set_err(
+            tuple((
+                le_f32, le_f32, le_f32,
+            )),
+            |_| FieldBodyError::UnexpectedEndOfField(12)
+        ),
+        |(x, y, z)| Pos { x, y, z }
+    )(input)
+}
+
+fn pos_rot_field(input: &[u8]) -> IResult<&[u8], PosRot, FieldBodyError> {
     map(
         set_err(
             tuple((
@@ -1256,8 +1268,9 @@ fn position_field(input: &[u8]) -> IResult<&[u8], Position, FieldBodyError> {
             )),
             |_| FieldBodyError::UnexpectedEndOfField(24)
         ),
-        |(x, y, z, x_rot, y_rot, z_rot)| Position {
-            x, y, z, x_rot, y_rot, z_rot
+        |(pos_x, pos_y, pos_z, rot_x, rot_y, rot_z)| PosRot {
+            pos: Pos { x: pos_x, y: pos_y, z: pos_z },
+            rot: Rot { x: rot_x, y: rot_y, z: rot_z }
         }
     )(input)
 }
@@ -1640,7 +1653,8 @@ fn field_body<'a>(
             FieldType::Faction => map(faction_field, Field::Faction)(input),
             FieldType::Armor => map(armor_field, Field::Armor)(input),
             FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
-            FieldType::Position => map(position_field, Field::Position)(input),
+            FieldType::Pos => map(pos_field, Field::Pos)(input),
+            FieldType::PosRot => map(pos_rot_field, Field::PosRot)(input),
             FieldType::Skill => map(skill_field, Field::Skill)(input),
             FieldType::EffectArg => map(effect_arg_field, Field::EffectArg)(input),
             FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
@@ -1694,8 +1708,8 @@ fn field_body<'a>(
                 1 => map(dialog_type_field, Field::DialogType)(input),
                 x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
-            FieldType::PositionOrCell => match field_size {
-                24 => map(position_field, Field::Position)(input),
+            FieldType::PosRotOrCell => match field_size {
+                24 => map(pos_rot_field, Field::PosRot)(input),
                 12 => map(cell_field, Field::Cell)(input),
                 x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },

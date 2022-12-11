@@ -159,10 +159,10 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 &Field::I32(v) => DialogTypeOption::None(v).serialize(serializer),
                 _ => Err(S::Error::custom(format!("{} {} field should have dialog or 32-bit int type", self.record_tag, self.field_tag)))
             },
-            FieldType::PositionOrCell => match &self.field {
-                &Field::Position(v) => PositionOrCell::Position(v.clone()).serialize(serializer),
-                &Field::Cell(v) => PositionOrCell::Cell(v.clone()).serialize(serializer),
-                _ => Err(S::Error::custom(format!("{} {} field should have position or cell type", self.record_tag, self.field_tag)))
+            FieldType::PosRotOrCell => match &self.field {
+                &Field::PosRot(v) => PosRotOrCell::PosRot(v.clone()).serialize(serializer),
+                &Field::Cell(v) => PosRotOrCell::Cell(v.clone()).serialize(serializer),
+                _ => Err(S::Error::custom(format!("{} {} field should have pos_rot or cell type", self.record_tag, self.field_tag)))
             },
             FieldType::I32OrI64 => match &self.field {
                 &Field::I32(v) => I32OrI64::I32(*v).serialize(serializer),
@@ -273,10 +273,15 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have armor type", self.record_tag, self.field_tag)))
             },
-            FieldType::Position => if let Field::Position(v) = self.field {
+            FieldType::Pos => if let Field::Pos(v) = self.field {
                 v.serialize(serializer)
             } else {
-                Err(S::Error::custom(format!("{} {} field should have position type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(format!("{} {} field should have pos type", self.record_tag, self.field_tag)))
+            },
+            FieldType::PosRot => if let Field::PosRot(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have pos_rot type", self.record_tag, self.field_tag)))
             },
             FieldType::BipedObject => if let Field::BipedObject(v) = self.field {
                 v.serialize(serializer)
@@ -567,10 +572,11 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Potion => Potion::deserialize(deserializer).map(Field::Potion),
                 FieldType::Npc => Npc::deserialize(deserializer).map(Field::Npc),
                 FieldType::DialogMetadata => DialogTypeOption::deserialize(deserializer).map(|x| x.into()),
-                FieldType::PositionOrCell => PositionOrCell::deserialize(deserializer).map(|x| x.into()),
+                FieldType::PosRotOrCell => PosRotOrCell::deserialize(deserializer).map(|x| x.into()),
                 FieldType::I32OrI64 => I32OrI64::deserialize(deserializer).map(|x| x.into()),
                 FieldType::Spell => Spell::deserialize(deserializer).map(Field::Spell),
-                FieldType::Position => Position::deserialize(deserializer).map(Field::Position),
+                FieldType::Pos => Pos::deserialize(deserializer).map(Field::Pos),
+                FieldType::PosRot => PosRot::deserialize(deserializer).map(Field::PosRot),
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
                 FieldType::EffectArg => EffectArg::deserialize(deserializer).map(Field::EffectArg),
@@ -849,65 +855,65 @@ impl<'de> Deserialize<'de> for DialogTypeOption {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-enum PositionOrCell {
-    Position(Position),
+enum PosRotOrCell {
+    PosRot(PosRot),
     Cell(Cell)
 }
 
-impl From<PositionOrCell> for Field {
-    fn from(v: PositionOrCell) -> Self {
+impl From<PosRotOrCell> for Field {
+    fn from(v: PosRotOrCell) -> Self {
         match v {
-            PositionOrCell::Position(p) => Field::Position(p),
-            PositionOrCell::Cell(c) => Field::Cell(c),
+            PosRotOrCell::PosRot(p) => Field::PosRot(p),
+            PosRotOrCell::Cell(c) => Field::Cell(c),
         }
     }
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-#[serde(rename="PositionOrCell")]
-enum PositionOrCellHRSurrogate {
-    Position(Position),
+#[serde(rename="PosRotOrCell")]
+enum PosRotOrCellHRSurrogate {
+    PosRot(PosRot),
     Cell(Cell)
 }
 
-impl From<PositionOrCell> for PositionOrCellHRSurrogate {
-    fn from(t: PositionOrCell) -> Self {
+impl From<PosRotOrCell> for PosRotOrCellHRSurrogate {
+    fn from(t: PosRotOrCell) -> Self {
         match t {
-            PositionOrCell::Position(p) => PositionOrCellHRSurrogate::Position(p),
-            PositionOrCell::Cell(c) => PositionOrCellHRSurrogate::Cell(c),
+            PosRotOrCell::PosRot(p) => PosRotOrCellHRSurrogate::PosRot(p),
+            PosRotOrCell::Cell(c) => PosRotOrCellHRSurrogate::Cell(c),
         }
     }
 }
 
-impl From<PositionOrCellHRSurrogate> for PositionOrCell {
-    fn from(t: PositionOrCellHRSurrogate) -> Self {
+impl From<PosRotOrCellHRSurrogate> for PosRotOrCell {
+    fn from(t: PosRotOrCellHRSurrogate) -> Self {
         match t {
-            PositionOrCellHRSurrogate::Position(p) => PositionOrCell::Position(p),
-            PositionOrCellHRSurrogate::Cell(c) => PositionOrCell::Cell(c),
+            PosRotOrCellHRSurrogate::PosRot(p) => PosRotOrCell::PosRot(p),
+            PosRotOrCellHRSurrogate::Cell(c) => PosRotOrCell::Cell(c),
         }
     }
 }
 
-const POSITION_SERDE_SIZE: u32 = 24;
+const POS_ROT_SERDE_SIZE: u32 = 24;
 const CELL_SERDE_SIZE: u32 = 12;
 
-impl Serialize for PositionOrCell {
+impl Serialize for PosRotOrCell {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            PositionOrCellHRSurrogate::from(self.clone()).serialize(serializer)
+            PosRotOrCellHRSurrogate::from(self.clone()).serialize(serializer)
         } else {
             match self {
-                PositionOrCell::Position(position) => serializer.serialize_newtype_variant(
-                    name_of!(type PositionOrCell),
-                    POSITION_SERDE_SIZE,
-                    name_of!(const Position in PositionOrCell),
-                    position
+                PosRotOrCell::PosRot(pos_rot) => serializer.serialize_newtype_variant(
+                    name_of!(type PosRotOrCell),
+                    POS_ROT_SERDE_SIZE,
+                    name_of!(const PosRot in PosRotOrCell),
+                    pos_rot
                 ),
-                PositionOrCell::Cell(cell) => serializer.serialize_newtype_variant(
-                    name_of!(type PositionOrCell),
+                PosRotOrCell::Cell(cell) => serializer.serialize_newtype_variant(
+                    name_of!(type PosRotOrCell),
                     CELL_SERDE_SIZE,
-                    name_of!(const Cell in PositionOrCell),
+                    name_of!(const Cell in PosRotOrCell),
                     cell
                 ),
             }
@@ -915,34 +921,34 @@ impl Serialize for PositionOrCell {
     }
 }
 
-struct PositionOrCellNHRDeserializer;
+struct PosRotOrCellNHRDeserializer;
 
-impl<'de> de::Visitor<'de> for PositionOrCellNHRDeserializer {
-    type Value = PositionOrCell;
+impl<'de> de::Visitor<'de> for PosRotOrCellNHRDeserializer {
+    type Value = PosRotOrCell;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "position or cell")
+        write!(f, "pos_rot or cell")
     }
 
     fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
         let (variant_index, variant) = data.variant::<u32>()?;
         match variant_index {
-            POSITION_SERDE_SIZE => Ok(PositionOrCell::Position(variant.newtype_variant()?)),
-            CELL_SERDE_SIZE => Ok(PositionOrCell::Cell(variant.newtype_variant()?)),
+            POS_ROT_SERDE_SIZE => Ok(PosRotOrCell::PosRot(variant.newtype_variant()?)),
+            CELL_SERDE_SIZE => Ok(PosRotOrCell::Cell(variant.newtype_variant()?)),
             n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
         }
     }
 }
 
-impl<'de> Deserialize<'de> for PositionOrCell {
-    fn deserialize<D>(deserializer: D) -> Result<PositionOrCell, D::Error> where D: Deserializer<'de> {
+impl<'de> Deserialize<'de> for PosRotOrCell {
+    fn deserialize<D>(deserializer: D) -> Result<PosRotOrCell, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            PositionOrCellHRSurrogate::deserialize(deserializer).map(|x| x.into())
+            PosRotOrCellHRSurrogate::deserialize(deserializer).map(|x| x.into())
         } else {
             deserializer.deserialize_enum(
-                name_of!(type PositionOrCell),
-                &[name_of!(const Position in PositionOrCell), name_of!(const Cell in PositionOrCell)],
-                PositionOrCellNHRDeserializer
+                name_of!(type PosRotOrCell),
+                &[name_of!(const PosRot in PosRotOrCell), name_of!(const Cell in PosRotOrCell)],
+                PosRotOrCellNHRDeserializer
             )
         }
     }

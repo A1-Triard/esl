@@ -135,7 +135,7 @@ pub(crate) enum FieldType {
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
     Ai, AiWander, AiTravel, AiTarget, AiActivate, NpcFlags, CreatureFlags, Book, ContainerFlags,
     Creature, Light, MiscItem, Apparatus, Weapon, Armor, BipedObject, BodyPart, Clothing, Enchantment,
-    Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
+    Tool, RepairItem, Pos, PosRot, PosRotOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
     Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior,
     CurrentTime, Time, EffectArg,
@@ -153,6 +153,7 @@ impl FieldType {
             (_, _, ACSL) => FieldType::U8ListZip,
             (_, _, ACT_) => FieldType::String(None),
             (_, _, ACTN) => FieldType::I32,
+            (_, _, ACTV) => FieldType::Bool8,
             (_, _, AFLG) => FieldType::I32,
             (_, _, AI_A) => FieldType::AiActivate,
             (_, _, AI_E) => FieldType::AiTarget,
@@ -210,7 +211,7 @@ impl FieldType {
             (_, _, CVFX) => FieldType::StringZ,
             (_, _, CWTH) => FieldType::I32,
             (_, _, DANM) => FieldType::U8,
-            (CELL, _, DATA) => FieldType::PositionOrCell,
+            (CELL, _, DATA) => FieldType::PosRotOrCell,
             (DIAL, _, DATA) => FieldType::DialogMetadata,
             (GMAP, _, DATA) => FieldType::U8ListZip,
             (INFO, _, DATA) => FieldType::Info,
@@ -219,7 +220,7 @@ impl FieldType {
             (LEVI, _, DATA) => FieldType::I32,
             (LTEX, _, DATA) => FieldType::StringZ,
             (PGRD, _, DATA) => FieldType::PathGrid,
-            (REFR, _, DATA) => FieldType::Position,
+            (REFR, _, DATA) => FieldType::PosRot,
             (SNDG, _, DATA) => FieldType::SoundGen,
             (SOUN, _, DATA) => FieldType::Sound,
             (SSCR, _, DATA) => FieldType::String(None),
@@ -233,7 +234,7 @@ impl FieldType {
             (_, CAST, DISP) => FieldType::String(None),
             (_, _, DISP) => FieldType::I32,
             (_, _, DNAM) => FieldType::StringZ,
-            (_, _, DODT) => FieldType::Position,
+            (_, _, DODT) => FieldType::PosRot,
             (_, _, DRAW) => FieldType::I32,
             (_, _, DRTI) => FieldType::F32,
             (_, _, DTIM) => FieldType::Time,
@@ -271,6 +272,7 @@ impl FieldType {
             (_, _, FTEX) => FieldType::U8ListZip,
             (_, _, GMDT) => FieldType::U8ListZip,
             (_, _, GRAV) => FieldType::I32,
+            (_, _, HCUS) => FieldType::Bool8,
             (TES3, _, HEDR) => FieldType::FileMetadata,
             (_, _, HFOW) => FieldType::Bool32,
             (_, _, HIDD) => FieldType::Bool8,
@@ -308,7 +310,7 @@ impl FieldType {
             (_, _, LHIT) => FieldType::String(None),
             (PCDT, _, LNAM) => FieldType::I64,
             (LOCK, _, LKDT) => FieldType::Tool,
-            (_, _, LKEP) => FieldType::F32List,
+            (_, _, LKEP) => FieldType::Pos,
             (_, _, LOCA) => FieldType::String(None),
             (_, _, LPRO) => FieldType::I32,
             (CELL, _, LSHN) => FieldType::StringZ,
@@ -320,7 +322,7 @@ impl FieldType {
             (_, _, MAGN) => FieldType::F32,
             (FMAP, _, MAPD) => FieldType::U8ListZip,
             (FMAP, _, MAPH) => FieldType::I64,
-            (_, _, MARK) => FieldType::Position,
+            (_, _, MARK) => FieldType::PosRot,
             (TES3, _, MAST) => FieldType::StringZ,
             (MISC, _, MCDT) => FieldType::MiscItem,
             (MGEF, _, MEDT) => FieldType::EffectMetadata,
@@ -332,6 +334,7 @@ impl FieldType {
             (_, _, MOVE) => FieldType::I32,
             (_, _, MRK_) => FieldType::Grid,
             (CELL, _, MVRF) => FieldType::I32,
+            (_, _, MVRF) => FieldType::I32List,
             (CELL, _, NAM0) => FieldType::I32,
             (PCDT, _, NAM0) => FieldType::StringZ,
             (SPLM, _, NAM0) => FieldType::U8,
@@ -374,13 +377,14 @@ impl FieldType {
             (_, _, PLNA) => FieldType::String(None),
             (PCDT, _, PNAM) => FieldType::U8ListZip,
             (_, _, PNAM) => FieldType::StringZ,
-            (CSTA, _, POS_) => FieldType::F32List,
-            (_, _, POS_) => FieldType::Position,
+            (_, STAR, POS_) => FieldType::Pos,
+            (_, _, POS_) => FieldType::PosRot,
             (_, _, PTEX) => FieldType::StringZ,
             (_, _, QFIN) => FieldType::Bool8,
             (_, _, QSTA) => FieldType::I32,
             (_, _, QWTH) => FieldType::I32,
             (RACE, _, RADT) => FieldType::Race,
+            (_, _, REPT) => FieldType::Bool8,
             (_, _, REPU) => FieldType::I32,
             (_, _, RESP) => FieldType::Time,
             (_, _, RGNC) => FieldType::U8,
@@ -411,6 +415,7 @@ impl FieldType {
             (REGN, _, SNAM) => FieldType::SoundChance,
             (_, _, SNAM) => FieldType::StringZ,
             (_, _, SPAC) => FieldType::String(None),
+            (_, _, SPAW) => FieldType::I32,
             (SPLM, _, SPDT) => FieldType::U8ListZip,
             (SPEL, _, SPDT) => FieldType::Spell,
             (_, _, SPEC) => FieldType::I32List,
@@ -425,7 +430,9 @@ impl FieldType {
             (_, _, STPR) => FieldType::F32,
             (_, _, STRV) => FieldType::String(None),
             (_, _, TAID) => FieldType::I32,
-            (_, _, TARG) => FieldType::String(None),
+            (GSCR, _, TARG) => FieldType::String(None),
+            (_, DATA, TARG) => FieldType::String(None),
+            (_, _, TARG) => FieldType::I32,
             (ENAB, _, TELE) => FieldType::Bool8,
             (BOOK, _, TEXT) => FieldType::Multiline(Newline::Dos),
             (JOUR, _, TEXT) => FieldType::String(None),
@@ -438,6 +445,7 @@ impl FieldType {
             (_, _, TRFC) => FieldType::I32,
             (_, _, TSTM) => FieldType::CurrentTime,
             (_, _, TYPE) => FieldType::I32,
+            (_, _, QID_) => FieldType::String(None),
             (INFO, _, QSTF) => FieldType::MarkerU8(1),
             (INFO, _, QSTN) => FieldType::MarkerU8(1),
             (INFO, _, QSTR) => FieldType::MarkerU8(1),
@@ -2117,7 +2125,7 @@ impl From<Tool> for RepairItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
-pub struct Position {
+pub struct Pos {
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub x: f32,
@@ -2127,15 +2135,26 @@ pub struct Position {
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub z: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[educe(Eq, PartialEq)]
+pub struct Rot {
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
-    pub x_rot: f32,
+    pub x: f32,
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
-    pub y_rot: f32,
+    pub y: f32,
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
-    pub z_rot: f32,
+    pub z: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct PosRot {
+    pub pos: Pos,
+    pub rot: Rot,
 }
 
 bitflags_ext! {
@@ -2636,7 +2655,8 @@ define_field!(
     NpcFlags(FlagsAndBlood<NpcFlags>),
     NpcState(NpcState),
     PathGrid(PathGrid),
-    Position(Position),
+    Pos(Pos),
+    PosRot(PosRot),
     Potion(Potion),
     Race(Race),
     ScriptMetadata(ScriptMetadata),
