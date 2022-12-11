@@ -128,8 +128,9 @@ pub(crate) enum FieldType {
     String(Option<u32>),
     StringZ, StringZList,
     Multiline(Newline),
-    F32, I32, I16, I64, U8,
+    F32, #[allow(dead_code)] F64, I32, I16, I64, U8,
     I32OrI64,
+    F32OrF64,
     MarkerU8(u8),
     Bool8, Bool32,
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
@@ -138,7 +139,7 @@ pub(crate) enum FieldType {
     Tool, RepairItem, Position, PositionOrCell, Grid, PathGrid, ScriptVars,
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
     Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior,
-    Time, EffectArg,
+    CurrentTime, Time, EffectArg,
 }
  
 impl FieldType {
@@ -401,11 +402,13 @@ impl FieldType {
             (BOOK, TEXT) => FieldType::Multiline(Newline::Dos),
             (JOUR, TEXT) => FieldType::String(None),
             (_, TEXT) => FieldType::StringZ,
+            (CSTA, TIME) => FieldType::F32OrF64,
+            (_, TIME) => FieldType::Time,
             (_, TMPS) => FieldType::I32,
             (_, TNAM) => FieldType::StringZ,
             (_, TOPI) => FieldType::String(None),
             (_, TRFC) => FieldType::I32,
-            (_, TSTM) => FieldType::Time,
+            (_, TSTM) => FieldType::CurrentTime,
             (_, TYPE) => FieldType::I32,
             (INFO, QSTF) => FieldType::MarkerU8(1),
             (INFO, QSTN) => FieldType::MarkerU8(1),
@@ -471,7 +474,11 @@ pub struct Ingredient {
     pub effect_4_attribute: Either<Option<i32>, Attribute>,
 }
 
-fn eq_f32(a: &f32, b: &f32) -> bool {
+pub(crate) fn eq_f32(a: &f32, b: &f32) -> bool {
+    a.to_bits() == b.to_bits()
+}
+
+pub(crate) fn eq_f64(a: &f64, b: &f64) -> bool {
     a.to_bits() == b.to_bits()
 }
 
@@ -480,7 +487,7 @@ fn eq_f32_list(a: &[f32], b: &[f32]) -> bool {
     a.iter().zip(b.iter()).all(|(x, y)| eq_f32(x, y))
 }
 
-mod float_32 {
+pub(crate) mod float_32 {
     use serde::{Serializer, Deserializer};
     use crate::serde_helpers::*;
 
@@ -490,6 +497,19 @@ mod float_32 {
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
         deserialize_f32_as_is(deserializer)
+    }
+}
+
+pub(crate) mod float_64 {
+    use serde::{Serializer, Deserializer};
+    use crate::serde_helpers::*;
+
+    pub fn serialize<S>(v: &f64, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serialize_f64_as_is(*v, serializer)
+    }
+    
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<f64, D::Error> where D: Deserializer<'de> {
+        deserialize_f64_as_is(deserializer)
     }
 }
 
@@ -589,13 +609,22 @@ mod bool_either_i16 {
 
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
 #[educe(Eq, PartialEq)]
-pub struct Time {
+pub struct CurrentTime {
     #[educe(PartialEq(method="eq_f32"))]
     #[serde(with="float_32")]
     pub hour: f32,
     pub day: u32,
     pub month: u32,
     pub year: u32
+}
+
+#[derive(Educe, Debug, Clone, Serialize, Deserialize)]
+#[educe(Eq, PartialEq)]
+pub struct Time {
+    #[educe(PartialEq(method="eq_f32"))]
+    #[serde(with="float_32")]
+    pub hour: f32,
+    pub day: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -2573,6 +2602,7 @@ define_field!(
     EffectMetadata(EffectMetadata),
     Enchantment(Enchantment),
     F32(#[educe(PartialEq(method="eq_f32"))] f32),
+    F64(#[educe(PartialEq(method="eq_f64"))] f64),
     F32List(#[educe(PartialEq(method="eq_f32_list"))] Vec<f32>),
     Faction(Faction),
     FileMetadata(FileMetadata),
@@ -2613,6 +2643,7 @@ define_field!(
     U8List(Vec<u8>),
     Weapon(Weapon),
     Weather(Weather),
+    CurrentTime(CurrentTime),
     Time(Time),
     EffectArg(EffectArg),
 );

@@ -1,7 +1,7 @@
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
-use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32, le_u16, le_i8};
+use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32, le_f64, le_u16, le_i8};
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use encoding::{DecoderTrap};
@@ -292,7 +292,7 @@ fn multiline_field<'a>(
     )
 }
 
-fn time_field(input: &[u8]) -> IResult<&[u8], Time, FieldBodyError> {
+fn current_time_field(input: &[u8]) -> IResult<&[u8], CurrentTime, FieldBodyError> {
     map(
         set_err(
             tuple((
@@ -303,7 +303,20 @@ fn time_field(input: &[u8]) -> IResult<&[u8], Time, FieldBodyError> {
             )),
             |_| FieldBodyError::UnexpectedEndOfField(16)
         ),
-        |(hour, day, month, year)| Time { hour, day, month, year }
+        |(hour, day, month, year)| CurrentTime { hour, day, month, year }
+    )(input)
+}
+
+fn time_field(input: &[u8]) -> IResult<&[u8], Time, FieldBodyError> {
+    map(
+        set_err(
+            pair(
+                le_f32,
+                le_u32,
+            ),
+            |_| FieldBodyError::UnexpectedEndOfField(8)
+        ),
+        |(hour, day)| Time { hour, day }
     )(input)
 }
 
@@ -356,6 +369,10 @@ fn u8_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
 
 fn f32_field(input: &[u8]) -> IResult<&[u8], f32, FieldBodyError> {
     set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
+}
+
+fn f64_field(input: &[u8]) -> IResult<&[u8], f64, FieldBodyError> {
+    set_err(le_f64, |_| FieldBodyError::UnexpectedEndOfField(8))(input)
 }
 
 fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
@@ -1551,6 +1568,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
             FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
             FieldType::Item => map(item_field(code_page), Field::Item)(input),
+            FieldType::CurrentTime => map(current_time_field, Field::CurrentTime)(input),
             FieldType::Time => map(time_field, Field::Time)(input),
             FieldType::String(Some(len)) => map(short_string_field(code_page, mode, len), Field::String)(input),
             FieldType::String(None) => map(string_field(code_page), Field::String)(input),
@@ -1602,6 +1620,7 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::Bool32 => map(bool_u32(4, 0), Field::Bool)(input),
             FieldType::MarkerU8(none) => map(none_u8_field(none), |()| Field::None)(input),
             FieldType::F32 => map(f32_field, Field::F32)(input),
+            FieldType::F64 => map(f64_field, Field::F64)(input),
             FieldType::I32List => map(i32_list_field, Field::I32List)(input),
             FieldType::I16List => map(i16_list_field, Field::I16List)(input),
             FieldType::F32List => map(f32_list_field, Field::F32List)(input),
@@ -1631,6 +1650,11 @@ fn field_body<'a>(code_page: CodePage, mode: RecordReadMode, record_tag: Tag, fi
             FieldType::I32OrI64 => match field_size {
                 4 => map(i32_field, Field::I32)(input),
                 8 => map(i64_field, Field::I64)(input),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+            },
+            FieldType::F32OrF64 => match field_size {
+                4 => map(f32_field, Field::F32)(input),
+                8 => map(f64_field, Field::F64)(input),
                 x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
             },
             FieldType::Weather => match field_size {

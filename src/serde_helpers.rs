@@ -125,31 +125,31 @@ pub fn deserialize_option_index<'de, I: Copy + Eq, T: Copy, D>(
     }
 }
 
-struct FloatSurrogate(f32);
+struct F32Surrogate(f32);
 
-impl Serialize for FloatSurrogate {
+impl Serialize for F32Surrogate {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         serialize_f32_as_is(self.0, serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for FloatSurrogate {
+impl<'de> Deserialize<'de> for F32Surrogate {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        Ok(FloatSurrogate(deserialize_f32_as_is(deserializer)?))
+        Ok(F32Surrogate(deserialize_f32_as_is(deserializer)?))
     }
 }
 
 pub fn serialize_f32_s_as_is<S>(v: &[f32], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
     let mut serializer = serializer.serialize_seq(Some(v.len()))?;
     for &f in v.iter() {
-        serializer.serialize_element(&FloatSurrogate(f))?;
+        serializer.serialize_element(&F32Surrogate(f))?;
     }
     serializer.end()
 }
 
-struct FloatsDeserializer;
+struct F32sDeserializer;
 
-impl<'de> de::Visitor<'de> for FloatsDeserializer {
+impl<'de> de::Visitor<'de> for F32sDeserializer {
     type Value = Vec<f32>;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -158,7 +158,7 @@ impl<'de> de::Visitor<'de> for FloatsDeserializer {
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
         let mut vec = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        while let Some(f) = seq.next_element::<FloatSurrogate>()? {
+        while let Some(f) = seq.next_element::<F32Surrogate>()? {
             vec.push(f.0);
         }
         Ok(vec)
@@ -166,7 +166,7 @@ impl<'de> de::Visitor<'de> for FloatsDeserializer {
 }
 
 pub fn deserialize_f32_s_as_is<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error> where D: Deserializer<'de> {
-    deserializer.deserialize_seq(FloatsDeserializer)
+    deserializer.deserialize_seq(F32sDeserializer)
 }
 
 pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
@@ -184,9 +184,9 @@ pub fn serialize_f32_as_is<S>(v: f32, serializer: S) -> Result<S::Ok, S::Error> 
     }
 }
 
-struct FloatHRDeserializer;
+struct F32HRDeserializer;
 
-impl<'de> de::Visitor<'de> for FloatHRDeserializer {
+impl<'de> de::Visitor<'de> for F32HRDeserializer {
     type Value = f32;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -210,7 +210,7 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
     }
 
     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
-        if s.len() != 11 || !s.starts_with("nan") || &s[4..5] == "+" {
+        if s.len() != 3 + 8 || !s.starts_with("nan") || &s[4..5] == "+" {
             return Err(E::invalid_value(Unexpected::Str(s), &self));
         }
         let d = u32::from_str_radix(&s[3..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
@@ -223,9 +223,57 @@ impl<'de> de::Visitor<'de> for FloatHRDeserializer {
 
 pub fn deserialize_f32_as_is<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
     if deserializer.is_human_readable() {
-        deserializer.deserialize_any(FloatHRDeserializer)
+        deserializer.deserialize_any(F32HRDeserializer)
     } else {
         f32::deserialize(deserializer)
+    }
+}
+
+pub fn serialize_f64_as_is<S>(v: f64, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+    if !serializer.is_human_readable() {
+        serializer.serialize_f64(v)
+    } else if v.is_nan() {
+        let d: u64 = v.to_bits();
+        if d == 0xFFFFFFFFFFFFFFFF {
+            serializer.serialize_f64(v)
+        } else {
+            serializer.serialize_str(&format!("nan{d:016X}"))
+        }
+    } else {
+        serializer.serialize_f64(f64::from_str(&v.to_string()).unwrap().copysign(v as f64))
+    }
+}
+
+struct F64HRDeserializer;
+
+impl<'de> de::Visitor<'de> for F64HRDeserializer {
+    type Value = f64;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "64-bit float value or 'nanXXXXXXXXXXXXXXXX' (where X is hex digit)")
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
+        Ok(if v.is_nan() { f64::from_bits(0xFFFFFFFFFFFFFFFFu64) } else { v })
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
+        if s.len() != 3 + 16 || !s.starts_with("nan") || &s[4..5] == "+" {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
+        let d = u64::from_str_radix(&s[3..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
+        if d == 0xFFFFFFFFFFFFFFFF {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
+        Ok(f64::from_bits(d))
+    }
+}
+
+pub fn deserialize_f64_as_is<'de, D>(deserializer: D) -> Result<f64, D::Error> where D: Deserializer<'de> {
+    if deserializer.is_human_readable() {
+        deserializer.deserialize_any(F64HRDeserializer)
+    } else {
+        f64::deserialize(deserializer)
     }
 }
 
