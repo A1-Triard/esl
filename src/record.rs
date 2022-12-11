@@ -33,27 +33,24 @@ pub struct Record {
 
 impl Record {
     pub fn fit(&mut self) {
+        let mut prev_tag = META;
         for &mut (field_tag, ref mut field) in self.fields.iter_mut() {
-            field.fit(self.tag, field_tag);
+            field.fit(self.tag, prev_tag, field_tag);
+            prev_tag = field_tag;
         }
     }
 }
     
 struct FieldBodySerializer<'a> {
     record_tag: Tag,
-    prev_field_tag_is_cast: bool,
+    prev_tag: Tag,
     field_tag: Tag,
     field: &'a Field
 }
 
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let fixed_field_tag = if self.prev_field_tag_is_cast && self.field_tag == DISP {
-            DISX
-        } else {
-            self.field_tag
-        };
-        match FieldType::from_tags(self.record_tag, fixed_field_tag) {
+        match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
                 if let Some(len) = len {
                     serialize_short_string(s, len as usize, serializer)
@@ -445,7 +442,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     }
 }
 
-struct FieldSerializer<'a>(Tag, bool, Either<RecordFlags, (Tag, &'a Field)>);
+struct FieldSerializer<'a>(Tag, Tag, Either<RecordFlags, (Tag, &'a Field)>);
 
 impl<'a> Serialize for FieldSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
@@ -458,7 +455,7 @@ impl<'a> Serialize for FieldSerializer<'a> {
                     return Err(S::Error::custom("META tag is reserved"));
                 }
                 serializer.serialize_entry(&field_tag, &FieldBodySerializer {
-                    record_tag: self.0, prev_field_tag_is_cast: self.1, field_tag, field
+                    record_tag: self.0, prev_tag: self.1, field_tag, field
                 })?;
             }
         };
@@ -474,12 +471,12 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
         let entry_count = self.0.fields.len() + if has_flags { 1 } else { 0 };
         let mut serializer = serializer.serialize_seq(Some(entry_count))?;
         if has_flags {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, false, Left(self.0.flags)))?;
+            serializer.serialize_element(&FieldSerializer(self.0.tag, META, Left(self.0.flags)))?;
         }
-        let mut prev_field_tag_is_cast = false;
+        let mut prev_tag = META;
         for &(field_tag, ref field) in &self.0.fields {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, prev_field_tag_is_cast, Right((field_tag, field))))?;
-            prev_field_tag_is_cast = field_tag == CAST;
+            serializer.serialize_element(&FieldSerializer(self.0.tag, prev_tag, Right((field_tag, field))))?;
+            prev_tag = field_tag;
         }
         serializer.end()
     }
@@ -526,7 +523,7 @@ impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
 
 struct FieldBodyDeserializer {
     record_tag: Tag,
-    prev_field_tag_is_cast: bool,
+    prev_tag: Tag,
     field_tag: Tag
 }
 
@@ -539,12 +536,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         if deserializer.is_human_readable() && self.field_tag == META {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
-            let fixed_field_tag = if self.prev_field_tag_is_cast && self.field_tag == DISP {
-                DISX
-            } else {
-                self.field_tag
-            };
-            match FieldType::from_tags(self.record_tag, fixed_field_tag) {
+            match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
                 FieldType::String(len) => if let Some(len) = len {
                     deserialize_short_string(len as usize, deserializer)
                 } else {
@@ -641,7 +633,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
 
 struct FieldDeserializer {
     record_tag: Tag,
-    prev_field_tag_is_cast: bool,
+    prev_tag: Tag,
 }
 
 impl<'de> de::Visitor<'de> for FieldDeserializer {
@@ -657,7 +649,7 @@ impl<'de> de::Visitor<'de> for FieldDeserializer {
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
         let body = map.next_value_seed(FieldBodyDeserializer {
-            record_tag: self.record_tag, prev_field_tag_is_cast: self.prev_field_tag_is_cast, field_tag
+            record_tag: self.record_tag, prev_tag: self.prev_tag, field_tag
         })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
@@ -692,8 +684,8 @@ impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
         A: de::SeqAccess<'de> {
 
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        let mut prev_field_tag_is_cast = false;
-        while let Some(field) = seq.next_element_seed(FieldDeserializer { record_tag: self.record_tag, prev_field_tag_is_cast })? {
+        let mut prev_tag = META;
+        while let Some(field) = seq.next_element_seed(FieldDeserializer { record_tag: self.record_tag, prev_tag })? {
             match field {
                 Left(flags) => {
                     if self.record_flags.replace(flags).is_some() {
@@ -701,7 +693,7 @@ impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
                     }
                 },
                 Right(field) => {
-                    prev_field_tag_is_cast = field.0 == CAST;
+                    prev_tag = field.0;
                     fields.push(field);
                 }
             }

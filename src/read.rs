@@ -1607,17 +1607,12 @@ fn field_body<'a>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag,
-    prev_field_tag_is_cast: bool,
+    prev_tag: Tag,
     field_tag: Tag,
     field_size: u32
 ) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
     move |input| {
-        let fixed_field_tag = if prev_field_tag_is_cast && field_tag == DISP {
-            DISX
-        } else {
-            field_tag
-        };
-        let field_type = FieldType::from_tags(record_tag, fixed_field_tag);
+        let field_type = FieldType::from_tags(record_tag, prev_tag, field_tag);
         match field_type {
             FieldType::U8List => map(u8_list_field, Field::U8List)(input),
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
@@ -1752,14 +1747,14 @@ fn field<'a>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag,
-    prev_field_tag_is_cast: bool,
+    prev_tag: Tag,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     map_res(
         and_then(
             field_bytes,
             move |(field_tag, field_size, field_bytes), _| {
                 let (remaining_field_bytes, field_body) = map_err(
-                    field_body(code_page, mode, record_tag, prev_field_tag_is_cast, field_tag, field_size),
+                    field_body(code_page, mode, record_tag, prev_tag, field_tag, field_size),
                     move |e, _| match e {
                         FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                         FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
@@ -2159,7 +2154,7 @@ fn record_body<'a>(
     record_tag: Tag
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
     sliding_many0(
-        move |prev_field_tag_is_cast: bool| preceded(
+        move |prev_tag: Tag| preceded(
             |input: &'a [u8]| {
                 if input.is_empty() {
                     // error type doesn't matter
@@ -2168,10 +2163,10 @@ fn record_body<'a>(
                     Ok((input, ()))
                 }
             },
-            cut(map_err(field(code_page, mode, record_tag, prev_field_tag_is_cast), RecordBodyError))
+            cut(map_err(field(code_page, mode, record_tag, prev_tag), RecordBodyError))
         ),
-        |s: &(Tag, Field)| s.0 == CAST,
-        false
+        |s: &(Tag, Field)| s.0,
+        META
     )
 }
 
