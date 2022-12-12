@@ -31,14 +31,14 @@ impl CodePage {
     pub fn decode(self, mut bytes: &[u8]) -> String {
         if let Some(encoding) = self.encoding() {
             let s = encoding.decode(bytes, DecoderTrap::Strict).unwrap();
-            s.replace('&', "&&")
+            s.replace('\u{25ca}', "\u{25ca}\u{25ca}")
         } else {
             let mut s = String::with_capacity(bytes.len()); // at least
             for c in (&mut bytes).chars_raw() {
                 match c {
-                    Ok('&') => s.push_str("&&"),
+                    Ok('\u{25ca}') => s.push_str("\u{25ca}\u{25ca}"),
                     Ok(c) => s.push(c),
-                    Err(e) => e.as_bytes().iter().for_each(|&b| write!(s, "&{b:02X}").unwrap()),
+                    Err(e) => e.as_bytes().iter().for_each(|&b| write!(s, "\u{25ca}{b:02X}").unwrap()),
                 }
             }
             s
@@ -47,7 +47,7 @@ impl CodePage {
 
     fn encode_raw(self, s: &str) -> Result<Vec<u8>, Option<char>> {
         let bytes = if let Some(encoding) = self.encoding() {
-            let s = s.replace("&&", "&");
+            let s = s.replace("\u{25ca}\u{25ca}", "\u{25ca}");
             encoding
                 .encode(&s, EncoderTrap::Strict)
                 .map_err(|e| Some(e.chars().next().unwrap()))?
@@ -55,10 +55,12 @@ impl CodePage {
             let mut bytes = Vec::with_capacity(s.len());
             let mut chars = s.char_indices();
             while let Some((i, c)) = chars.next() {
-                if c == '&' {
+                if c == '\u{25ca}' {
                     let (j, d) = chars.next().ok_or(None)?;
-                    if d == '&' {
-                        bytes.push(b'&');
+                    if d == '\u{25ca}' {
+                        bytes.push(0xE2);
+                        bytes.push(0x97);
+                        bytes.push(0x8A);
                     } else {
                         let (k, e) = chars.next().ok_or(None)?;
                         bytes.push(
