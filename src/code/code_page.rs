@@ -2,8 +2,6 @@ use encoding::{DecoderTrap, EncoderTrap, Encoding};
 use encoding::all::{WINDOWS_1251, WINDOWS_1252};
 use enum_derive_2018::IterVariants;
 use macro_attr_2018::macro_attr;
-use std::error::Error;
-use std::fmt::{self, Display, Formatter};
 use std::fmt::Write as fmt_Write;
 use utf8_chars::BufReadCharsExt;
 
@@ -20,7 +18,7 @@ macro_attr! {
 }
 
 impl CodePage {
-    pub fn encoding(self) -> Option<&'static dyn Encoding> {
+    fn encoding(self) -> Option<&'static dyn Encoding> {
         match self {
             CodePage::English => Some(WINDOWS_1252),
             CodePage::Russian => Some(WINDOWS_1251),
@@ -45,7 +43,7 @@ impl CodePage {
         }
     }
 
-    fn encode_raw(self, s: &str) -> Result<Vec<u8>, Option<char>> {
+    pub fn encode(self, s: &str) -> Result<Vec<u8>, Option<char>> {
         let bytes = if let Some(encoding) = self.encoding() {
             let s = s.replace("\u{25ca}\u{25ca}", "\u{25ca}");
             encoding
@@ -77,33 +75,6 @@ impl CodePage {
         if self.decode(&bytes) != s { return Err(None); }
         Ok(bytes)
     }
-
-    pub fn encode(self, string: &str) -> Result<Vec<u8>, EncodingError> {
-        match self.encode_raw(string) {
-            Ok(bytes) => Ok(bytes),
-            Err(Some(c)) => Err(EncodingError::UnrepresentableChar(c)),
-            Err(None) => Err(EncodingError::InvalidOrAmbigousString(string.to_string())),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum EncodingError {
-    UnrepresentableChar(char),
-    InvalidOrAmbigousString(String),
-}
-
-impl Display for EncodingError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            EncodingError::UnrepresentableChar(c) => write!(f, "the '{c}' char is not representable"),
-            EncodingError::InvalidOrAmbigousString(s) => write!(f, "the '{s}' string does not have a non-ambigous encoding"),
-        }
-    }
-}
-
-impl Error for EncodingError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> { None }
 }
 
 #[cfg(test)]

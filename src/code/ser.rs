@@ -13,7 +13,8 @@ use crate::code::code_page::*;
 pub enum Error {
     Custom(String),
     LargeObject(usize),
-    StringEncoding(EncodingError, CodePage),
+    InvalidString(String),
+    UnrepresentableChar(char, CodePage),
     ZeroSizedLastSequenceElement,
     VariantIndexMismatch { variant_index: u32, variant_size: u32 },
     ZeroSizedOptional,
@@ -26,7 +27,10 @@ impl Display for Error {
         match self {
             Error::Custom(s) => Display::fmt(s, f),
             Error::LargeObject(size) => write!(f, "object has too large size ({size} B)"),
-            Error::StringEncoding(e, p) => write!(f, "{e} in {p:?} code page"),
+            Error::InvalidString(s) =>
+                write!(f, "the '{s}' string does not correspond to any source byte sequence"),
+            Error::UnrepresentableChar(c, p) =>
+                write!(f, "the '{c}' char is not representable in {p:?} code page"),
             Error::ZeroSizedLastSequenceElement => write!(f, "last element in sequence or map cannot have zero size"),
             Error::VariantIndexMismatch { variant_index, variant_size } =>
                 write!(f, "variant index ({variant_index}) should be equal to variant size ({variant_size})"),
@@ -39,12 +43,7 @@ impl Display for Error {
 }
 
 impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::StringEncoding(e, _) => Some(e),
-            _ => None
-        }
-    }
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { None }
 }
 
 impl ser::Error for Error {
@@ -602,7 +601,9 @@ impl<'r, 'q, 'a, W: Writer> Serializer for EslSerializer<'r, 'q, 'a, W> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let bytes = self.code_page.encode(v).map_err(|e| Error::StringEncoding(e, self.code_page))?;
+        let bytes = self.code_page.encode(v).map_err(|e|
+            e.map_or_else(|| Error::InvalidString(v.to_string()), |c| Error::UnrepresentableChar(c, self.code_page))
+        )?;
         self.serialize_bytes(&bytes)
     }
 
@@ -1171,7 +1172,9 @@ impl<'a, W: Writer> Serializer for ShortStringSerializer<'a, W> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-        let mut bytes = self.code_page.encode(v).map_err(|e| Error::StringEncoding(e, self.code_page))?;
+        let mut bytes = self.code_page.encode(v).map_err(|e|
+            e.map_or_else(|| Error::InvalidString(v.to_string()), |c| Error::UnrepresentableChar(c, self.code_page))
+        )?;
         if bytes.last() == Some(&0) {
             return Err(Error::ShortStringTailZero.into());
         }
