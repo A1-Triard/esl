@@ -1151,10 +1151,16 @@ fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
     skill(4, 0)(input)
 }
 
-fn effect_arg_field(input: &[u8]) -> IResult<&[u8], EffectArg, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| EffectArg::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectArg(w), 0))
+fn effect_arg_field(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, EffectArg>, FieldBodyError> {
+    map(
+        set_err(le_i32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
+        move |b| if b == -1 {
+            Left(None)
+        } else if let Some(a) = b.try_into().ok().and_then(EffectArg::n) {
+            Right(a)
+        } else {
+            Left(Some(b))
+        }
     )(input)
 }
 
