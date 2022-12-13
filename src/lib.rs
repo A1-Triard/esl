@@ -1,3 +1,4 @@
+#![feature(const_trait_impl)]
 #![feature(never_type)]
 #![feature(once_cell)]
 #![feature(stmt_expr_attributes)]

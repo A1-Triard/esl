@@ -7,13 +7,7 @@ pub struct Tag {
     pub dword: u32
 }
 
-impl Tag {
-    pub const fn from(dword: u32) -> Tag {
-        Tag { dword }
-    }
-}
-
-impl From<u32> for Tag {
+impl const From<u32> for Tag {
     fn from(dword: u32) -> Tag {
         Tag { dword }
     }
