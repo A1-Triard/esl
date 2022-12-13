@@ -2597,13 +2597,13 @@ pub struct SkillMetadata {
 }
 
 macro_rules! define_field {
-    ($($variant:ident($(#[$attr:meta])* $from:ty),)*) => {
+    ($($variant:ident($(#[educe(PartialEq(method=$a:literal))])? $from:ty),)*) => {
         #[derive(Debug, Clone)]
         #[derive(Educe)]
         #[educe(PartialEq, Eq)]
         pub enum Field {
             None,
-            $($variant($(#[$attr])* $from)),*
+            $($variant($(#[educe(PartialEq(method=$a))])? $from)),*
         }
         
         $(
@@ -2682,7 +2682,7 @@ define_field!(
     Weather(Weather),
     CurrentTime(CurrentTime),
     Time(Time),
-    EffectArg(Either<Option<i32>, EffectArg>),
+    EffectArg(EffectArg),
     Attributes(Attributes<u32>),
     Skills(Skills<u32>),
 );

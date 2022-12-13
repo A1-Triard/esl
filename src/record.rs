@@ -115,7 +115,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have skill type", self.record_tag, self.field_tag)))
             },
             FieldType::EffectArg => if let Field::EffectArg(v) = self.field {
-                effect_arg_option_i32::serialize(v, serializer)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have effect arg type", self.record_tag, self.field_tag)))
             },
@@ -521,22 +521,6 @@ impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
     }
 }
 
-mod effect_arg_option_i32 {
-    use crate::field::EffectArg;
-    use crate::serde_helpers::*;
-    use either::{Either};
-    use serde::{Serializer, Deserializer};
-    use std::convert::TryInto;
-
-    pub fn serialize<S>(&v: &Either<Option<i32>, EffectArg>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("effect arg", -1, |x| x.try_into().ok().and_then(EffectArg::n), |x| (x as u32).try_into().unwrap(), v, serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, EffectArg>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(EffectArg::n), deserializer)
-    }
-}
-
 struct FieldBodyDeserializer {
     record_tag: Tag,
     prev_tag: Tag,
@@ -589,7 +573,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::PosRot => PosRot::deserialize(deserializer).map(Field::PosRot),
                 FieldType::Sound => Sound::deserialize(deserializer).map(Field::Sound),
                 FieldType::Skill => Skill::deserialize(deserializer).map(Field::Skill),
-                FieldType::EffectArg => effect_arg_option_i32::deserialize(deserializer).map(Field::EffectArg),
+                FieldType::EffectArg => EffectArg::deserialize(deserializer).map(Field::EffectArg),
                 FieldType::EffectIndex => EffectIndex::deserialize(deserializer).map(Field::EffectIndex),
                 FieldType::Tag => Tag::deserialize(deserializer).map(Field::Tag),
                 FieldType::EffectMetadata => EffectMetadata::deserialize(deserializer).map(Field::EffectMetadata),
