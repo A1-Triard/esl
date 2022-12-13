@@ -2867,6 +2867,7 @@ impl Field {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use quickcheck_macros::quickcheck;
     use std::str::FromStr;
 
     #[test]
@@ -2892,5 +2893,15 @@ mod tests {
             LightFlags::from_str("DYNAMIC CAN_CARRY FIRE FLICKER_SLOW"),
             Ok(LightFlags::DYNAMIC | LightFlags::CAN_CARRY | LightFlags::FIRE | LightFlags::FLICKER_SLOW)
         );
+    }
+
+    #[quickcheck]
+    fn effect_arg_from_str_is_display_inversion(dword: u32) -> bool {
+        EffectArg::from_str(&EffectArg { dword }.to_string()) == Ok(EffectArg { dword })
+    }
+
+    #[quickcheck]
+    fn effect_arg_from_dword_str_eq_effect_arg_from_dword(dword: u32) -> bool {
+        EffectArg::from_str(&format!("{dword:04X}")) == Ok(EffectArg { dword })
     }
 }
