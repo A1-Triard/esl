@@ -1280,60 +1280,136 @@ impl<T> IndexMut<Attribute> for Attributes<T> {
     }
 }
 
-macro_attr! {
-    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
-    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
-    #[repr(u32)]
-    pub enum EffectArg {
-        #[allow(non_camel_case_types)]
-        Strength_Block = 0,
-        #[allow(non_camel_case_types)]
-        Armorer_Intelligence = 1,
-        #[allow(non_camel_case_types)]
-        MediumArmor_Willpower = 2,
-        #[allow(non_camel_case_types)]
-        HeavyArmor_Agility = 3,
-        #[allow(non_camel_case_types)]
-        BluntWeapon_Speed = 4,
-        #[allow(non_camel_case_types)]
-        LongBlade_Endurance = 5,
-        #[allow(non_camel_case_types)]
-        Axe_Personality = 6,
-        #[allow(non_camel_case_types)]
-        Spear_Luck = 7,
-        Athletics = 8,
-        Enchant = 9,
-        Destruction = 10,
-        Alteration = 11,
-        Illusion = 12,
-        Conjuration = 13,
-        Mysticism = 14,
-        Restoration = 15,
-        Alchemy = 16,
-        Unarmored = 17,
-        Security = 18,
-        Sneak = 19,
-        Acrobatics = 20,
-        LightArmor = 21,
-        ShortBlade = 22,
-        Marksman = 23,
-        Mercantile = 24,
-        Speechcraft = 25,
-        HandToHand = 26
+#[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+pub struct EffectArg {
+    pub dword: u32
+}
+
+impl EffectArg {
+    pub const STRENGTH_BLOCK_0000: EffectArg = EffectArg::from(0x0000);
+    pub const ARMORER_INTELLIGENCE_0001: EffectArg = EffectArg::from(0x0001);
+    pub const MEDIUM_ARMOR_WILLPOWER_0002: EffectArg = EffectArg::from(0x0002);
+    pub const HEAVY_ARMOR_AGILITY_0003: EffectArg = EffectArg::from(0x0003);
+    pub const BLUNT_WEAPON_SPEED_0004: EffectArg = EffectArg::from(0x0004);
+    pub const LONG_BLADE_ENDURANCE_0005: EffectArg = EffectArg::from(0x0005);
+    pub const AXE_PERSONALITY_0006: EffectArg = EffectArg::from(0x0006);
+    pub const SPEAR_LUCK_0007: EffectArg = EffectArg::from(0x0007);
+    pub const ATHLETICS_0008: EffectArg = EffectArg::from(0x0008);
+    pub const ENCHANT_0009: EffectArg = EffectArg::from(0x0009);
+    pub const DESTRUCTION_000A: EffectArg = EffectArg::from(0x000A);
+    pub const ALTERATION_000B: EffectArg = EffectArg::from(0x000B);
+    pub const ILLUSION_000C: EffectArg = EffectArg::from(0x000C);
+    pub const CONJURATION_000D: EffectArg = EffectArg::from(0x000D);
+    pub const MYSTICISM_000E: EffectArg = EffectArg::from(0x000E);
+    pub const RESTORATION_000F: EffectArg = EffectArg::from(0x000F);
+    pub const ALCHEMY_0010: EffectArg = EffectArg::from(0x0010);
+    pub const UNARMORED_0011: EffectArg = EffectArg::from(0x0011);
+    pub const SECURITY_0012: EffectArg = EffectArg::from(0x0012);
+    pub const SNEAK_0013: EffectArg = EffectArg::from(0x0013);
+    pub const ACROBATICS_0014: EffectArg = EffectArg::from(0x0014);
+    pub const LIGHT_ARMOR_0015: EffectArg = EffectArg::from(0x0015);
+    pub const SHORT_BLADE_0016: EffectArg = EffectArg::from(0x0016);
+    pub const MARKSMAN_0017: EffectArg = EffectArg::from(0x0017);
+    pub const MERCANTILE_0018: EffectArg = EffectArg::from(0x0018);
+    pub const SPEECHCRAFT_0019: EffectArg = EffectArg::from(0x0019);
+    pub const HAND_TO_HAND_001A: EffectArg = EffectArg::from(0x001A);
+}
+
+impl const From<u32> for EffectArg {
+    fn from(dword: u32) -> EffectArg {
+        EffectArg { dword }
     }
 }
 
-enum_serde!(EffectArg, "effect arg", as u32, Unsigned, u64);
+impl Debug for EffectArg {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl Display for EffectArg {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match *self {
+            EffectArg::STRENGTH_BLOCK_0000 => write!(f, "STRENGTH_BLOCK_0000"),
+            EffectArg::ARMORER_INTELLIGENCE_0001 => write!(f, "ARMORER_INTELLIGENCE_0001"),
+            EffectArg::MEDIUM_ARMOR_WILLPOWER_0002 => write!(f, "MEDIUM_ARMOR_WILLPOWER_0002"),
+            EffectArg::HEAVY_ARMOR_AGILITY_0003 => write!(f, "HEAVY_ARMOR_AGILITY_0003"),
+            EffectArg::BLUNT_WEAPON_SPEED_0004 => write!(f, "BLUNT_WEAPON_SPEED_0004"),
+            EffectArg::LONG_BLADE_ENDURANCE_0005 => write!(f, "LONG_BLADE_ENDURANCE_0005"),
+            EffectArg::AXE_PERSONALITY_0006 => write!(f, "AXE_PERSONALITY_0006"),
+            EffectArg::SPEAR_LUCK_0007 => write!(f, "SPEAR_LUCK_0007"),
+            EffectArg::ATHLETICS_0008 => write!(f, "ATHLETICS_0008"),
+            EffectArg::ENCHANT_0009 => write!(f, "ENCHANT_0009"),
+            EffectArg::DESTRUCTION_000A => write!(f, "DESTRUCTION_000A"),
+            EffectArg::ALTERATION_000B => write!(f, "ALTERATION_000B"),
+            EffectArg::ILLUSION_000C => write!(f, "ILLUSION_000C"),
+            EffectArg::CONJURATION_000D => write!(f, "CONJURATION_000D"),
+            EffectArg::MYSTICISM_000E => write!(f, "MYSTICISM_000E"),
+            EffectArg::RESTORATION_000F => write!(f, "RESTORATION_000F"),
+            EffectArg::ALCHEMY_0010 => write!(f, "ALCHEMY_0010"),
+            EffectArg::UNARMORED_0011 => write!(f, "UNARMORED_0011"),
+            EffectArg::SECURITY_0012 => write!(f, "SECURITY_0012"),
+            EffectArg::SNEAK_0013 => write!(f, "SNEAK_0013"),
+            EffectArg::ACROBATICS_0014 => write!(f, "ACROBATICS_0014"),
+            EffectArg::LIGHT_ARMOR_0015 => write!(f, "LIGHT_ARMOR_0015"),
+            EffectArg::SHORT_BLADE_0016 => write!(f, "SHORT_BLADE_0016"),
+            EffectArg::MARKSMAN_0017 => write!(f, "MARKSMAN_0017"),
+            EffectArg::MERCANTILE_0018 => write!(f, "MERCANTILE_0018"),
+            EffectArg::SPEECHCRAFT_0019 => write!(f, "SPEECHCRAFT_0019"),
+            EffectArg::HAND_TO_HAND_001A => write!(f, "HAND_TO_HAND_001A"),
+            EffectArg { dword } => write!(f, "{dword:04X}"),
+         }
+    }
+}
+
+impl FromStr for EffectArg {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "STRENGTH_BLOCK_0000" => EffectArg::STRENGTH_BLOCK_0000,
+            "ARMORER_INTELLIGENCE_0001" => EffectArg::ARMORER_INTELLIGENCE_0001,
+            "MEDIUM_ARMOR_WILLPOWER_0002" => EffectArg::MEDIUM_ARMOR_WILLPOWER_0002,
+            "HEAVY_ARMOR_AGILITY_0003" => EffectArg::HEAVY_ARMOR_AGILITY_0003,
+            "BLUNT_WEAPON_SPEED_0004" => EffectArg::BLUNT_WEAPON_SPEED_0004,
+            "LONG_BLADE_ENDURANCE_0005" => EffectArg::LONG_BLADE_ENDURANCE_0005,
+            "AXE_PERSONALITY_0006" => EffectArg::AXE_PERSONALITY_0006,
+            "SPEAR_LUCK_0007" => EffectArg::SPEAR_LUCK_0007,
+            "ATHLETICS_0008" => EffectArg::ATHLETICS_0008,
+            "ENCHANT_0009" => EffectArg::ENCHANT_0009,
+            "DESTRUCTION_000A" => EffectArg::DESTRUCTION_000A,
+            "ALTERATION_000B" => EffectArg::ALTERATION_000B,
+            "ILLUSION_000C" => EffectArg::ILLUSION_000C,
+            "CONJURATION_000D" => EffectArg::CONJURATION_000D,
+            "MYSTICISM_000E" => EffectArg::MYSTICISM_000E,
+            "RESTORATION_000F" => EffectArg::RESTORATION_000F,
+            "ALCHEMY_0010" => EffectArg::ALCHEMY_0010,
+            "UNARMORED_0011" => EffectArg::UNARMORED_0011,
+            "SECURITY_0012" => EffectArg::SECURITY_0012,
+            "SNEAK_0013" => EffectArg::SNEAK_0013,
+            "ACROBATICS_0014" => EffectArg::ACROBATICS_0014,
+            "LIGHT_ARMOR_0015" => EffectArg::LIGHT_ARMOR_0015,
+            "SHORT_BLADE_0016" => EffectArg::SHORT_BLADE_0016,
+            "MARKSMAN_0017" => EffectArg::MARKSMAN_0017,
+            "MERCANTILE_0018" => EffectArg::MERCANTILE_0018,
+            "SPEECHCRAFT_0019" => EffectArg::SPEECHCRAFT_0019,
+            "HAND_TO_HAND_001A" => EffectArg::HAND_TO_HAND_001A,
+            s => EffectArg { dword: u32::from_str_radix(s, 16).map_err(|_| ())? },
+        })
+    }
+}
+
+enum_serde!(EffectArg, "effect arg", u32, dword, from);
 
 impl From<Skill> for EffectArg {
     fn from(skill: Skill) -> EffectArg {
-        EffectArg::n(skill as u32).unwrap()
+        EffectArg::from(skill as u32)
     }
 }
 
 impl From<Attribute> for EffectArg {
     fn from(attribute: Attribute) -> EffectArg {
-        EffectArg::n(attribute as u32).unwrap()
+        EffectArg::from(attribute as u32)
     }
 }
 
@@ -1341,7 +1417,7 @@ impl TryFrom<EffectArg> for Skill {
     type Error = ();
 
     fn try_from(arg: EffectArg) -> Result<Skill, ()> {
-        Skill::n(arg as u32).ok_or(())
+        Skill::n(arg.dword).ok_or(())
     }
 }
 
@@ -1349,7 +1425,7 @@ impl TryFrom<EffectArg> for Attribute {
     type Error = ();
 
     fn try_from(arg: EffectArg) -> Result<Attribute, ()> {
-        Attribute::n(arg as u32).ok_or(())
+        Attribute::n(arg.dword).ok_or(())
     }
 }
 

@@ -1152,9 +1152,9 @@ fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
 }
 
 fn effect_arg_field(input: &[u8]) -> IResult<&[u8], EffectArg, FieldBodyError> {
-    map_res(
+    map(
         set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| EffectArg::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectArg(w), 0))
+        EffectArg::from
     )(input)
 }
 
@@ -1901,7 +1901,6 @@ pub enum Unknown {
     CreatureType(u32),
     DialogType(u32),
     EffectFlags(u32),
-    EffectArg(u32),
     EffectIndex(u32),
     EffectRange(u32),
     EnchantmentAutoCalculate(i16),
@@ -1957,7 +1956,6 @@ impl Display for Unknown {
             Unknown::School(v) => write!(f, "school {v}"),
             Unknown::SoundGen(v) => write!(f, "sound gen {v}"),
             Unknown::EffectIndex(v) => write!(f, "effect index {v}"),
-            Unknown::EffectArg(v) => write!(f, "effect arg {v}"),
             Unknown::BookFlags(v) => write!(f, "book flags {v:08X}h"),
         }
     }
