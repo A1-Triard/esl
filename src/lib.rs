@@ -54,9 +54,15 @@ mod tests {
     use crate::read::*;
     use crate::code::{self, CodePage};
     use byteorder::{WriteBytesExt, LittleEndian};
+    use quickcheck_macros::quickcheck;
     use std::iter::Iterator;
     use std::str::FromStr;
     use std::mem::transmute;
+
+    #[quickcheck]
+    fn tag_from_str_is_display_inversion(dword: u32) -> bool {
+        Tag::from_str(&Tag { dword }.to_string()) == Ok(Tag { dword })
+    }
 
     fn test_author() -> &'static [u8] {
         b"test author\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"

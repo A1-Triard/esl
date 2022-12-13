@@ -19,12 +19,25 @@ impl Debug for Tag {
     }
 }
 
+fn byte_to_char(b: u8) -> char {
+    char::from_u32((u32::from(b >> 7) << 8) | u32::from(b)).unwrap()
+}
+
+fn char_to_byte(c: char) -> Option<u8> {
+    let c = c as u32;
+    match c {
+        0x00 ..= 0x7F => Some(c as u8),
+        0x180 ..= 0x1FF => Some((c & 0xFF) as u8),
+        _ => None
+    }
+}
+
 impl Display for Tag {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let c0 = char::from(self.dword as u8);
-        let c1 = char::from((self.dword >> 8) as u8);
-        let c2 = char::from((self.dword >> 16) as u8);
-        let c3 = char::from((self.dword >> 24) as u8);
+        let c0 = byte_to_char(self.dword as u8);
+        let c1 = byte_to_char((self.dword >> 8) as u8);
+        let c2 = byte_to_char((self.dword >> 16) as u8);
+        let c3 = byte_to_char((self.dword >> 24) as u8);
         write!(f, "{c0}{c1}{c2}{c3}")
     }
 }
@@ -35,9 +48,9 @@ impl FromStr for Tag {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut dword = 0;
         let mut i = 0;
-        for byte in s.bytes() {
+        for c in s.chars() {
             if i == 4 { return Err(()); }
-            dword |= (byte as u32) << (8 * i);
+            dword |= u32::from(char_to_byte(c).ok_or(())?) << (8 * i);
             i += 1;
         }
         if i != 4 { return Err(()); }
