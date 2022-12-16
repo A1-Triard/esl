@@ -167,6 +167,7 @@ impl FieldType {
             (CELL, _, AMBI) => FieldType::Interior,
             (FACT, _, ANAM) => FieldType::String(None),
             (_, _, ANAM) => FieldType::StringZ,
+            (_, _, ANGL) => FieldType::F32,
             (_, _, ANIS) => FieldType::String(None),
             (ARMO, _, AODT) => FieldType::Armor,
             (REFR, _, APUD) => FieldType::String(None), // TODO
@@ -181,6 +182,7 @@ impl FieldType {
             (INFO, _, BNAM) => FieldType::Multiline(Newline::Dos),
             (_, _, BNAM) => FieldType::StringZ,
             (_, _, BNDS) => FieldType::I32List,
+            (_, _, BOUN) => FieldType::F32List,
             (_, _, BSND) => FieldType::StringZ,
             (_, _, BVFX) => FieldType::StringZ,
             (BODY, _, BYDT) => FieldType::BodyPart,
@@ -461,6 +463,7 @@ impl FieldType {
             (REGN, _, WEAT) => FieldType::Weather,
             (_, _, WHGT) => FieldType::F32,
             (_, _, WIDX) => FieldType::I64,
+            (_, _, WLVL) => FieldType::F32,
             (_, _, WNAM) => FieldType::U8ListZip,
             (WEAP, _, WPDT) => FieldType::Weapon,
             (_, _, WUPD) => FieldType::I32,
