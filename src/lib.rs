@@ -30,6 +30,8 @@ pub use crate::tag::*;
 #[macro_use]
 mod bitflags_ext;
 
+pub mod script_data;
+
 mod field;
 
 pub use crate::field::*;
