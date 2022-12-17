@@ -25,6 +25,7 @@ flate2 = "1.0.24"
 macro-attr-2018 = "2.1.2"
 nameof = "1.2.2"
 nom = "7.1.1"
+nom-errors = "0.0.3"
 serde = { version = "1.0.147", features = ["derive"] }
 utf8-chars = "2.0.2"
 
