@@ -1,4 +1,4 @@
-use super::base::*;
+use super::*;
 use nom::IResult;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take};
@@ -77,16 +77,10 @@ fn data(input: &[u8]) -> IResult<&[u8], ScriptData, Void> {
     map(many0(item), ScriptData)(input)
 }
 
-pub trait ScriptDataFromBytesExt {
-    fn from_bytes(bytes: &[u8]) -> ScriptData;
-}
-
-impl ScriptDataFromBytesExt for ScriptData {
-    fn from_bytes(bytes: &[u8]) -> ScriptData {
-        data(bytes).map_or_else(|e| match e {
-            nom::Err::Incomplete(_) => unreachable!(),
-            nom::Err::Error(e) => e.0,
-            nom::Err::Failure(e) => e.0
-        }, |x| x.1)
-    }
+pub fn script_data_from_bytes(bytes: &[u8]) -> ScriptData {
+    data(bytes).map_or_else(|e| match e {
+        nom::Err::Incomplete(_) => unreachable!(),
+        nom::Err::Error(e) => e.0,
+        nom::Err::Failure(e) => e.0
+    }, |x| x.1)
 }
