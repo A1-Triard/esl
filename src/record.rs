@@ -11,6 +11,7 @@ use std::io::Write;
 use nameof::name_of;
 
 use crate::field::*;
+use crate::script_data::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
 
@@ -73,12 +74,19 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             FieldType::StringZList => if let Field::StringZList(s) = self.field {
                 s.serialize(serializer)
             } else {
-                Err(S::Error::custom(format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)))
+                Err(S::Error::custom(
+                    format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)
+                ))
             },
             FieldType::U8List => if let Field::U8List(v) = self.field {
                 v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
+            },
+            FieldType::ScriptData => if let Field::ScriptData(v) = self.field {
+                v.serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!("{} {} field should have script data type", self.record_tag, self.field_tag)))
             },
             FieldType::U8ListZip => if let Field::U8List(v) = self.field {
                 if serializer.is_human_readable() {
@@ -549,6 +557,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
+                FieldType::ScriptData => ScriptData::deserialize(deserializer).map(Field::ScriptData),
                 FieldType::U8ListZip => if deserializer.is_human_readable() {
                     deserializer.deserialize_str(Base64Deserializer)
                 } else {

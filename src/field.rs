@@ -14,6 +14,7 @@ use std::mem::transmute;
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
+use crate::script_data::*;
 use crate::strings::*;
 use crate::serde_helpers::*;
 
@@ -138,7 +139,8 @@ pub(crate) enum FieldType {
     I16List, I32List, F32List, Weather, Color, SoundChance, Potion, Class, Skill, EffectIndex,
     Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior,
     CurrentTime, Time, EffectArg,
-    Attributes, Skills, Tag
+    Attributes, Skills, Tag,
+    ScriptData
 }
  
 impl FieldType {
@@ -399,7 +401,7 @@ impl FieldType {
             (SCPT, _, RNAM) => FieldType::I32,
             (_, _, RNAM) => FieldType::StringZ,
             (_, _, RUN_) => FieldType::Bool32,
-            (SCPT, _, SCDT) => FieldType::U8ListZip,
+            (SCPT, _, SCDT) => FieldType::ScriptData,
             (SCPT, _, SCHD) => FieldType::ScriptMetadata,
             (TES3, _, SCRD) => FieldType::U8ListZip,
             (_, _, SCRI) => FieldType::StringZ,
@@ -2799,6 +2801,7 @@ define_field!(
     EffectArg(EffectArg),
     Attributes(Attributes<u32>),
     Skills(Skills<u32>),
+    ScriptData(ScriptData),
 );
 
 impl From<()> for Field {
