@@ -67,7 +67,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
-                serialize_string_list(s, newline.as_str(), None, serializer)
+                StringListSer { lines: s, separator: newline.as_str(), len: None }.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -553,7 +553,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
-                    deserialize_string_list(newline.as_str(), None, deserializer).map(Field::StringList),
+                    StringListDe { separator: newline.as_str(), len: None }.deserialize(deserializer).map(Field::StringList),
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),

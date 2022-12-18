@@ -411,56 +411,69 @@ pub fn deserialize_short_string<'de, D>(len: usize, deserializer: D) -> Result<S
     }
 }
 
-pub fn serialize_string_list<S>(lines: &[String], separator: &str, len: Option<usize>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if serializer.is_human_readable() {
-        lines.serialize(serializer)
-    } else {
-        if separator.is_empty() {
-            return Err(S::Error::custom("empty string list separator"));
-        }
-        if lines.is_empty() {
-            return Err(S::Error::custom("\
-                empty string list cannot be serialized bacause \
-                it is indistinguishable from list with one empty string\
-            "));
-        }
-        let mut capacity = 0;
-        for line in lines {
-            if line.contains(separator) {
-                return Err(S::Error::custom("string list item contains separator"));
-            }
-            capacity += line.len() + separator.len();
-        }
-        let mut text = String::with_capacity(capacity);
-        for line in lines.iter() {
-            text.push_str(line);
-            text.push_str(separator);
-        }
-        text.truncate(text.len() - separator.len());
-        if let Some(len) = len {
-            serialize_short_string(&text, len, serializer)
+pub struct StringListSer<'a> {
+    pub lines: &'a [String],
+    pub separator: &'static str,
+    pub len: Option<usize>
+}
+
+impl<'a> Serialize for StringListSer<'a> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.lines.serialize(serializer)
         } else {
-            text.serialize(serializer)
+            if self.separator.is_empty() {
+                return Err(S::Error::custom("empty string list separator"));
+            }
+            if self.lines.is_empty() {
+                return Err(S::Error::custom("\
+                    empty string list cannot be serialized bacause \
+                    it is indistinguishable from list with one empty string\
+                "));
+            }
+            let mut capacity = 0;
+            for line in self.lines {
+                if line.contains(self.separator) {
+                    return Err(S::Error::custom("string list item contains separator"));
+                }
+                capacity += line.len() + self.separator.len();
+            }
+            let mut text = String::with_capacity(capacity);
+            for line in self.lines.iter() {
+                text.push_str(line);
+                text.push_str(self.separator);
+            }
+            text.truncate(text.len() - self.separator.len());
+            if let Some(len) = self.len {
+                serialize_short_string(&text, len, serializer)
+            } else {
+                text.serialize(serializer)
+            }
         }
     }
 }
 
-pub fn deserialize_string_list<'de, D>(
-    separator: &str,
-    len: Option<usize>,
-    deserializer: D
-) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        <Vec<String>>::deserialize(deserializer)
-    } else {
-        if separator.is_empty() {
-            return Err(D::Error::custom("empty string list separator"));
-        }
-        let s = if let Some(len) = len {
-            deserialize_short_string(len, deserializer)?
+pub struct StringListDe {
+    pub separator: &'static str,
+    pub len: Option<usize>
+}
+
+impl<'de> DeserializeSeed<'de> for StringListDe {
+    type Value = Vec<String>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            <Vec<String>>::deserialize(deserializer)
         } else {
-            String::deserialize(deserializer)?
-        };
-        Ok(s.split(separator).map(|x| x.into()).collect())
+            if self.separator.is_empty() {
+                return Err(D::Error::custom("empty string list separator"));
+            }
+            let s = if let Some(len) = self.len {
+                deserialize_short_string(len, deserializer)?
+            } else {
+                String::deserialize(deserializer)?
+            };
+            Ok(s.split(self.separator).map(|x| x.into()).collect())
+        }
     }
 }

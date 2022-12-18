@@ -699,15 +699,16 @@ pub struct FileMetadata {
 }
 
 mod multiline_256_dos {
-    use serde::{Serializer, Deserializer};
+    use serde::{Serializer, Deserializer, Serialize};
+    use serde::de::DeserializeSeed;
     use crate::field::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_string_list(lines, Newline::Dos.as_str(), Some(256), serializer)
+        StringListSer { lines, separator: Newline::Dos.as_str(), len: Some(256) }.serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        deserialize_string_list(Newline::Dos.as_str(), Some(256), deserializer)
+        StringListDe { separator: Newline::Dos.as_str(), len: Some(256) }.deserialize(deserializer)
     }
 }
 
