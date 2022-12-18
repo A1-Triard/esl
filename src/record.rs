@@ -52,11 +52,11 @@ struct FieldBodySerializer<'a> {
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
-            FieldType::String(len) => if let Field::String(s) = self.field {
+            FieldType::String(len) => if let Field::String(string) = self.field {
                 if let Some(len) = len {
-                    serialize_short_string(s, len as usize, serializer)
+                    ShortStringSer { string, len: len.try_into().unwrap() }.serialize(serializer)
                 } else {
-                    serializer.serialize_str(s)
+                    serializer.serialize_str(string)
                 }
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string type", self.record_tag, self.field_tag)))
@@ -546,7 +546,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
                 FieldType::String(len) => if let Some(len) = len {
-                    deserialize_short_string(len as usize, deserializer)
+                    ShortStringDe { len: len.try_into().unwrap() }.deserialize(deserializer)
                 } else {
                     String::deserialize(deserializer)
                 }.map(Field::String),

@@ -674,15 +674,16 @@ pub struct ScriptMetadata {
 }
 
 mod string_32 {
-    use serde::{Serializer, Deserializer};
+    use serde::{Serializer, Deserializer, Serialize};
+    use serde::de::DeserializeSeed;
     use crate::serde_helpers::*;
 
-    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_short_string(s, 32, serializer)
+    pub fn serialize<S>(string: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ShortStringSer { string, len: 32 }.serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-        deserialize_short_string(32, deserializer)
+        ShortStringDe { len: 32 }.deserialize(deserializer)
     }
 }
 

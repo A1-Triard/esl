@@ -393,21 +393,36 @@ impl<'de> de::Visitor<'de> for ShortStringDeserializer {
     }
 }
 
-pub fn serialize_short_string<S>(s: &str, len: usize, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if serializer.is_human_readable() {
-        serializer.serialize_str(s)
-    } else {
-        let mut serializer = serializer.serialize_map(Some(1))?;
-        serializer.serialize_entry(&ShortStr { string: s, len }, &())?;
-        serializer.end()
+pub struct ShortStringSer<'a> {
+    pub string: &'a str,
+    pub len: usize
+}
+
+impl<'a> Serialize for ShortStringSer<'a> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(self.string)
+        } else {
+            let mut serializer = serializer.serialize_map(Some(1))?;
+            serializer.serialize_entry(&ShortStr { string: self.string, len: self.len }, &())?;
+            serializer.end()
+        }
     }
 }
 
-pub fn deserialize_short_string<'de, D>(len: usize, deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        String::deserialize(deserializer)
-    } else {
-        Ok(deserializer.deserialize_map(ShortStringDeserializer { len })?.string)
+pub struct ShortStringDe {
+    pub len: usize
+}
+
+impl<'de> DeserializeSeed<'de> for ShortStringDe {
+    type Value = String;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            String::deserialize(deserializer)
+        } else {
+            Ok(deserializer.deserialize_map(ShortStringDeserializer { len: self.len })?.string)
+        }
     }
 }
 
@@ -445,7 +460,7 @@ impl<'a> Serialize for StringListSer<'a> {
             }
             text.truncate(text.len() - self.separator.len());
             if let Some(len) = self.len {
-                serialize_short_string(&text, len, serializer)
+                ShortStringSer { string: &text, len }.serialize(serializer)
             } else {
                 text.serialize(serializer)
             }
@@ -469,7 +484,7 @@ impl<'de> DeserializeSeed<'de> for StringListDe {
                 return Err(D::Error::custom("empty string list separator"));
             }
             let s = if let Some(len) = self.len {
-                deserialize_short_string(len, deserializer)?
+                ShortStringDe { len }.deserialize(deserializer)?
             } else {
                 String::deserialize(deserializer)?
             };
