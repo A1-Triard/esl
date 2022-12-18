@@ -576,28 +576,28 @@ mod option_i8 {
 }
 
 mod bool_u32 {
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use crate::serde_helpers::*;
 
     pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_bool_u32(v, serializer)
+        BoolU32SerDe(v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        deserialize_bool_u32(deserializer)
+        BoolU32SerDe::deserialize(deserializer).map(|x| x.0)
     }
 }
 
 mod bool_u8 {
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use crate::serde_helpers::*;
 
     pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_bool_u8(v, serializer)
+        BoolU8SerDe(v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        deserialize_bool_u8(deserializer)
+        BoolU8SerDe::deserialize(deserializer).map(|x| x.0)
     }
 }
 
@@ -1210,34 +1210,56 @@ macro_attr! {
 enum_serde!(Attribute, "attribute", as u32, Unsigned, u64);
 
 mod attribute_option_i8 {
-    use serde::{Serializer, Deserializer};
     use either::{Either};
     use crate::field::Attribute;
     use crate::serde_helpers::*;
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("attribute", -1, |x| x.try_into().ok().and_then(Attribute::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "attribute",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Attribute::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Attribute>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Attribute::n), deserializer)
+        OptionIndexSerDe {
+            name: "attribute",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Attribute::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
 mod attribute_option_i32 {
-    use serde::{Serializer, Deserializer};
     use either::{Either};
     use crate::field::Attribute;
     use crate::serde_helpers::*;
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("attribute", -1, |x| x.try_into().ok().and_then(Attribute::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "attribute",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Attribute::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Attribute>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Attribute::n), deserializer)
+        OptionIndexSerDe {
+            name: "attribute",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Attribute::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
@@ -1510,15 +1532,26 @@ mod skill_option_i32 {
     use crate::field::Skill;
     use crate::serde_helpers::*;
     use either::{Either};
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("skill", -1, |x| x.try_into().ok().and_then(Skill::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "skill",
+            none:-1,
+            from: |x| x.try_into().ok().and_then(Skill::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Skill>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Skill::n), deserializer)
+        OptionIndexSerDe {
+            name: "skill",
+            none:-1,
+            from: |x| x.try_into().ok().and_then(Skill::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
@@ -1526,15 +1559,26 @@ mod skill_option_i8 {
     use crate::field::Skill;
     use crate::serde_helpers::*;
     use either::{Either};
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("skill", -1, |x| x.try_into().ok().and_then(Skill::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "skill",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Skill::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Skill>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Skill::n), deserializer)
+        OptionIndexSerDe {
+            name: "skill",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Skill::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
@@ -1754,15 +1798,26 @@ mod effect_index_option_i32 {
     use crate::field::EffectIndex;
     use crate::serde_helpers::*;
     use either::{Either};
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i32>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("effect index", -1, |x| x.try_into().ok().and_then(EffectIndex::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "effect index",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(EffectIndex::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(EffectIndex::n), deserializer)
+        OptionIndexSerDe {
+            name: "effect index",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(EffectIndex::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
@@ -1770,15 +1825,26 @@ mod effect_index_option_i16 {
     use crate::field::EffectIndex;
     use crate::serde_helpers::*;
     use either::{Either};
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i16>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("effect index", -1, |x| x.try_into().ok().and_then(EffectIndex::n), |x| (x as u32).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "effect index",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(EffectIndex::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i16>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(EffectIndex::n), deserializer)
+        OptionIndexSerDe {
+            name: "effect index",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(EffectIndex::n),
+            into: |x| (x as u32).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 
@@ -2635,15 +2701,26 @@ mod sex_option_i8 {
     use crate::field::Sex;
     use crate::serde_helpers::*;
     use either::{Either};
-    use serde::{Serializer, Deserializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
     use std::convert::TryInto;
 
     pub fn serialize<S>(&v: &Either<Option<i8>, Sex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_option_index("sex", -1, |x| x.try_into().ok().and_then(Sex::n), |x| (x as u8).try_into().unwrap(), v, serializer)
+        OptionIndexSer(OptionIndexSerDe {
+            name: "sex",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Sex::n),
+            into: |x| (x as u8).try_into().unwrap()
+        }, v).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Sex>, D::Error> where D: Deserializer<'de> {
-        deserialize_option_index(-1, |x| x.try_into().ok().and_then(Sex::n), deserializer)
+        OptionIndexSerDe {
+            name: "sex",
+            none: -1,
+            from: |x| x.try_into().ok().and_then(Sex::n),
+            into: |x| (x as u8).try_into().unwrap()
+        }.deserialize(deserializer)
     }
 }
 

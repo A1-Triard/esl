@@ -9,66 +9,162 @@ use nameof::name_of;
 use std::str::FromStr;
 use crate::code::SHORT_STRING_VARIANT_INDEX;
 
-pub fn serialize_none_u8<S>(none: u8, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if serializer.is_human_readable() {
-        serializer.serialize_unit()
-    } else {
-        serializer.serialize_u8(none)
-    }
-}
+pub struct NoneU8SerDe { pub none: u8 }
 
-pub fn deserialize_none_u8<'de, D>(none: u8, deserializer: D) -> Result<(), D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        <()>::deserialize(deserializer)
-    } else {
-        let d = u8::deserialize(deserializer)?;
-        if d != none {
-            let e: &str = &format!("{none}");
-            Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &e))
+impl Serialize for NoneU8SerDe {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_unit()
         } else {
-            Ok(())
+            serializer.serialize_u8(self.none)
         }
     }
 }
 
-pub fn serialize_bool_u8<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if serializer.is_human_readable() {
-        serializer.serialize_bool(v)
-    } else {
-        serializer.serialize_u8(v.into())
-    }
-}
+impl<'de> DeserializeSeed<'de> for NoneU8SerDe {
+    type Value = ();
 
-pub fn deserialize_bool_u8<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        bool::deserialize(deserializer)
-    } else {
-        let d = u8::deserialize(deserializer)?;
-        match d {
-            0 => Ok(false),
-            1 => Ok(true),
-            d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            <()>::deserialize(deserializer)
+        } else {
+            let d = u8::deserialize(deserializer)?;
+            if d != self.none {
+                let e: &str = &format!("{}", self.none);
+                Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &e))
+            } else {
+                Ok(())
+            }
         }
     }
 }
 
-pub fn serialize_bool_u32<S>(v: bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-    if serializer.is_human_readable() {
-        serializer.serialize_bool(v)
-    } else {
-        serializer.serialize_u32(v.into())
+pub struct BoolU8SerDe(pub bool);
+
+impl Serialize for BoolU8SerDe {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_bool(self.0)
+        } else {
+            serializer.serialize_u8(self.0.into())
+        }
     }
 }
 
-pub fn deserialize_bool_u32<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-    if deserializer.is_human_readable() {
-        bool::deserialize(deserializer)
-    } else {
-        let d = u32::deserialize(deserializer)?;
-        match d {
-            0 => Ok(false),
-            1 => Ok(true),
-            d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+impl<'de> Deserialize<'de> for BoolU8SerDe {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            Ok(BoolU8SerDe(bool::deserialize(deserializer)?))
+        } else {
+            let d = u8::deserialize(deserializer)?;
+            match d {
+                0 => Ok(BoolU8SerDe(false)),
+                1 => Ok(BoolU8SerDe(true)),
+                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+            }
+        }
+    }
+}
+
+pub struct BoolU32SerDe(pub bool);
+
+impl Serialize for BoolU32SerDe {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.serialize_bool(self.0)
+        } else {
+            serializer.serialize_u32(self.0.into())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BoolU32SerDe {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            Ok(BoolU32SerDe(bool::deserialize(deserializer)?))
+        } else {
+            let d = u32::deserialize(deserializer)?;
+            match d {
+                0 => Ok(BoolU32SerDe(false)),
+                1 => Ok(BoolU32SerDe(true)),
+                d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
+            }
+        }
+    }
+}
+
+pub struct OptionIndexSerDe<
+    I: Copy + Eq + Display,
+    T: Copy,
+    From: Fn(I) -> Option<T>,
+    Into: Fn(T) -> I,
+> {
+    pub name: &'static str,
+    pub none: I,
+    pub from: From,
+    pub into: Into,
+}
+
+pub struct OptionIndexSer<
+    I: Copy + Eq + Display + Serialize,
+    T: Copy + Serialize,
+    From: Fn(I) -> Option<T>,
+    Into: Fn(T) -> I,
+>(pub OptionIndexSerDe<I, T, From, Into>, pub Either<Option<I>, T>);
+
+impl<
+    I: Copy + Eq + Display + Serialize,
+    T: Copy + Serialize,
+    From: Fn(I) -> Option<T>,
+    Into: Fn(T) -> I,
+> Serialize for OptionIndexSer<I, T, From, Into> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            match self.1 {
+                Left(i) => OptionIndexHRSurrogate::None(i),
+                Right(v) => OptionIndexHRSurrogate::Some(v),
+            }.serialize(serializer)
+        } else {
+            let v = match self.1 {
+                Left(Some(i)) => {
+                    if i == self.0.none || (self.0.from)(i).is_some() {
+                        let err = format!("{} is not valid undefined {} value", i, self.0.name);
+                        return Err(S::Error::custom(err));
+                    }
+                    i
+                },
+                Left(None) => self.0.none,
+                Right(a) => (self.0.into)(a)
+            };
+            v.serialize(serializer)
+        }
+    }
+}
+
+impl<
+    'de,
+    I: Copy + Eq + Display + Deserialize<'de>,
+    T: Copy + Deserialize<'de>,
+    From: Fn(I) -> Option<T>,
+    Into: Fn(T) -> I,
+> DeserializeSeed<'de> for OptionIndexSerDe<I, T, From, Into> {
+    type Value = Either<Option<I>, T>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            let v = <OptionIndexHRSurrogate<I, T>>::deserialize(deserializer)?;
+            Ok(match v {
+                OptionIndexHRSurrogate::None(i) => Left(i),
+                OptionIndexHRSurrogate::Some(v) => Right(v),
+            })
+        } else {
+            let d = I::deserialize(deserializer)?;
+            if d == self.none { return Ok(Left(None)); }
+            if let Some(a) = (self.from)(d) {
+                Ok(Right(a))
+            } else {
+                Ok(Left(Some(d)))
+            }
         }
     }
 }
@@ -79,50 +175,6 @@ pub fn deserialize_bool_u32<'de, D>(deserializer: D) -> Result<bool, D::Error> w
 enum OptionIndexHRSurrogate<I, T> {
     None(Option<I>),
     Some(T)
-}
-
-pub fn serialize_option_index<I: Copy + Eq + Display, T: Copy, S>(
-    name: &str, none: I, from: impl Fn(I) -> Option<T>, to: impl Fn(T) -> I, v: Either<Option<I>, T>, serializer: S
-) -> Result<S::Ok, S::Error> where S: Serializer, I: Serialize, T: Serialize {
-    if serializer.is_human_readable() {
-        match v {
-            Left(i) => OptionIndexHRSurrogate::None(i),
-            Right(v) => OptionIndexHRSurrogate::Some(v),
-        }.serialize(serializer)
-    } else {
-        let v = match v {
-            Left(Some(i)) => {
-                if i == none || from(i).is_some() {
-                    let err = format!("{i} is not valid undefined {name} value");
-                    return Err(S::Error::custom(err));
-                }
-                i
-            },
-            Left(None) => none,
-            Right(a) => to(a)
-        };
-        v.serialize(serializer)
-    }
-}
-
-pub fn deserialize_option_index<'de, I: Copy + Eq, T: Copy, D>(
-    none: I, from: impl Fn(I) -> Option<T>, deserializer: D
-) -> Result<Either<Option<I>, T>, D::Error> where D: Deserializer<'de>, I: Deserialize<'de>, T: Deserialize<'de> {
-    if deserializer.is_human_readable() {
-        let v = <OptionIndexHRSurrogate<I, T>>::deserialize(deserializer)?;
-        Ok(match v {
-            OptionIndexHRSurrogate::None(i) => Left(i),
-            OptionIndexHRSurrogate::Some(v) => Right(v),
-        })
-    } else {
-        let d = I::deserialize(deserializer)?;
-        if d == none { return Ok(Left(None)); }
-        if let Some(a) = from(d) {
-            Ok(Right(a))
-        } else {
-            Ok(Left(Some(d)))
-        }
-    }
 }
 
 struct F32Surrogate(f32);

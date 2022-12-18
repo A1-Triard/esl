@@ -397,17 +397,17 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
             FieldType::MarkerU8(none) => if let Field::None = self.field {
-                serialize_none_u8(none, serializer)
+                NoneU8SerDe { none }.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have none type", self.record_tag, self.field_tag)))
             },
             FieldType::Bool8 => if let &Field::Bool(v) = self.field {
-                serialize_bool_u8(v, serializer)
+                BoolU8SerDe(v).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
             },
             FieldType::Bool32 => if let &Field::Bool(v) = self.field {
-                serialize_bool_u32(v, serializer)
+                BoolU32SerDe(v).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
             },
@@ -624,9 +624,9 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Skills => Skills::deserialize(deserializer).map(Field::Skills),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
-                FieldType::MarkerU8(none) => deserialize_none_u8(none, deserializer).map(|()| Field::None),
-                FieldType::Bool8 => deserialize_bool_u8(deserializer).map(Field::Bool),
-                FieldType::Bool32 => deserialize_bool_u32(deserializer).map(Field::Bool),
+                FieldType::MarkerU8(none) => NoneU8SerDe { none }.deserialize(deserializer).map(|()| Field::None),
+                FieldType::Bool8 => BoolU8SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
+                FieldType::Bool32 => BoolU32SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
                 FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
