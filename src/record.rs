@@ -392,7 +392,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have skill metadata type", self.record_tag, self.field_tag)))
             },
             FieldType::F32 => if let &Field::F32(v) = self.field {
-                serialize_f32_as_is(v, serializer)
+                F32AsIsSerDe(v).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
@@ -427,7 +427,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::F32List => if let Field::F32List(v) = self.field {
-                serialize_f32_s_as_is(v, serializer)
+                F32sAsIsSer(v).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
             },
@@ -627,11 +627,11 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::MarkerU8(none) => NoneU8SerDe { none }.deserialize(deserializer).map(|()| Field::None),
                 FieldType::Bool8 => BoolU8SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
                 FieldType::Bool32 => BoolU32SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
-                FieldType::F32 => deserialize_f32_as_is(deserializer).map(Field::F32),
+                FieldType::F32 => F32AsIsSerDe::deserialize(deserializer).map(|x| Field::F32(x.0)),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
                 FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
-                FieldType::F32List => deserialize_f32_s_as_is(deserializer).map(Field::F32List),
+                FieldType::F32List => F32sAsIsDe::deserialize(deserializer).map(|x| Field::F32List(x.0)),
                 FieldType::I32List => <Vec<i32>>::deserialize(deserializer).map(Field::I32List),
                 FieldType::I16List => <Vec<i16>>::deserialize(deserializer).map(Field::I16List),
                 FieldType::U8 => u8::deserialize(deserializer).map(Field::U8),

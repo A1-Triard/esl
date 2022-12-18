@@ -531,15 +531,15 @@ fn eq_f32_list(a: &[f32], b: &[f32]) -> bool {
 }
 
 pub(crate) mod float_32 {
-    use serde::{Serializer, Deserializer};
+    use serde::{Serializer, Deserializer, Deserialize, Serialize};
     use crate::serde_helpers::*;
 
     pub fn serialize<S>(v: &f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        serialize_f32_as_is(*v, serializer)
+        F32AsIsSerDe(*v).serialize(serializer)
     }
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
-        deserialize_f32_as_is(deserializer)
+        F32AsIsSerDe::deserialize(deserializer).map(|x| x.0)
     }
 }
 
