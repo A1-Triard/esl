@@ -10,6 +10,47 @@ use nameof::name_of;
 use std::str::FromStr;
 use crate::code::SHORT_STRING_VARIANT_INDEX;
 
+#[derive(Clone)]
+pub struct VecSerde<T>(pub T);
+
+impl<T: SerializeSeed + Clone> SerializeSeed for VecSerde<T> where T::Value: Sized {
+    type Value = [T::Value];
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_seq(Some(value.len()))?;
+        for item in value {
+            serializer.serialize_element(&ValueWithSeed(item, self.0.clone()))?;
+        }
+        serializer.end()
+    }
+}
+
+struct VecDeVisitor<T>(VecSerde<T>);
+
+impl<'de, T: DeserializeSeed<'de> + Clone> de::Visitor<'de> for VecDeVisitor<T> where T::Value: Sized {
+    type Value = Vec<T::Value>;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "vector")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+        let mut vec = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(f) = seq.next_element_seed(self.0.0.clone())? {
+            vec.push(f);
+        }
+        Ok(vec)
+    }
+}
+
+impl<'de, T: DeserializeSeed<'de> + Clone> DeserializeSeed<'de> for VecSerde<T> where T::Value: Sized {
+    type Value = Vec<T::Value>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_seq(VecDeVisitor(self))
+    }
+}
+
 pub struct NoneU8Serde { pub none: u8 }
 
 impl SerializeSeed for NoneU8Serde {

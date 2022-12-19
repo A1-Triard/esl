@@ -2424,7 +2424,8 @@ mod tests {
     use encoding::types::Encoding;
     use encoding::EncoderTrap;
     use either::{Right, Left};
-    use crate::code::*;
+    use serde_serialize_seed::ValueWithSeed;
+    use crate::code::{self};
 
     fn string(s: &str) -> Vec<u8> {
         WINDOWS_1251.encode(s, EncoderTrap::Strict).unwrap()
@@ -2612,7 +2613,7 @@ mod tests {
             effect_1_attribute: Left(None), effect_2_attribute: Right(Attribute::Luck),
             effect_3_attribute: Right(Attribute::Endurance), effect_4_attribute: Right(Attribute::Strength)
         };
-        let bin: Vec<u8> = serialize(&ingredient, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&ingredient, CodePage::English, false).unwrap();
         let res = ingredient_field(&bin).unwrap().1;
         assert_eq!(res, ingredient);
     }
@@ -2629,7 +2630,7 @@ mod tests {
             data_size: 65500,
             var_table_size: 100
         };
-        let bin: Vec<u8> = serialize(&script_metadata, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&script_metadata, CodePage::English, false).unwrap();
         let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.name, script_metadata.name);
         assert_eq!(res.vars.shorts, script_metadata.vars.shorts);
@@ -2648,7 +2649,7 @@ mod tests {
             description: vec!["descr line1".into(), "descr line2".into()],
             records: 1333
         };
-        let bin: Vec<u8> = serialize(&file_metadata, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&file_metadata, CodePage::English, false).unwrap();
         let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
@@ -2669,7 +2670,7 @@ mod tests {
             magnitude_min: 1,
             magnitude_max: 300
         };
-        let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
         assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
@@ -2693,7 +2694,7 @@ mod tests {
             magnitude_min: 1,
             magnitude_max: 300
         };
-        let bin: Vec<u8> = serialize(&effect, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&effect, CodePage::English, false).unwrap();
         let res = effect_field(&bin).unwrap().1;
         assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
@@ -2712,7 +2713,7 @@ mod tests {
             reputation: -200,
             index: 129
         };
-        let bin: Vec<u8> = serialize(&npc_state, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&npc_state, CodePage::English, false).unwrap();
         let res = npc_state_field(&bin).unwrap().1;
         assert_eq!(res.disposition, npc_state.disposition);
         assert_eq!(res.reputation, npc_state.reputation);
@@ -2736,7 +2737,7 @@ mod tests {
             },
             faction: 36, health: -37, magicka: -38, fatigue: 39
         };
-        let bin: Vec<u8> = serialize(&stats, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&stats, CodePage::English, false).unwrap();
         let res = npc_stats(&bin).unwrap().1;
         assert_eq!(res, stats);
     }
@@ -2766,7 +2767,7 @@ mod tests {
             padding: 17,
             stats: Right(npc_stats)
         };
-        let bin: Vec<u8> = serialize(&npc, CodePage::English, true).unwrap();
+        let bin: Vec<u8> = code::serialize(&npc, CodePage::English, true).unwrap();
         let res = npc_52_field(&bin).unwrap().1;
         assert_eq!(res, npc);
     }
@@ -2782,7 +2783,7 @@ mod tests {
             padding: 17,
             stats: Left(30001)
         };
-        let bin: Vec<u8> = serialize(&npc, CodePage::English, true).unwrap();
+        let bin: Vec<u8> = code::serialize(&npc, CodePage::English, true).unwrap();
         let res = npc_12_field(&bin).unwrap().1;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
@@ -2804,7 +2805,7 @@ mod tests {
             cost: 40,
             spell_type: SpellType::Curse
         };
-        let bin: Vec<u8> = serialize(&spell, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&spell, CodePage::English, false).unwrap();
         let res = spell_field(&bin).unwrap().1;
         assert_eq!(res, spell);
     }
@@ -2815,7 +2816,7 @@ mod tests {
             count: -3,
             item_id: "b_item_01 ".into()
         };
-        let bin: Vec<u8> = serialize(&item, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&item, CodePage::English, false).unwrap();
         let res = item_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
@@ -2839,7 +2840,7 @@ mod tests {
                 ]))
             ]
         };
-        let bin: Vec<u8> = serialize(&RecordSerializer { record: &record, code_page: Some(CodePage::English) }, CodePage::English, true).unwrap();
+        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, true).unwrap();
         println!("{:?}", bin);
         let mut bin = &bin[..];
         let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bin);

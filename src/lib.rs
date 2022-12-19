@@ -56,9 +56,12 @@ mod tests {
     use crate::*;
     use crate::read::*;
     use crate::code::{self, CodePage};
+    use crate::serde_helpers::VecSerde;
     use byteorder::{WriteBytesExt, LittleEndian};
     use iter_identify_first_last::IteratorIdentifyFirstLastExt;
     use quickcheck_macros::quickcheck;
+    use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::iter::Iterator;
     use std::str::FromStr;
     use std::mem::transmute;
@@ -151,14 +154,10 @@ mod tests {
         ]
     }
 
-    fn serialize_record(record: &Record, isolated: bool) -> Result<Vec<u8>, code::ser::Error> {
-        code::serialize(&RecordSerializer { record, code_page: Some(CodePage::Russian) }, CodePage::Russian, isolated)
-    }
-    
     fn serialize_file(file: &Vec<Record>, isolated: bool) -> Result<Vec<u8>, code::ser::Error> {
         let mut res = Vec::new();
         for (is_last, record) in file.iter().identify_last() {
-            code::serialize_into_vec(&RecordSerializer { record, code_page: Some(CodePage::Russian) }, &mut res, CodePage::Russian, isolated && is_last)?;
+            code::serialize_into_vec(&ValueWithSeed(record, RecordSerde { code_page: Some(CodePage::Russian) }), &mut res, CodePage::Russian, isolated && is_last)?;
         }
         Ok(res)
     }
@@ -178,7 +177,7 @@ mod tests {
     }
 
     fn deserialize_record(bytes: &mut &[u8], isolated: bool) -> Result<Record, code::de::Error> {
-        code::deserialize_from_slice_seed(RecordDeserializer { code_page: Some(CodePage::Russian) }, bytes, CodePage::Russian, isolated)
+        code::deserialize_from_slice_seed(RecordSerde { code_page: Some(CodePage::Russian) }, bytes, CodePage::Russian, isolated)
     }
 
     #[test]
@@ -323,7 +322,7 @@ mod tests {
         let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
-        let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
+        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None })).unwrap();
         assert!(!yaml.contains('^'));
         assert!(!yaml.contains("\\u"));
     }
@@ -345,7 +344,7 @@ mod tests {
                 }))
             ]
         };
-        let bytes = code::serialize(&record, CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
@@ -354,7 +353,7 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
         assert_eq!(record, deserialized);
     }
 
@@ -373,7 +372,7 @@ mod tests {
                 speed: 1.0
             }))]
         };
-        let bytes = code::serialize(&record, CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
@@ -382,7 +381,7 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
         assert_eq!(record, deserialized);
     }
 
@@ -395,7 +394,7 @@ mod tests {
                 "\0\0\0".into(),
             ]))]
         };
-        let bytes = code::serialize(&record, CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bytes);
@@ -404,12 +403,9 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
+        let deserialized = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
         assert_eq!(record, deserialized);
     }
-
-    //fn yaml_to_string_recot
-    //    let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
 
     #[allow(clippy::transmute_int_to_float)]
     #[test]
@@ -422,7 +418,7 @@ mod tests {
   - FLTV: 0.1
   - FLTV: -0.0
 ";
-        let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 5);
         assert_eq!(res[0].fields[0].1, Field::F32(3.0));
@@ -435,7 +431,7 @@ mod tests {
         assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
         assert_eq!(res[0].fields[3].1, Field::F32(0.1));
         assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
-        let res_yaml = serde_yaml::to_string(&res).unwrap();
+        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 
@@ -452,7 +448,7 @@ mod tests {
       color: '#F58C28'
       flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
 ";
-        let res: Vec<Record> = serde_yaml::from_str(yaml).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 1);
         if let Field::Light(field) = &res[0].fields[0].1 {
@@ -460,7 +456,7 @@ mod tests {
         } else {
             panic!()
         }
-        let res_yaml = serde_yaml::to_string(&res).unwrap();
+        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 }

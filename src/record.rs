@@ -494,6 +494,7 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct RecordSerde {
     pub code_page: Option<CodePage>
 }
@@ -981,6 +982,7 @@ impl<'de> Deserialize<'de> for PosRotOrCell {
 mod tests {
     use crate::*;
     use serde::de::DeserializeSeed; 
+    use serde_serialize_seed::ValueWithSeed;
     use std::str::FromStr;
     use std::hash::Hash;
     use std::collections::hash_map::DefaultHasher;
@@ -1026,8 +1028,8 @@ mod tests {
                 ]))
             ]
         };
-        let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
-        let res = RecordDeserializer { code_page: None }.deserialize(serde_yaml::Deserializer::from_str(&yaml)).unwrap();
+        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None })).unwrap();
+        let res = RecordSerde { code_page: None }.deserialize(serde_yaml::Deserializer::from_str(&yaml)).unwrap();
         assert_eq!(res.tag, record.tag);
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);
