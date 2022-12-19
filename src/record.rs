@@ -5,7 +5,7 @@ use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::de::{self, DeserializeSeed, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
-use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed, VecSerde};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
 use std::io::Write;
@@ -430,7 +430,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::F32List => if let Field::F32List(v) = self.field {
-                ValueWithSeed(&v[..], F32sAsIsSerde).serialize(serializer)
+                ValueWithSeed(&v[..], VecSerde(F32AsIsSerde)).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
             },
@@ -644,7 +644,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
                 FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
-                FieldType::F32List => F32sAsIsSerde.deserialize(deserializer).map(Field::F32List),
+                FieldType::F32List => VecSerde(F32AsIsSerde).deserialize(deserializer).map(Field::F32List),
                 FieldType::I32List => <Vec<i32>>::deserialize(deserializer).map(Field::I32List),
                 FieldType::I16List => <Vec<i16>>::deserialize(deserializer).map(Field::I16List),
                 FieldType::U8 => u8::deserialize(deserializer).map(Field::U8),

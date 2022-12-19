@@ -56,12 +56,11 @@ mod tests {
     use crate::*;
     use crate::read::*;
     use crate::code::{self, CodePage};
-    use crate::serde_helpers::VecSerde;
     use byteorder::{WriteBytesExt, LittleEndian};
     use iter_identify_first_last::IteratorIdentifyFirstLastExt;
     use quickcheck_macros::quickcheck;
     use serde::de::DeserializeSeed;
-    use serde_serialize_seed::ValueWithSeed;
+    use serde_serialize_seed::{ValueWithSeed, VecSerde};
     use std::iter::Iterator;
     use std::str::FromStr;
     use std::mem::transmute;

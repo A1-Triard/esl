@@ -5,8 +5,10 @@
 A library for reading, writing and processing ESM/ESP/ESS files.
 
 ```rust
+use esl::RecordSerde;
 use esl::code::CodePage;
 use esl::read::{RecordReadMode, Records};
+use serde_serialize_seed::{ValueWithSeed, VecSerde};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
@@ -24,7 +26,10 @@ fn main() {
             }
         }).collect::<Vec<_>>();
         let output = File::create("Morrowind.esm.yaml").unwrap();
-        serde_yaml::to_writer(BufWriter::new(output), &records).unwrap();
+        serde_yaml::to_writer(
+            BufWriter::new(output),
+            &ValueWithSeed(&records[..], VecSerde(RecordSerde { code_page: None }))
+        ).unwrap();
     }
 }
 ```
