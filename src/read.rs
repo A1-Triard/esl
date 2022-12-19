@@ -2839,7 +2839,7 @@ mod tests {
                 ]))
             ]
         };
-        let bin: Vec<u8> = serialize(&record, CodePage::English, true).unwrap();
+        let bin: Vec<u8> = serialize(&RecordSerializer { record: &record, code_page: Some(CodePage::English) }, CodePage::English, true).unwrap();
         println!("{:?}", bin);
         let mut bin = &bin[..];
         let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bin);

@@ -5,6 +5,7 @@ use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::de::{self, DeserializeSeed, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use flate2::write::{ZlibDecoder, ZlibEncoder};
 use flate2::Compression;
 use std::io::Write;
@@ -54,11 +55,11 @@ struct FieldBodySerializer<'a> {
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
-            FieldType::String(len) => if let Field::String(string) = self.field {
+            FieldType::String(len) => if let Field::String(s) = self.field {
                 if let Some(len) = len {
-                    ShortStringSer { string, len: len.try_into().unwrap() }.serialize(serializer)
+                    ValueWithSeed(s.as_str(), ShortStringSerde { len: len.try_into().unwrap() }).serialize(serializer)
                 } else {
-                    serializer.serialize_str(string)
+                    serializer.serialize_str(s)
                 }
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string type", self.record_tag, self.field_tag)))
@@ -69,7 +70,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
-                StringListSer { lines: s, separator: newline.as_str(), len: None }.serialize(serializer)
+                ValueWithSeed(&s[..], StringListSerde { separator: newline.as_str(), len: None }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -393,23 +394,23 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have skill metadata type", self.record_tag, self.field_tag)))
             },
-            FieldType::F32 => if let &Field::F32(v) = self.field {
-                F32AsIsSerDe(v).serialize(serializer)
+            FieldType::F32 => if let Field::F32(v) = self.field {
+                ValueWithSeed(v, F32AsIsSerde).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
             FieldType::MarkerU8(none) => if let Field::None = self.field {
-                NoneU8SerDe { none }.serialize(serializer)
+                ValueWithSeed(&(), NoneU8Serde { none }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have none type", self.record_tag, self.field_tag)))
             },
-            FieldType::Bool8 => if let &Field::Bool(v) = self.field {
-                BoolU8SerDe(v).serialize(serializer)
+            FieldType::Bool8 => if let Field::Bool(v) = self.field {
+                ValueWithSeed(v, BoolU8Serde).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
             },
-            FieldType::Bool32 => if let &Field::Bool(v) = self.field {
-                BoolU32SerDe(v).serialize(serializer)
+            FieldType::Bool32 => if let Field::Bool(v) = self.field {
+                ValueWithSeed(v, BoolU32Serde).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
             },
@@ -429,7 +430,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::F32List => if let Field::F32List(v) = self.field {
-                F32sAsIsSer(v).serialize(serializer)
+                ValueWithSeed(&v[..], F32sAsIsSerde).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float list type", self.record_tag, self.field_tag)))
             },
@@ -493,19 +494,20 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
     }
 }
 
-pub struct RecordSerializer<'a> {
-    pub code_page: Option<CodePage>,
-    pub record: &'a Record,
+pub struct RecordSerde {
+    pub code_page: Option<CodePage>
 }
 
-impl<'a> Serialize for RecordSerializer<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+impl SerializeSeed for RecordSerde {
+    type Value = Record;
+
+    fn serialize<S>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let is_human_readable = serializer.is_human_readable();
         let mut serializer = serializer.serialize_map(Some(1))?;
         if is_human_readable {
-            serializer.serialize_entry(&self.record.tag, &RecordBodySerializer(self.code_page, self.record))?;
+            serializer.serialize_entry(&value.tag, &RecordBodySerializer(self.code_page, value))?;
         } else {
-            serializer.serialize_entry(&(self.record.tag, self.record.flags), &RecordBodySerializer(self.code_page, self.record))?;
+            serializer.serialize_entry(&(value.tag, value.flags), &RecordBodySerializer(self.code_page, value))?;
         }
         serializer.end()
     }
@@ -555,14 +557,14 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
                 FieldType::String(len) => if let Some(len) = len {
-                    ShortStringDe { len: len.try_into().unwrap() }.deserialize(deserializer)
+                    ShortStringSerde { len: len.try_into().unwrap() }.deserialize(deserializer)
                 } else {
                     String::deserialize(deserializer)
                 }.map(Field::String),
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
-                    StringListDe { separator: newline.as_str(), len: None }.deserialize(deserializer).map(Field::StringList),
+                    StringListSerde { separator: newline.as_str(), len: None }.deserialize(deserializer).map(Field::StringList),
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
@@ -634,14 +636,14 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Skills => Skills::deserialize(deserializer).map(Field::Skills),
                 FieldType::Grid => Grid::deserialize(deserializer).map(Field::Grid),
                 FieldType::PathGrid => PathGrid::deserialize(deserializer).map(Field::PathGrid),
-                FieldType::MarkerU8(none) => NoneU8SerDe { none }.deserialize(deserializer).map(|()| Field::None),
-                FieldType::Bool8 => BoolU8SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
-                FieldType::Bool32 => BoolU32SerDe::deserialize(deserializer).map(|x| Field::Bool(x.0)),
-                FieldType::F32 => F32AsIsSerDe::deserialize(deserializer).map(|x| Field::F32(x.0)),
+                FieldType::MarkerU8(none) => NoneU8Serde { none }.deserialize(deserializer).map(|()| Field::None),
+                FieldType::Bool8 => BoolU8Serde.deserialize(deserializer).map(Field::Bool),
+                FieldType::Bool32 => BoolU32Serde.deserialize(deserializer).map(Field::Bool),
+                FieldType::F32 => F32AsIsSerde.deserialize(deserializer).map(Field::F32),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
                 FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
-                FieldType::F32List => F32sAsIsDe::deserialize(deserializer).map(|x| Field::F32List(x.0)),
+                FieldType::F32List => F32sAsIsSerde.deserialize(deserializer).map(Field::F32List),
                 FieldType::I32List => <Vec<i32>>::deserialize(deserializer).map(Field::I32List),
                 FieldType::I16List => <Vec<i16>>::deserialize(deserializer).map(Field::I16List),
                 FieldType::U8 => u8::deserialize(deserializer).map(Field::U8),
@@ -766,11 +768,7 @@ impl<'de> de::Visitor<'de> for RecordVisitor {
     }
 }
 
-pub struct RecordDeserializer {
-    pub code_page: Option<CodePage>
-}
-
-impl<'de> DeserializeSeed<'de> for RecordDeserializer {
+impl<'de> DeserializeSeed<'de> for RecordSerde {
     type Value = Record;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Record, D::Error> where D: Deserializer<'de> {
@@ -982,6 +980,7 @@ impl<'de> Deserialize<'de> for PosRotOrCell {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use serde::de::DeserializeSeed; 
     use std::str::FromStr;
     use std::hash::Hash;
     use std::collections::hash_map::DefaultHasher;
@@ -1027,8 +1026,8 @@ mod tests {
                 ]))
             ]
         };
-        let yaml = serde_yaml::to_string(&record).unwrap();
-        let res: Record = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
+        let res = RecordDeserializer { code_page: None }.deserialize(serde_yaml::Deserializer::from_str(&yaml)).unwrap();
         assert_eq!(res.tag, record.tag);
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);

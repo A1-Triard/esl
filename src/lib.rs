@@ -57,6 +57,7 @@ mod tests {
     use crate::read::*;
     use crate::code::{self, CodePage};
     use byteorder::{WriteBytesExt, LittleEndian};
+    use iter_identify_first_last::IteratorIdentifyFirstLastExt;
     use quickcheck_macros::quickcheck;
     use std::iter::Iterator;
     use std::str::FromStr;
@@ -149,6 +150,18 @@ mod tests {
             }
         ]
     }
+
+    fn serialize_record(record: &Record, isolated: bool) -> Result<Vec<u8>, code::ser::Error> {
+        code::serialize(&RecordSerializer { record, code_page: Some(CodePage::Russian) }, CodePage::Russian, isolated)
+    }
+    
+    fn serialize_file(file: &Vec<Record>, isolated: bool) -> Result<Vec<u8>, code::ser::Error> {
+        let mut res = Vec::new();
+        for (is_last, record) in file.iter().identify_last() {
+            code::serialize_into_vec(&RecordSerializer { record, code_page: Some(CodePage::Russian) }, &mut res, CodePage::Russian, isolated && is_last)?;
+        }
+        Ok(res)
+    }
     
     #[test]
     fn read_file_1() {
@@ -160,15 +173,19 @@ mod tests {
 
     #[test]
     fn serialize_file_1() {
-        let bytes = code::serialize(&test_file1(), CodePage::Russian, true).unwrap();
+        let bytes = serialize_file(&test_file1(), true).unwrap();
         assert_eq!(bytes, test_file_1_bytes());
+    }
+
+    fn deserialize_record(bytes: &mut &[u8], isolated: bool) -> Result<Record, code::de::Error> {
+        code::deserialize_from_slice_seed(RecordDeserializer { code_page: Some(CodePage::Russian) }, bytes, CodePage::Russian, isolated)
     }
 
     #[test]
     fn deserialize_file_1() {
         let mut records = &test_file_1_bytes()[..];
-        let record1: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
-        let record2: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        let record1 = deserialize_record(&mut records, false).unwrap();
+        let record2 = deserialize_record(&mut records, false).unwrap();
         assert!(records.is_empty());
         assert_eq!(vec![record1, record2], test_file1());
     }
@@ -241,15 +258,15 @@ mod tests {
 
     #[test]
     fn serialize_file_2() {
-        let bytes = code::serialize(&test_file2(), CodePage::Russian, true).unwrap();
+        let bytes = serialize_file(&test_file2(), true).unwrap();
         assert_eq!(bytes, test_file_2_bytes());
     }
 
     #[test]
     fn deserialize_file_2() {
         let mut records = &test_file_2_bytes()[..];
-        let record1: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
-        let record2: Record = code::deserialize_from_slice(&mut records, CodePage::Russian, false).unwrap();
+        let record1 = deserialize_record(&mut records, false).unwrap();
+        let record2 = deserialize_record(&mut records, false).unwrap();
         assert!(records.is_empty());
         assert_eq!(vec![record1, record2], test_file2());
     }
@@ -284,7 +301,7 @@ mod tests {
 
     #[test]
     fn serialize_file_without_description() {
-        let err = code::serialize(&test_file_without_description(), CodePage::Russian, true).err().unwrap();
+        let err = serialize_file(&test_file_without_description(), true).err().unwrap();
         let msg = match err {
             code::ser::Error::Custom(s) => s,
             _ => panic!("unexpected error '{}'", err)
@@ -306,7 +323,7 @@ mod tests {
         let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
-        let yaml = serde_yaml::to_string(&record).unwrap();
+        let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
         assert!(!yaml.contains('^'));
         assert!(!yaml.contains("\\u"));
     }
@@ -390,6 +407,9 @@ mod tests {
         let deserialized: Record = code::deserialize(&bytes, CodePage::Russian, false).unwrap();
         assert_eq!(record, deserialized);
     }
+
+    //fn yaml_to_string_recot
+    //    let yaml = serde_yaml::to_string(&RecordSerializer { record: &record, code_page: None }).unwrap();
 
     #[allow(clippy::transmute_int_to_float)]
     #[test]

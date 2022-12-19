@@ -531,15 +531,17 @@ fn eq_f32_list(a: &[f32], b: &[f32]) -> bool {
 }
 
 pub(crate) mod float_32 {
-    use serde::{Serializer, Deserializer, Deserialize, Serialize};
+    use serde::{Serializer, Deserializer, Serialize};
+    use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use crate::serde_helpers::*;
 
     pub fn serialize<S>(v: &f32, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        F32AsIsSerDe(*v).serialize(serializer)
+        ValueWithSeed(v, F32AsIsSerde).serialize(serializer)
     }
     
     pub fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error> where D: Deserializer<'de> {
-        F32AsIsSerDe::deserialize(deserializer).map(|x| x.0)
+        F32AsIsSerde.deserialize(deserializer)
     }
 }
 
@@ -576,28 +578,32 @@ mod option_i8 {
 }
 
 mod bool_u32 {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use crate::serde_helpers::*;
 
-    pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        BoolU32SerDe(v).serialize(serializer)
+    pub fn serialize<S>(v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, BoolU32Serde).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        BoolU32SerDe::deserialize(deserializer).map(|x| x.0)
+        BoolU32Serde.deserialize(deserializer)
     }
 }
 
 mod bool_u8 {
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserializer, Serialize, Serializer};
+    use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use crate::serde_helpers::*;
 
-    pub fn serialize<S>(&v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        BoolU8SerDe(v).serialize(serializer)
+    pub fn serialize<S>(v: &bool, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, BoolU8Serde).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<bool, D::Error> where D: Deserializer<'de> {
-        BoolU8SerDe::deserialize(deserializer).map(|x| x.0)
+        BoolU8Serde.deserialize(deserializer)
     }
 }
 
@@ -676,14 +682,15 @@ pub struct ScriptMetadata {
 mod string_32 {
     use serde::{Serializer, Deserializer, Serialize};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use crate::serde_helpers::*;
 
-    pub fn serialize<S>(string: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        ShortStringSer { string, len: 32 }.serialize(serializer)
+    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(s, ShortStringSerde { len: 32 }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-        ShortStringDe { len: 32 }.deserialize(deserializer)
+        ShortStringSerde { len: 32 }.deserialize(deserializer)
     }
 }
 
@@ -702,14 +709,15 @@ pub struct FileMetadata {
 mod multiline_256_dos {
     use serde::{Serializer, Deserializer, Serialize};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use crate::field::*;
 
     pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        StringListSer { lines, separator: Newline::Dos.as_str(), len: Some(256) }.serialize(serializer)
+        ValueWithSeed(lines, StringListSerde { separator: Newline::Dos.as_str(), len: Some(256) }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        StringListDe { separator: Newline::Dos.as_str(), len: Some(256) }.deserialize(deserializer)
+        StringListSerde { separator: Newline::Dos.as_str(), len: Some(256) }.deserialize(deserializer)
     }
 }
 
@@ -1217,19 +1225,20 @@ mod attribute_option_i8 {
     use crate::serde_helpers::*;
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i8>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i8>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "attribute",
             none: -1,
             from: |x| x.try_into().ok().and_then(Attribute::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Attribute>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "attribute",
             none: -1,
             from: |x| x.try_into().ok().and_then(Attribute::n),
@@ -1244,19 +1253,20 @@ mod attribute_option_i32 {
     use crate::serde_helpers::*;
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i32>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i32>, Attribute>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "attribute",
             none: -1,
             from: |x| x.try_into().ok().and_then(Attribute::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Attribute>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "attribute",
             none: -1,
             from: |x| x.try_into().ok().and_then(Attribute::n),
@@ -1536,19 +1546,20 @@ mod skill_option_i32 {
     use either::{Either};
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i32>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i32>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "skill",
             none:-1,
             from: |x| x.try_into().ok().and_then(Skill::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, Skill>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "skill",
             none:-1,
             from: |x| x.try_into().ok().and_then(Skill::n),
@@ -1563,19 +1574,20 @@ mod skill_option_i8 {
     use either::{Either};
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i8>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i8>, Skill>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "skill",
             none: -1,
             from: |x| x.try_into().ok().and_then(Skill::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Skill>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "skill",
             none: -1,
             from: |x| x.try_into().ok().and_then(Skill::n),
@@ -1802,19 +1814,20 @@ mod effect_index_option_i32 {
     use either::{Either};
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i32>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i32>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "effect index",
             none: -1,
             from: |x| x.try_into().ok().and_then(EffectIndex::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i32>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "effect index",
             none: -1,
             from: |x| x.try_into().ok().and_then(EffectIndex::n),
@@ -1829,19 +1842,20 @@ mod effect_index_option_i16 {
     use either::{Either};
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i16>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i16>, EffectIndex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "effect index",
             none: -1,
             from: |x| x.try_into().ok().and_then(EffectIndex::n),
             into: |x| (x as u32).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i16>, EffectIndex>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "effect index",
             none: -1,
             from: |x| x.try_into().ok().and_then(EffectIndex::n),
@@ -2705,19 +2719,20 @@ mod sex_option_i8 {
     use either::{Either};
     use serde::{Deserializer, Serialize, Serializer};
     use serde::de::DeserializeSeed;
+    use serde_serialize_seed::ValueWithSeed;
     use std::convert::TryInto;
 
-    pub fn serialize<S>(&v: &Either<Option<i8>, Sex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        OptionIndexSer(OptionIndexSerDe {
+    pub fn serialize<S>(v: &Either<Option<i8>, Sex>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(v, OptionIndexSerde {
             name: "sex",
             none: -1,
             from: |x| x.try_into().ok().and_then(Sex::n),
             into: |x| (x as u8).try_into().unwrap()
-        }, v).serialize(serializer)
+        }).serialize(serializer)
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Either<Option<i8>, Sex>, D::Error> where D: Deserializer<'de> {
-        OptionIndexSerDe {
+        OptionIndexSerde {
             name: "sex",
             none: -1,
             from: |x| x.try_into().ok().and_then(Sex::n),

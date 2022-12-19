@@ -4,15 +4,18 @@ use serde::de::{self, Unexpected, EnumAccess, MapAccess, SeqAccess, DeserializeS
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeTuple, SerializeSeq, SerializeTupleVariant};
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use either::{Either, Left,  Right};
 use nameof::name_of;
 use std::str::FromStr;
 use crate::code::SHORT_STRING_VARIANT_INDEX;
 
-pub struct NoneU8SerDe { pub none: u8 }
+pub struct NoneU8Serde { pub none: u8 }
 
-impl Serialize for NoneU8SerDe {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for NoneU8Serde {
+    type Value = ();
+
+    fn serialize<S: Serializer>(&self, _value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             serializer.serialize_unit()
         } else {
@@ -21,7 +24,7 @@ impl Serialize for NoneU8SerDe {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for NoneU8SerDe {
+impl<'de> DeserializeSeed<'de> for NoneU8Serde {
     type Value = ();
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
@@ -39,61 +42,69 @@ impl<'de> DeserializeSeed<'de> for NoneU8SerDe {
     }
 }
 
-pub struct BoolU8SerDe(pub bool);
+pub struct BoolU8Serde;
 
-impl Serialize for BoolU8SerDe {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for BoolU8Serde {
+    type Value = bool;
+
+    fn serialize<S: Serializer>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_bool(self.0)
+            serializer.serialize_bool(value)
         } else {
-            serializer.serialize_u8(self.0.into())
+            serializer.serialize_u8(value.into())
         }
     }
 }
 
-impl<'de> Deserialize<'de> for BoolU8SerDe {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+impl<'de> DeserializeSeed<'de> for BoolU8Serde {
+    type Value = bool;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            Ok(BoolU8SerDe(bool::deserialize(deserializer)?))
+            Ok(bool::deserialize(deserializer)?)
         } else {
             let d = u8::deserialize(deserializer)?;
             match d {
-                0 => Ok(BoolU8SerDe(false)),
-                1 => Ok(BoolU8SerDe(true)),
+                0 => Ok(false),
+                1 => Ok(true),
                 d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
             }
         }
     }
 }
 
-pub struct BoolU32SerDe(pub bool);
+pub struct BoolU32Serde;
 
-impl Serialize for BoolU32SerDe {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for BoolU32Serde {
+    type Value = bool;
+
+    fn serialize<S: Serializer>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_bool(self.0)
+            serializer.serialize_bool(value)
         } else {
-            serializer.serialize_u32(self.0.into())
+            serializer.serialize_u32(value.into())
         }
     }
 }
 
-impl<'de> Deserialize<'de> for BoolU32SerDe {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+impl<'de> DeserializeSeed<'de> for BoolU32Serde {
+    type Value = bool;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            Ok(BoolU32SerDe(bool::deserialize(deserializer)?))
+            Ok(bool::deserialize(deserializer)?)
         } else {
             let d = u32::deserialize(deserializer)?;
             match d {
-                0 => Ok(BoolU32SerDe(false)),
-                1 => Ok(BoolU32SerDe(true)),
+                0 => Ok(false),
+                1 => Ok(true),
                 d => Err(D::Error::invalid_value(Unexpected::Unsigned(d as u64), &"0 or 1"))
             }
         }
     }
 }
 
-pub struct OptionIndexSerDe<
+pub struct OptionIndexSerde<
     I: Copy + Eq + Display,
     T: Copy,
     From: Fn(I) -> Option<T>,
@@ -105,36 +116,31 @@ pub struct OptionIndexSerDe<
     pub into: Into,
 }
 
-pub struct OptionIndexSer<
-    I: Copy + Eq + Display + Serialize,
-    T: Copy + Serialize,
-    From: Fn(I) -> Option<T>,
-    Into: Fn(T) -> I,
->(pub OptionIndexSerDe<I, T, From, Into>, pub Either<Option<I>, T>);
-
 impl<
     I: Copy + Eq + Display + Serialize,
     T: Copy + Serialize,
     From: Fn(I) -> Option<T>,
     Into: Fn(T) -> I,
-> Serialize for OptionIndexSer<I, T, From, Into> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+> SerializeSeed for OptionIndexSerde<I, T, From, Into> {
+    type Value = Either<Option<I>, T>;
+
+    fn serialize<S: Serializer>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            match self.1 {
+            match value {
                 Left(i) => OptionIndexHRSurrogate::None(i),
                 Right(v) => OptionIndexHRSurrogate::Some(v),
             }.serialize(serializer)
         } else {
-            let v = match self.1 {
+            let v = match value {
                 Left(Some(i)) => {
-                    if i == self.0.none || (self.0.from)(i).is_some() {
-                        let err = format!("{} is not valid undefined {} value", i, self.0.name);
+                    if i == self.none || (self.from)(i).is_some() {
+                        let err = format!("{} is not valid undefined {} value", i, self.name);
                         return Err(S::Error::custom(err));
                     }
                     i
                 },
-                Left(None) => self.0.none,
-                Right(a) => (self.0.into)(a)
+                Left(None) => self.none,
+                Right(a) => (self.into)(a)
             };
             v.serialize(serializer)
         }
@@ -147,7 +153,7 @@ impl<
     T: Copy + Deserialize<'de>,
     From: Fn(I) -> Option<T>,
     Into: Fn(T) -> I,
-> DeserializeSeed<'de> for OptionIndexSerDe<I, T, From, Into> {
+> DeserializeSeed<'de> for OptionIndexSerde<I, T, From, Into> {
     type Value = Either<Option<I>, T>;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
@@ -177,22 +183,24 @@ enum OptionIndexHRSurrogate<I, T> {
     Some(T)
 }
 
-pub struct F32sAsIsSer<'a>(pub &'a [f32]);
+pub struct F32sAsIsSerde;
 
-impl<'a> Serialize for F32sAsIsSer<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let mut serializer = serializer.serialize_seq(Some(self.0.len()))?;
-        for &f in self.0.iter() {
-            serializer.serialize_element(&F32AsIsSerDe(f))?;
+impl SerializeSeed for F32sAsIsSerde {
+    type Value = [f32];
+
+    fn serialize<S>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut serializer = serializer.serialize_seq(Some(value.len()))?;
+        for f in value.iter() {
+            serializer.serialize_element(&ValueWithSeed(f, F32AsIsSerde))?;
         }
         serializer.end()
     }
 }
 
-pub struct F32sAsIsDe(pub Vec<f32>);
+impl<'de> DeserializeSeed<'de> for F32sAsIsSerde {
+    type Value = Vec<f32>;
 
-impl<'de> Deserialize<'de> for F32sAsIsDe {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
         deserializer.deserialize_seq(F32sDeserializer)
     }
 }
@@ -200,7 +208,7 @@ impl<'de> Deserialize<'de> for F32sAsIsDe {
 struct F32sDeserializer;
 
 impl<'de> de::Visitor<'de> for F32sDeserializer {
-    type Value = F32sAsIsDe;
+    type Value = Vec<f32>;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "list of floats")
@@ -208,38 +216,42 @@ impl<'de> de::Visitor<'de> for F32sDeserializer {
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
         let mut vec = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
-        while let Some(f) = seq.next_element::<F32AsIsSerDe>()? {
-            vec.push(f.0);
+        while let Some(f) = seq.next_element_seed(F32AsIsSerde)? {
+            vec.push(f);
         }
-        Ok(F32sAsIsDe(vec))
+        Ok(vec)
     }
 }
 
-pub struct F32AsIsSerDe(pub f32);
+pub struct F32AsIsSerde;
 
-impl Serialize for F32AsIsSerDe {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+impl SerializeSeed for F32AsIsSerde {
+    type Value = f32;
+
+    fn serialize<S>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if !serializer.is_human_readable() {
-            serializer.serialize_f32(self.0)
-        } else if self.0.is_nan() {
-            let d: u32 = self.0.to_bits();
+            serializer.serialize_f32(value)
+        } else if value.is_nan() {
+            let d: u32 = value.to_bits();
             if d == 0xFFFFFFFF {
-                serializer.serialize_f32(self.0)
+                serializer.serialize_f32(value)
             } else {
                 serializer.serialize_str(&format!("nan{d:08X}"))
             }
         } else {
-            serializer.serialize_f64(f64::from_str(&self.0.to_string()).unwrap().copysign(self.0 as f64))
+            serializer.serialize_f64(f64::from_str(&value.to_string()).unwrap().copysign(value as f64))
         }
     }
 }
 
-impl<'de> Deserialize<'de> for F32AsIsSerDe {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+impl<'de> DeserializeSeed<'de> for F32AsIsSerde {
+    type Value = f32;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
             deserializer.deserialize_any(F32HRDeserializer)
         } else {
-            Ok(F32AsIsSerDe(f32::deserialize(deserializer)?))
+            Ok(f32::deserialize(deserializer)?)
         }
     }
 }
@@ -247,14 +259,14 @@ impl<'de> Deserialize<'de> for F32AsIsSerDe {
 struct F32HRDeserializer;
 
 impl<'de> de::Visitor<'de> for F32HRDeserializer {
-    type Value = F32AsIsSerDe;
+    type Value = f32;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "32-bit float value or 'nanXXXXXXXX' (where X is hex digit)")
     }
 
     fn visit_f32<E>(self, v: f32) -> Result<Self::Value, E> where E: de::Error {
-        Ok(F32AsIsSerDe(if v.is_nan() { f32::from_bits(0xFFFFFFFFu32) } else { v }))
+        Ok(if v.is_nan() { f32::from_bits(0xFFFFFFFFu32) } else { v })
     }
 
     fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
@@ -277,7 +289,7 @@ impl<'de> de::Visitor<'de> for F32HRDeserializer {
         if d == 0xFFFFFFFF {
             return Err(E::invalid_value(Unexpected::Str(s), &self));
         }
-        Ok(F32AsIsSerDe(f32::from_bits(d)))
+        Ok(f32::from_bits(d))
     }
 }
 
@@ -393,28 +405,25 @@ impl<'de> de::Visitor<'de> for ShortStringDeserializer {
     }
 }
 
-pub struct ShortStringSer<'a> {
-    pub string: &'a str,
+pub struct ShortStringSerde {
     pub len: usize
 }
 
-impl<'a> Serialize for ShortStringSer<'a> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for ShortStringSerde {
+    type Value = str;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(self.string)
+            serializer.serialize_str(value)
         } else {
             let mut serializer = serializer.serialize_map(Some(1))?;
-            serializer.serialize_entry(&ShortStr { string: self.string, len: self.len }, &())?;
+            serializer.serialize_entry(&ShortStr { string: value, len: self.len }, &())?;
             serializer.end()
         }
     }
 }
 
-pub struct ShortStringDe {
-    pub len: usize
-}
-
-impl<'de> DeserializeSeed<'de> for ShortStringDe {
+impl<'de> DeserializeSeed<'de> for ShortStringSerde {
     type Value = String;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
@@ -426,41 +435,42 @@ impl<'de> DeserializeSeed<'de> for ShortStringDe {
     }
 }
 
-pub struct StringListSer<'a> {
-    pub lines: &'a [String],
+pub struct StringListSerde {
     pub separator: &'static str,
     pub len: Option<usize>
 }
 
-impl<'a> Serialize for StringListSer<'a> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for StringListSerde {
+    type Value = [String];
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            self.lines.serialize(serializer)
+            value.serialize(serializer)
         } else {
             if self.separator.is_empty() {
                 return Err(S::Error::custom("empty string list separator"));
             }
-            if self.lines.is_empty() {
+            if value.is_empty() {
                 return Err(S::Error::custom("\
                     empty string list cannot be serialized bacause \
                     it is indistinguishable from list with one empty string\
                 "));
             }
             let mut capacity = 0;
-            for line in self.lines {
+            for line in value {
                 if line.contains(self.separator) {
                     return Err(S::Error::custom("string list item contains separator"));
                 }
                 capacity += line.len() + self.separator.len();
             }
             let mut text = String::with_capacity(capacity);
-            for line in self.lines.iter() {
+            for line in value.iter() {
                 text.push_str(line);
                 text.push_str(self.separator);
             }
             text.truncate(text.len() - self.separator.len());
             if let Some(len) = self.len {
-                ShortStringSer { string: &text, len }.serialize(serializer)
+                ValueWithSeed(text.as_str(), ShortStringSerde { len }).serialize(serializer)
             } else {
                 text.serialize(serializer)
             }
@@ -468,12 +478,7 @@ impl<'a> Serialize for StringListSer<'a> {
     }
 }
 
-pub struct StringListDe {
-    pub separator: &'static str,
-    pub len: Option<usize>
-}
-
-impl<'de> DeserializeSeed<'de> for StringListDe {
+impl<'de> DeserializeSeed<'de> for StringListSerde {
     type Value = Vec<String>;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
@@ -484,7 +489,7 @@ impl<'de> DeserializeSeed<'de> for StringListDe {
                 return Err(D::Error::custom("empty string list separator"));
             }
             let s = if let Some(len) = self.len {
-                ShortStringDe { len }.deserialize(deserializer)?
+                ShortStringSerde { len }.deserialize(deserializer)?
             } else {
                 String::deserialize(deserializer)?
             };
