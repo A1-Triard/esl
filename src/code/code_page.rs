@@ -111,4 +111,14 @@ mod tests {
         let Ok(b) = CodePage::Unicode.encode(&s) else { return TestResult::discard(); };
         TestResult::from_bool(CodePage::Unicode.decode(&b) == s)
     }
+
+    #[test]
+    fn unicode_can_represent_all_code_pages() {
+        for encoding in CodePage::iter_variants().filter_map(|x| x.encoding()) {
+            for byte in 0u8 ..= 255 {
+                let c = encoding.decode(&[byte], DecoderTrap::Strict).unwrap();
+                assert!(CodePage::Unicode.encode(&c).is_ok());
+            }
+        }
+    }
 }

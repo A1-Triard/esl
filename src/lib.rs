@@ -1,4 +1,5 @@
 #![feature(const_trait_impl)]
+#![feature(iterator_try_collect)]
 #![feature(never_type)]
 #![feature(once_cell)]
 #![feature(stmt_expr_attributes)]

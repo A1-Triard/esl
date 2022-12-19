@@ -22,10 +22,11 @@ encoding = "0.2.33"
 enum-derive-2018 = "2.0.1"
 enumn = "0.1.4"
 flate2 = "1.0.24"
+iter-identify_first_last = "0.0.1"
 macro-attr-2018 = "2.1.2"
 nameof = "1.2.2"
 nom = "7.1.1"
-nom-errors = "0.0.3"
+nom-errors = "0.0.10"
 serde = { version = "1.0.147", features = ["derive"] }
 utf8-chars = "2.0.2"
 

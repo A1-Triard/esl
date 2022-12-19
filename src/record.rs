@@ -10,6 +10,7 @@ use flate2::Compression;
 use std::io::Write;
 use nameof::name_of;
 
+use crate::code::CodePage;
 use crate::field::*;
 use crate::script_data::*;
 use crate::serde_helpers::*;
@@ -43,6 +44,7 @@ impl Record {
 }
     
 struct FieldBodySerializer<'a> {
+    code_page: Option<CodePage>,
     record_tag: Tag,
     prev_tag: Tag,
     field_tag: Tag,
@@ -83,8 +85,8 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
-            FieldType::ScriptData => if let Field::ScriptData(v) = self.field {
-                v.serialize(serializer)
+            FieldType::ScriptData => if let Field::ScriptData(data) = self.field {
+                ScriptDataSerializer { code_page: self.code_page, data }.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have script data type", self.record_tag, self.field_tag)))
             },
@@ -450,20 +452,21 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     }
 }
 
-struct FieldSerializer<'a>(Tag, Tag, Either<RecordFlags, (Tag, &'a Field)>);
+struct FieldSerializer<'a>(Option<CodePage>, Tag, Tag, Either<RecordFlags, (Tag, &'a Field)>);
 
 impl<'a> Serialize for FieldSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let is_human_readable = serializer.is_human_readable();
         let mut serializer = serializer.serialize_map(Some(1))?;
-        match self.2 {
+        match self.3 {
             Left(flags) => serializer.serialize_entry(&META, &flags)?,
             Right((field_tag, field)) => {
                 if is_human_readable && field_tag == META {
                     return Err(S::Error::custom("META tag is reserved"));
                 }
                 serializer.serialize_entry(&field_tag, &FieldBodySerializer {
-                    record_tag: self.0, prev_tag: self.1, field_tag, field
+                    code_page: self.0,
+                    record_tag: self.1, prev_tag: self.2, field_tag, field
                 })?;
             }
         };
@@ -471,33 +474,38 @@ impl<'a> Serialize for FieldSerializer<'a> {
     }
 }
 
-struct RecordBodySerializer<'a>(&'a Record);
+struct RecordBodySerializer<'a>(Option<CodePage>, &'a Record);
 
 impl<'a> Serialize for RecordBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let has_flags = serializer.is_human_readable() && !self.0.flags.is_empty();
-        let entry_count = self.0.fields.len() + if has_flags { 1 } else { 0 };
+        let has_flags = serializer.is_human_readable() && !self.1.flags.is_empty();
+        let entry_count = self.1.fields.len() + if has_flags { 1 } else { 0 };
         let mut serializer = serializer.serialize_seq(Some(entry_count))?;
         if has_flags {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, META, Left(self.0.flags)))?;
+            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, META, Left(self.1.flags)))?;
         }
         let mut prev_tag = META;
-        for &(field_tag, ref field) in &self.0.fields {
-            serializer.serialize_element(&FieldSerializer(self.0.tag, prev_tag, Right((field_tag, field))))?;
+        for &(field_tag, ref field) in &self.1.fields {
+            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, prev_tag, Right((field_tag, field))))?;
             prev_tag = field_tag;
         }
         serializer.end()
     }
 }
 
-impl Serialize for Record {
+pub struct RecordSerializer<'a> {
+    pub code_page: Option<CodePage>,
+    pub record: &'a Record,
+}
+
+impl<'a> Serialize for RecordSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let is_human_readable = serializer.is_human_readable();
         let mut serializer = serializer.serialize_map(Some(1))?;
         if is_human_readable {
-            serializer.serialize_entry(&self.tag, &RecordBodySerializer(self))?;
+            serializer.serialize_entry(&self.record.tag, &RecordBodySerializer(self.code_page, self.record))?;
         } else {
-            serializer.serialize_entry(&(self.tag, self.flags), &RecordBodySerializer(self))?;
+            serializer.serialize_entry(&(self.record.tag, self.record.flags), &RecordBodySerializer(self.code_page, self.record))?;
         }
         serializer.end()
     }
@@ -530,6 +538,7 @@ impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
 }
 
 struct FieldBodyDeserializer {
+    code_page: Option<CodePage>,
     record_tag: Tag,
     prev_tag: Tag,
     field_tag: Tag
@@ -557,7 +566,8 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
-                FieldType::ScriptData => ScriptData::deserialize(deserializer).map(Field::ScriptData),
+                FieldType::ScriptData =>
+                    ScriptDataDeserializer { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptData),
                 FieldType::U8ListZip => if deserializer.is_human_readable() {
                     deserializer.deserialize_str(Base64Deserializer)
                 } else {
@@ -641,6 +651,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
 }
 
 struct FieldDeserializer {
+    code_page: Option<CodePage>,
     record_tag: Tag,
     prev_tag: Tag,
 }
@@ -658,6 +669,7 @@ impl<'de> de::Visitor<'de> for FieldDeserializer {
         let field_tag: Tag = map.next_key()?
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
         let body = map.next_value_seed(FieldBodyDeserializer {
+            code_page: self.code_page,
             record_tag: self.record_tag, prev_tag: self.prev_tag, field_tag
         })?;
         if map.next_key::<Tag>()?.is_some() {
@@ -678,6 +690,7 @@ impl<'de> DeserializeSeed<'de> for FieldDeserializer {
 }
 
 struct RecordBodyDeserializer {
+    code_page: Option<CodePage>,
     record_tag: Tag,
     record_flags: Option<RecordFlags>
 }
@@ -694,7 +707,9 @@ impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
 
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
         let mut prev_tag = META;
-        while let Some(field) = seq.next_element_seed(FieldDeserializer { record_tag: self.record_tag, prev_tag })? {
+        while let Some(field) = seq.next_element_seed(FieldDeserializer {
+            code_page: self.code_page, record_tag: self.record_tag, prev_tag
+        })? {
             match field {
                 Left(flags) => {
                     if self.record_flags.replace(flags).is_some() {
@@ -721,11 +736,12 @@ impl<'de> DeserializeSeed<'de> for RecordBodyDeserializer {
     }
 }
 
-struct RecordDeserializer {
+struct RecordVisitor {
+    code_page: Option<CodePage>,
     is_human_readable: bool
 }
 
-impl<'de> de::Visitor<'de> for RecordDeserializer {
+impl<'de> de::Visitor<'de> for RecordVisitor {
     type Value = Record;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -742,7 +758,7 @@ impl<'de> de::Visitor<'de> for RecordDeserializer {
                 .ok_or_else(|| A::Error::custom("missed record tag and flags"))?;
             (record_tag, Some(record_flags))
         };
-        let body = map.next_value_seed(RecordBodyDeserializer { record_tag, record_flags })?;
+        let body = map.next_value_seed(RecordBodyDeserializer { code_page: self.code_page, record_tag, record_flags })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
@@ -750,10 +766,16 @@ impl<'de> de::Visitor<'de> for RecordDeserializer {
     }
 }
 
-impl<'de> Deserialize<'de> for Record {
-    fn deserialize<D>(deserializer: D) -> Result<Record, D::Error> where D: Deserializer<'de> {
+pub struct RecordDeserializer {
+    pub code_page: Option<CodePage>
+}
+
+impl<'de> DeserializeSeed<'de> for RecordDeserializer {
+    type Value = Record;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Record, D::Error> where D: Deserializer<'de> {
         let is_human_readable = deserializer.is_human_readable();
-        deserializer.deserialize_map(RecordDeserializer { is_human_readable } )
+        deserializer.deserialize_map(RecordVisitor { code_page: self.code_page, is_human_readable } )
     }
 }
 

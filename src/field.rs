@@ -2434,7 +2434,7 @@ impl<'de> Deserialize<'de> for Cell {
 
 #[derive(Debug, Clone, Educe, Serialize, Deserialize)]
 #[educe(Eq, PartialEq)]
-#[serde(tag="kind")]
+#[serde(tag="type")]
 pub enum CellPosition {
     Interior {
         #[educe(PartialEq(method="eq_f32"))]

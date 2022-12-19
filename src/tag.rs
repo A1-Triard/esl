@@ -84,7 +84,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -122,7 +122,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -160,7 +160,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
@@ -199,7 +199,7 @@ macro_rules! enum_serde {
                 impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
                     type Value = $name;
                 
-                    fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, $exp) }
+                    fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
                 
                     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: ::serde::de::Error {
                         ::std::str::FromStr::from_str(s).map_err(|_| E::invalid_value(::serde::de::Unexpected::Str(s), &self))
