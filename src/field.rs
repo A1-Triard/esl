@@ -705,7 +705,7 @@ impl SerializeSeed for ScriptMetadataSerde {
         let mut serializer = serializer.serialize_struct(name_of!(type ScriptMetadata), 4)?;
         serializer.serialize_field(
             SCRIPT_METADATA_NAME_FIELD,
-            &ValueWithSeed(value.name.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.name.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.serialize_field(SCRIPT_METADATA_VARS_FIELD, &value.vars)?;
         serializer.serialize_field(SCRIPT_METADATA_DATA_SIZE_FIELD, &value.data_size)?;
@@ -764,7 +764,7 @@ impl<'de> de::Visitor<'de> for ScriptMetadataDeVisitor {
         while let Some(field) = map.next_key()? {
             match field {
                 ScriptMetadataField::Name =>
-                    if name.replace(map.next_value_seed(ShortStringSerde {
+                    if name.replace(map.next_value_seed(StringSerde {
                         code_page: self.0.code_page, len: Some(32)
                     })?).is_some() {
                         return Err(A::Error::duplicate_field(SCRIPT_METADATA_NAME_FIELD));
@@ -788,7 +788,7 @@ impl<'de> de::Visitor<'de> for ScriptMetadataDeVisitor {
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let name = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let name = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
         let vars = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;
@@ -845,7 +845,7 @@ impl SerializeSeed for FileMetadataSerde {
         serializer.serialize_field(FILE_METADATA_TYPE_FIELD, &value.file_type)?;
         serializer.serialize_field(
             FILE_METADATA_AUTHOR_FIELD,
-            &ValueWithSeed(value.author.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.author.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.serialize_field(
             FILE_METADATA_DESCRIPTION_FIELD,
@@ -917,7 +917,7 @@ impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
                     return Err(A::Error::duplicate_field(FILE_METADATA_TYPE_FIELD));
                 },
                 FileMetadataField::Author => 
-                    if author.replace(map.next_value_seed(ShortStringSerde {
+                    if author.replace(map.next_value_seed(StringSerde {
                         code_page: self.0.code_page, len: Some(32)
                     })?).is_some() {
                         return Err(A::Error::duplicate_field(FILE_METADATA_AUTHOR_FIELD));
@@ -948,7 +948,7 @@ impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
         let file_type = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;
-        let author = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let author = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(2, &self))?;
         let description = seq.next_element_seed(StringListSerde {
             code_page: self.0.code_page, separator: Newline::Dos.as_str(), len: Some(256)
@@ -1191,7 +1191,7 @@ impl SerializeSeed for ItemSerde {
         serializer.serialize_field(ITEM_COUNT_FIELD, &value.count)?;
         serializer.serialize_field(
             ITEM_ITEM_ID_FIELD,
-            &ValueWithSeed(value.item_id.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.item_id.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.end()
     }
@@ -1244,7 +1244,7 @@ impl<'de> de::Visitor<'de> for ItemDeVisitor {
                     return Err(A::Error::duplicate_field(ITEM_COUNT_FIELD));
                 },
                 ItemField::ItemId => 
-                    if item_id.replace(map.next_value_seed(ShortStringSerde {
+                    if item_id.replace(map.next_value_seed(StringSerde {
                         code_page: self.0.code_page, len: Some(32)
                     })?).is_some() {
                         return Err(A::Error::duplicate_field(ITEM_ITEM_ID_FIELD));
@@ -1259,7 +1259,7 @@ impl<'de> de::Visitor<'de> for ItemDeVisitor {
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
         let count = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
-        let item_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let item_id = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;
         Ok(Item { count, item_id })
     }
@@ -1438,7 +1438,7 @@ impl SerializeSeed for AiTargetSerde {
         serializer.serialize_field(AI_TARGET_DURATION_FIELD, &value.duration)?;
         serializer.serialize_field(
             AI_TARGET_ACTOR_ID_FIELD,
-            &ValueWithSeed(value.actor_id.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.actor_id.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.serialize_field(AI_TARGET_RESET_FIELD, &ValueWithSeed(&value.reset, BoolU8Serde))?;
         serializer.serialize_field(AI_TARGET_FLAGS_FIELD, &value.flags)?;
@@ -1506,7 +1506,7 @@ impl<'de> de::Visitor<'de> for AiTargetDeVisitor {
                 },
                 AiTargetField::ActorId =>
                     if actor_id.replace(map.next_value_seed(
-                        ShortStringSerde { code_page: self.0.code_page, len: Some(32) }
+                        StringSerde { code_page: self.0.code_page, len: Some(32) }
                     )?).is_some() {
                         return Err(A::Error::duplicate_field(AI_TARGET_ACTOR_ID_FIELD));
                     },
@@ -1531,7 +1531,7 @@ impl<'de> de::Visitor<'de> for AiTargetDeVisitor {
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
         let duration = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;
-        let actor_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let actor_id = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(2, &self))?;
         let reset = seq.next_element_seed(BoolU8Serde)?
             .ok_or_else(|| A::Error::invalid_length(3, &self))?;
@@ -1575,7 +1575,7 @@ impl SerializeSeed for AiActivateSerde {
         let mut serializer = serializer.serialize_struct(name_of!(type AiActivate), 2)?;
         serializer.serialize_field(
             AI_ACTIVATE_OBJECT_ID_FIELD,
-            &ValueWithSeed(value.object_id.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.object_id.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.serialize_field(AI_ACTIVATE_RESET_FIELD, &ValueWithSeed(&value.reset, BoolU8Serde))?;
         serializer.end()
@@ -1627,7 +1627,7 @@ impl<'de> de::Visitor<'de> for AiActivateDeVisitor {
             match field {
                 AiActivateField::ObjectId =>
                     if object_id.replace(map.next_value_seed(
-                        ShortStringSerde { code_page: self.0.code_page, len: Some(32) }
+                        StringSerde { code_page: self.0.code_page, len: Some(32) }
                     )?).is_some() {
                         return Err(A::Error::duplicate_field(AI_ACTIVATE_OBJECT_ID_FIELD));
                     },
@@ -1642,7 +1642,7 @@ impl<'de> de::Visitor<'de> for AiActivateDeVisitor {
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let object_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let object_id = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
         let reset = seq.next_element_seed(BoolU8Serde)?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;
@@ -3126,7 +3126,7 @@ impl SerializeSeed for SoundChanceSerde {
         let mut serializer = serializer.serialize_struct(name_of!(type SoundChance), 2)?;
         serializer.serialize_field(
             SOUND_CHANCE_SOUND_ID_FIELD,
-            &ValueWithSeed(value.sound_id.as_str(), ShortStringSerde { code_page: self.code_page, len: Some(32) })
+            &ValueWithSeed(value.sound_id.as_str(), StringSerde { code_page: self.code_page, len: Some(32) })
         )?;
         serializer.serialize_field(SOUND_CHANCE_CHANCE_FIELD, &value.chance)?;
         serializer.end()
@@ -3178,7 +3178,7 @@ impl<'de> de::Visitor<'de> for SoundChanceDeVisitor {
             match field {
                 SoundChanceField::SoundId =>
                     if sound_id.replace(map.next_value_seed(
-                        ShortStringSerde { code_page: self.0.code_page, len: Some(32) }
+                        StringSerde { code_page: self.0.code_page, len: Some(32) }
                     )?).is_some() {
                         return Err(A::Error::duplicate_field(SOUND_CHANCE_SOUND_ID_FIELD));
                     },
@@ -3193,7 +3193,7 @@ impl<'de> de::Visitor<'de> for SoundChanceDeVisitor {
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let sound_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: Some(32) })?
+        let sound_id = seq.next_element_seed(StringSerde { code_page: self.0.code_page, len: Some(32) })?
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
         let chance = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(1, &self))?;

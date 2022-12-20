@@ -306,12 +306,12 @@ impl<'de> de::Visitor<'de> for F32HRDeserializer {
 }
 
 #[derive(Clone)]
-pub struct ShortStringSerde {
+pub struct StringSerde {
     pub code_page: Option<CodePage>,
     pub len: Option<usize>
 }
 
-impl SerializeSeed for ShortStringSerde {
+impl SerializeSeed for StringSerde {
     type Value = str;
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
@@ -343,7 +343,7 @@ impl SerializeSeed for ShortStringSerde {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for ShortStringSerde {
+impl<'de> DeserializeSeed<'de> for StringSerde {
     type Value = String;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
@@ -405,7 +405,7 @@ impl SerializeSeed for StringListSerde {
                 text.push_str(self.separator);
             }
             text.truncate(text.len() - self.separator.len());
-            ValueWithSeed(text.as_str(), ShortStringSerde { code_page: self.code_page, len: self.len }).serialize(serializer)
+            ValueWithSeed(text.as_str(), StringSerde { code_page: self.code_page, len: self.len }).serialize(serializer)
         }
     }
 }
@@ -420,7 +420,7 @@ impl<'de> DeserializeSeed<'de> for StringListSerde {
             if self.separator.is_empty() {
                 return Err(D::Error::custom("empty string list separator"));
             }
-            let s = ShortStringSerde { code_page: self.code_page, len: self.len }.deserialize(deserializer)?;
+            let s = StringSerde { code_page: self.code_page, len: self.len }.deserialize(deserializer)?;
             Ok(s.split(self.separator).map(|x| x.into()).collect())
         }
     }

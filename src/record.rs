@@ -56,7 +56,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
-                ValueWithSeed(s.as_str(), ShortStringSerde {
+                ValueWithSeed(s.as_str(), StringSerde {
                     code_page: self.code_page,
                     len: len.map(|x| x.try_into().unwrap())
                 }).serialize(serializer)
@@ -559,7 +559,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
                 FieldType::String(len) =>
-                    ShortStringSerde {
+                    StringSerde {
                         code_page: self.code_page, len: len.map(|x| x.try_into().unwrap())
                     }.deserialize(deserializer).map(Field::String),
                 FieldType::StringZ =>
