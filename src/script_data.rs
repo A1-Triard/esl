@@ -1,3 +1,5 @@
+#![cfg(esl_script_data)]
+
 use crate::code::CodePage;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;

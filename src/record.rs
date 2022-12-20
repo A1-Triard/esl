@@ -13,6 +13,7 @@ use nameof::name_of;
 
 use crate::code::CodePage;
 use crate::field::*;
+#[cfg(esl_script_data)]
 use crate::script_data::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
@@ -87,6 +88,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
             },
+            #[cfg(esl_script_data)]
             FieldType::ScriptData => if let Field::ScriptData(data) = self.field {
                 ScriptDataSerializer { code_page: self.code_page, data }.serialize(serializer)
             } else {
@@ -571,6 +573,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::StringZList =>
                     StringZListSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
+                #[cfg(esl_script_data)]
                 FieldType::ScriptData =>
                     ScriptDataDeserializer { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptData),
                 FieldType::U8ListZip => if deserializer.is_human_readable() {
