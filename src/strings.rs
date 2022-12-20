@@ -1,4 +1,4 @@
-use crate::code::CodePage;
+use crate::code_page::CodePage;
 use crate::serde_helpers::StringSerde;
 use std::fmt::{self, Debug, Formatter};
 use std::iter::{self};

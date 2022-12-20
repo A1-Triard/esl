@@ -1,6 +1,6 @@
 #![cfg(esl_script_data)]
 
-use crate::code::CodePage;
+use crate::code_page::CodePage;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;
 use iter_identify_first_last::IteratorIdentifyFirstLastExt;

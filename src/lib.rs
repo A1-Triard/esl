@@ -31,6 +31,9 @@ pub use crate::tag::*;
 #[macro_use]
 mod bitflags_ext;
 
+mod code_page;
+pub use code_page::*;
+
 pub mod script_data;
 
 mod field;
@@ -54,8 +57,8 @@ mod serde_helpers;
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use crate::code::{self};
     use crate::read::*;
-    use crate::code::{self, CodePage};
     use byteorder::{WriteBytesExt, LittleEndian};
     use iter_identify_first_last::IteratorIdentifyFirstLastExt;
     use quickcheck_macros::quickcheck;

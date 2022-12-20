@@ -1,4 +1,4 @@
-use crate::code::CodePage;
+use crate::code_page::CodePage;
 use educe::Educe;
 use either::{Either, Left,  Right};
 use phantom_type::PhantomType;

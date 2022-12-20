@@ -1,3 +1,12 @@
+use crate::code_page::CodePage;
+#[cfg(esl_script_data)]
+use crate::script_data::*;
+use crate::strings::*;
+use crate::field::*;
+use crate::record::*;
+use either::{Right, Left, Either};
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 use nom::IResult;
 use nom::combinator::{map, flat_map, cut};
 use nom::sequence::{pair, tuple, preceded};
@@ -5,24 +14,14 @@ use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f3
 use nom::error::{ParseError, ErrorKind};
 use nom::bytes::complete::take;
 use nom::multi::many0;
-use std::io::{self, Read, Write};
+use std::cmp::Ordering;
+use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
 use std::hash::{Hash, Hasher};
+use std::io::{self, Read, Write};
 use std::mem::{replace, transmute};
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
-use either::{Right, Left, Either};
-use std::cmp::Ordering;
-use std::convert::TryInto;
 use std::sync::LazyLock;
-
-#[cfg(esl_script_data)]
-use crate::script_data::*;
-use crate::strings::*;
-use crate::field::*;
-use crate::record::*;
-use crate::code::CodePage;
 
 #[derive(Eq, Clone, Copy)]
 struct Void(!);

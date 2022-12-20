@@ -1,22 +1,21 @@
+use crate::code_page::CodePage;
+use crate::field::*;
+#[cfg(esl_script_data)]
+use crate::script_data::*;
+use crate::serde_helpers::*;
+use crate::strings::*;
 use either::{Either, Left, Right};
-use std::fmt::{self, Debug, Formatter};
+use flate2::Compression;
+use flate2::write::{ZlibDecoder, ZlibEncoder};
+use nameof::name_of;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::Error as ser_Error;
 use serde::ser::{SerializeMap, SerializeSeq};
 use serde::de::{self, DeserializeSeed, Unexpected, VariantAccess};
 use serde::de::Error as de_Error;
 use serde_serialize_seed::{SerializeSeed, ValueWithSeed, VecSerde};
-use flate2::write::{ZlibDecoder, ZlibEncoder};
-use flate2::Compression;
+use std::fmt::{self, Debug, Formatter};
 use std::io::Write;
-use nameof::name_of;
-
-use crate::code::CodePage;
-use crate::field::*;
-#[cfg(esl_script_data)]
-use crate::script_data::*;
-use crate::serde_helpers::*;
-use crate::strings::*;
 
 bitflags_ext! {
     pub struct RecordFlags: u64 {

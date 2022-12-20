@@ -1,9 +1,6 @@
 pub mod ser;
 pub mod de;
 
-mod code_page;
-pub use code_page::*;
-
 use serde::de::DeserializeSeed;
 use crate::code::de::*;
 use serde::{Deserialize, Serialize};

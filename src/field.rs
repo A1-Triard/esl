@@ -1,3 +1,8 @@
+use crate::code_page::CodePage;
+#[cfg(esl_script_data)]
+use crate::script_data::*;
+use crate::strings::*;
+use crate::serde_helpers::*;
 use educe::Educe;
 use either::{Either, Left, Right};
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
@@ -15,12 +20,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::mem::transmute;
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
-
-use crate::code::CodePage;
-#[cfg(esl_script_data)]
-use crate::script_data::*;
-use crate::strings::*;
-use crate::serde_helpers::*;
 
 pub use crate::tag::*;
 

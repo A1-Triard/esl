@@ -5,8 +5,7 @@
 A library for reading, writing and processing ESM/ESP/ESS files.
 
 ```rust
-use esl::RecordSerde;
-use esl::code::CodePage;
+use esl::{CodePage, RecordSerde};
 use esl::read::{RecordReadMode, Records};
 use serde_serialize_seed::{ValueWithSeed, VecSerde};
 use std::fs::File;

@@ -5,8 +5,6 @@ use macro_attr_2018::macro_attr;
 use std::fmt::Write as fmt_Write;
 use utf8_chars::BufReadCharsExt;
 
-pub const SHORT_STRING_VARIANT_INDEX: u32 = 780230940;
-
 macro_attr! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
     #[derive(IterVariants!(CodePageVariants))]
@@ -79,7 +77,7 @@ impl CodePage {
 
 #[cfg(test)]
 mod tests {
-    use crate::code::*;
+    use super::*;
     use encoding::{DecoderTrap, EncoderTrap};
     use quickcheck::TestResult;
     use quickcheck_macros::quickcheck;
