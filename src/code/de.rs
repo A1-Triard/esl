@@ -224,7 +224,7 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
 
 #[derive(Debug)]
 pub(crate) struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
-    size: Option<u32>,
+    size: u32,
     code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>
@@ -234,19 +234,13 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Self::Error> {
-        if self.size.is_none() {
-            panic!("invalid short string deserializer usage");
-        }
         Ok(())
     }
     
     fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error> where T: DeserializeSeed<'de> {
-        let Some(size) = self.size else {
-            panic!("invalid short string deserializer usage");
-        };
         seed.deserialize(EslDeserializer {
             map_entry_value_size: None,
-            isolated: Some(size),
+            isolated: Some(self.size),
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData
@@ -254,37 +248,21 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
     }
 
     fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        if let Some(size) = self.size {
-            visitor.visit_seq(StructDeserializer {
-                len,
-                map_entry_value_size: None,
-                isolated: Some((self.reader.pos(), size)),
-                code_page: self.code_page,
-                reader: self.reader,
-                phantom: PhantomData,
-            })
-        } else {
-            if len != 2 {
-                panic!("invalid short string deserializer usage");
-            }
-            visitor.visit_seq(ShortStringDeserializer {
-                size: 0,
-                field: Some(ShortStringField::Zeroes),
-                code_page: self.code_page,
-                reader: self.reader,
-                phantom: PhantomData,
-            })
-        }
+        visitor.visit_seq(StructDeserializer {
+            len,
+            map_entry_value_size: None,
+            isolated: Some((self.reader.pos(), self.size)),
+            code_page: self.code_page,
+            reader: self.reader,
+            phantom: PhantomData,
+        })
     }
 
     fn struct_variant<V>(self, fields: &'static [&'static str], visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let Some(size) = self.size else {
-            panic!("invalid short string deserializer usage");
-        };
         visitor.visit_seq(StructDeserializer {
             len: fields.len(),
             map_entry_value_size: None,
-            isolated: Some((self.reader.pos(), size)),
+            isolated: Some((self.reader.pos(), self.size)),
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
@@ -400,15 +378,12 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         panic!("deserialize_char not supported");
     }
 
-    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        self.deserialize_string(visitor)
+    fn deserialize_str<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_str not supported");
     }
 
-    fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        let size = self.deserialize_size()? as usize;
-        let bytes = self.reader.read_bytes(size)?;
-        let s = self.code_page.decode(&bytes);
-        visitor.visit_string(s)
+    fn deserialize_string<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        panic!("deserialize_string not supported");
     }
 
     fn deserialize_bytes<V>(mut self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
@@ -506,241 +481,15 @@ impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, '
     type Variant = EnumDeserializer<'a, 'de, R>;
 
     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant), Self::Error> where V: DeserializeSeed<'de> {
-        let (size, res) = if let Some(map_entry_value_size) = self.map_entry_value_size {
-            *map_entry_value_size = Some(0);
-            let res: Result<V::Value, Self::Error> = seed.deserialize(SHORT_STRING_VARIANT_INDEX.into_deserializer());
-            (None, res)
-        } else {
-            let variant_index = self.deserialize_size()?;
-            let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
-            (Some(variant_index), res)
-        };
+        debug_assert!(self.map_entry_value_size.is_none());
+        let variant_index = self.deserialize_size()?;
+        let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
         Ok((res?, EnumDeserializer {
-            size,
+            size: variant_index,
             code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         }))
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Copy, Clone)]
-enum ShortStringField { Zeroes, String }
-
-#[derive(Debug)]
-pub(crate) struct ShortStringDeserializer<'a, 'de, R: Reader<'de>> {
-    field: Option<ShortStringField>,
-    size: usize,
-    code_page: CodePage,
-    reader: &'a mut R,
-    phantom: PhantomData<&'de ()>,
-}
-
-impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for ShortStringDeserializer<'a, 'de, R> {
-    type Error = Error;
-
-    fn size_hint(&self) -> Option<usize> { Some(2) }
-
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
-        let Some(field) = self.field else { return Ok(None); };
-        self.field = match field {
-            ShortStringField::Zeroes => Some(ShortStringField::String),
-            ShortStringField::String => None,
-        };
-        let element = seed.deserialize(ShortStringFieldDeserializer {
-            size: &mut self.size,
-            field, code_page: self.code_page, reader: self.reader, phantom: PhantomData
-        })?;
-        Ok(Some(element))
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ShortStringFieldDeserializer<'r, 'a, 'de, R: Reader<'de>> {
-    field: ShortStringField,
-    size: &'r mut usize,
-    code_page: CodePage,
-    reader: &'a mut R,
-    phantom: PhantomData<&'de ()>,
-}
-
-impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for ShortStringFieldDeserializer<'r, 'a, 'de, R> {
-    type Error = Error;
-
-    fn is_human_readable(&self) -> bool { false }
-
-    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("deserialize_any not supported")
-    }
-
-    fn deserialize_identifier<V>(self, _visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("deserialize_identifier not supported")
-    }
-    
-    fn deserialize_ignored_any<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("deserialize_ignored_any not supported")
-    }
-
-    fn deserialize_bool<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_i8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_i16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_i32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_i64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_f32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_f64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_u8<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_u16<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_u32<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-    
-    fn deserialize_u64<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    serde_if_integer128! {
-        fn deserialize_i128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-            panic!("invalid short string deserializer usage");
-        }
-
-        fn deserialize_u128<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-            panic!("invalid short string deserializer usage");
-        }
-    }
-
-    fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        self.deserialize_string(visitor)
-    }
-
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        if self.field != ShortStringField::String {
-            panic!("invalid short string deserializer usage");
-        }
-        let bytes = self.reader.read_bytes(*self.size)?;
-        let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
-        let bytes = &bytes[.. bytes.len() - trim];
-        let s = self.code_page.decode(bytes);
-        visitor.visit_string(s)
-    }
-
-    fn deserialize_bytes<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_byte_buf<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_option<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_unit<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_unit_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_newtype_struct<V>(self, _: &'static str, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_seq<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_map<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        if self.field == ShortStringField::Zeroes {
-            *self.size = len;
-            visitor.visit_seq(ShortStringZeroesDeserializer {
-                size: len, phantom: PhantomData
-            })
-        } else {
-            panic!("invalid short string deserializer usage");
-        }
-    }
-
-    fn deserialize_tuple_struct<V>(
-        self,
-        _: &'static str,
-        _: usize,
-        _: V
-    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_struct<V>(
-        self,
-        _: &'static str,
-        _: &'static [&'static str],
-        _: V
-    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-
-    fn deserialize_enum<V>(
-        self,
-        _: &'static str,
-        _: &'static [&'static str],
-        _: V
-    ) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-        panic!("invalid short string deserializer usage");
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct ShortStringZeroesDeserializer<'de> {
-    size: usize,
-    phantom: PhantomData<&'de ()>,
-}
-
-impl<'de> SeqAccess<'de> for ShortStringZeroesDeserializer<'de> {
-    type Error = Error;
-
-    fn size_hint(&self) -> Option<usize> { Some(self.size) }
-
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
-        if self.size == 0 { return Ok(None); }
-        self.size -= 1;
-        let res: Result<T::Value, Self::Error> = seed.deserialize(0u8.into_deserializer());
-        Ok(Some(res?))
     }
 }
 
@@ -757,7 +506,7 @@ mod tests {
     struct Abcd {
         a: i16,
         c: u32,
-        d: String
+        d: Vec<u8>
     }
 
     #[test]
@@ -802,12 +551,12 @@ mod tests {
     #[derive(Deserialize, Hash, Eq, PartialEq)]
     struct Key {
         variant: Variant,
-        s: String
+        s: Vec<u8>
     }
 
     #[derive(Deserialize)]
     struct Map {
-        map: HashMap<Key, String>,
+        map: HashMap<Key, Vec<u8>>,
         unit: (),
         i: i8
     }
@@ -830,7 +579,7 @@ mod tests {
         assert_eq!(d.i, -3);
         assert_eq!(d.unit, ());
         assert_eq!(1, d.map.len());
-        assert_eq!(d.map[&Key { variant: Variant::Variant2, s: "str".into() }], String::from("value"));
+        assert_eq!(d.map[&Key { variant: Variant::Variant2, s: "str".into() }], b"value");
     }
 
     #[test]
@@ -838,7 +587,7 @@ mod tests {
         let data = vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
-            1, 3, 0, 0, 0, 241, 242, 240,
+            1, 3, 0, 0, 0, 120, 121, 122,
             22, 0, 0, 0, 0, 0, 0, 0
         ];
         let d: HashMap<(Key, Key), u64> = HashMap::deserialize(EslDeserializer {
@@ -851,60 +600,7 @@ mod tests {
         assert_eq!(d.len(), 1);
         assert_eq!(d[&(
             Key { variant: Variant::Variant2, s: "str".into() },
-            Key { variant: Variant::Variant1, s: "стр".into() }
+            Key { variant: Variant::Variant1, s: "xyz".into() }
         )], 22);
-    }
-
-    #[derive(Debug, Eq, PartialEq, Hash)]
-    struct String32(String);
-
-    struct String32Deserializer;
-
-    impl<'de> Deserialize<'de> for String32 {
-        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            deserializer.deserialize_enum("", &[""], String32Deserializer)
-        }
-    }
-
-    impl<'de> Visitor<'de> for String32Deserializer {
-        type Value = String32;
-
-        fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-            write!(f, "String32")
-        }
-
-        fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
-            let (variant_index, data): (u32, _) = data.variant()?;
-            assert_eq!(variant_index, SHORT_STRING_VARIANT_INDEX);
-            data.tuple_variant(2, self)
-        }
-
-        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-            assert_eq!(seq.size_hint(), Some(2));
-            let zeroes: [u8; 32] = seq.next_element()?.unwrap();
-            let string: String = seq.next_element()?.unwrap();
-            assert!(zeroes.iter().copied().all(|x| x == 0));
-            Ok(String32(string))
-        }
-    }
-
-    #[test]
-    fn vec_deserialize_short_string() {
-        let data = vec![
-            65, 98, 99, 100, 69, 102, 103, 104,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0
-        ];
-        let d: HashMap<String32, ()> = HashMap::deserialize(EslDeserializer {
-            reader: &mut (&data[..]),
-            map_entry_value_size: None,
-            isolated: Some(data.len() as u32),
-            code_page: CodePage::Russian,
-            phantom: PhantomData
-        }).unwrap();
-        let d = d.into_keys().collect::<Vec<_>>();
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].0, "AbcdEfgh");
     }
 }
