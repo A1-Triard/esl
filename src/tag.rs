@@ -65,7 +65,7 @@ macro_rules! enum_serde {
                 S: ::serde::Serializer {
         
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{}", self))
+                    format!("{}", self).serialize(serializer)
                 } else {
                     <$bits as ::serde::Serialize>::serialize(
                         &(*self as $bits),
@@ -79,9 +79,9 @@ macro_rules! enum_serde {
             fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
                 D: ::serde::Deserializer<'de> {
         
-                struct HRDeserializer;
+                struct HRDeVisitor;
                 
-                impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
+                impl<'de> ::serde::de::Visitor<'de> for HRDeVisitor {
                     type Value = $name;
                 
                     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
@@ -92,7 +92,7 @@ macro_rules! enum_serde {
                 }
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(HRDeserializer)
+                    deserializer.deserialize_str(HRDeVisitor)
                 } else {
                     let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
                     <$name>::n(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))
@@ -106,7 +106,7 @@ macro_rules! enum_serde {
                 S: ::serde::Serializer {
         
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{}", self))
+                    format!("{}", self).serialize(serializer)
                 } else {
                     <$bits as ::serde::Serialize>::serialize(&self.$to, serializer)
                 }
@@ -117,9 +117,9 @@ macro_rules! enum_serde {
             fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
                 D: ::serde::Deserializer<'de> {
         
-                struct HRDeserializer;
+                struct HRDeVisitor;
                 
-                impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
+                impl<'de> ::serde::de::Visitor<'de> for HRDeVisitor {
                     type Value = $name;
                 
                     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
@@ -130,7 +130,7 @@ macro_rules! enum_serde {
                 }
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(HRDeserializer)
+                    deserializer.deserialize_str(HRDeVisitor)
                 } else {
                     let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)?;
                     Ok(<$name>::$from(b))
@@ -144,7 +144,7 @@ macro_rules! enum_serde {
                 S: ::serde::Serializer {
         
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{}", self))
+                    format!("{}", self).serialize(serializer)
                 } else {
                     <$bits as ::serde::Serialize>::serialize(&(self.$to $(^ $xor)?), serializer)
                 }
@@ -155,9 +155,9 @@ macro_rules! enum_serde {
             fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
                 D: ::serde::Deserializer<'de> {
         
-                struct HRDeserializer;
+                struct HRDeVisitor;
                 
-                impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
+                impl<'de> ::serde::de::Visitor<'de> for HRDeVisitor {
                     type Value = $name;
                 
                     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
@@ -168,7 +168,7 @@ macro_rules! enum_serde {
                 }
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(HRDeserializer)
+                    deserializer.deserialize_str(HRDeVisitor)
                 } else {
                     let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)? $(^ $xor)?;
                     let v = <$name>::$from(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))?;
@@ -183,7 +183,7 @@ macro_rules! enum_serde {
                 S: ::serde::Serializer {
         
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{}", self))
+                    format!("{}", self).serialize(serializer)
                 } else {
                     <$bits as ::serde::Serialize>::serialize(&(self.$to() $(^ $xor)?), serializer)
                 }
@@ -194,9 +194,9 @@ macro_rules! enum_serde {
             fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error> where
                 D: ::serde::Deserializer<'de> {
         
-                struct HRDeserializer;
+                struct HRDeVisitor;
                 
-                impl<'de> ::serde::de::Visitor<'de> for HRDeserializer {
+                impl<'de> ::serde::de::Visitor<'de> for HRDeVisitor {
                     type Value = $name;
                 
                     fn expecting(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result { write!(f, $exp) }
@@ -207,7 +207,7 @@ macro_rules! enum_serde {
                 }
         
                 if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(HRDeserializer)
+                    deserializer.deserialize_str(HRDeVisitor)
                 } else {
                     let b = <$bits as ::serde::Deserialize>::deserialize(deserializer)? $(^ $xor)?;
                     let v = <$name>::$from(b).ok_or_else(|| <D::Error as ::serde::de::Error>::invalid_value(::serde::de::Unexpected::$signed(b as $big), &$exp))?;

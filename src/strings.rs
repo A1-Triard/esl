@@ -91,15 +91,22 @@ impl<T: Into<Vec<String>>> From<T> for StringZList {
     fn from(t: T) -> StringZList { StringZList { vec: t.into(), has_tail_zero: true } }
 }
 
-impl Serialize for StringZList {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+#[derive(Clone)]
+pub struct StringZListSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for StringZListSerde {
+    type Value = StringZList;
+
+    fn serialize<S>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            let mut carets = self.vec.len() - self.vec.iter().rposition(|x| x != "^").map_or(0, |i| i + 1);
-            if !self.has_tail_zero {
+            let mut carets = value.vec.len() - value.vec.iter().rposition(|x| x != "^").map_or(0, |i| i + 1);
+            if !value.has_tail_zero {
                 carets += 1;
             }
-            let mut serializer = serializer.serialize_seq(Some(self.vec.len() + carets))?;
-            for s in &self.vec {
+            let mut serializer = serializer.serialize_seq(Some(value.vec.len() + carets))?;
+            for s in &value.vec {
                 serializer.serialize_element(s)?;
             }
             for _ in 0..carets {
@@ -108,28 +115,28 @@ impl Serialize for StringZList {
             serializer.end()
         } else {
             let mut capacity = 0;
-            for s in &self.vec {
+            for s in &value.vec {
                 if s.contains('\0') {
                     return Err(S::Error::custom("zero-terminated string list item contains zero byte"));
                 }
                 capacity += s.len() + 1;
             }
             let mut text = String::with_capacity(capacity);
-            for s in &self.vec {
+            for s in &value.vec {
                 text.push_str(s);
                 text.push('\0');
             }
-            if !self.has_tail_zero {
+            if !value.has_tail_zero {
                 text.truncate(text.len() - 1);
             }
-            serializer.serialize_str(&text)
+            ValueWithSeed(text.as_str(), StringSerde { code_page: self.code_page, len: None }).serialize(serializer)
         }
     }
 }
 
-struct StringZListHRDeserializer;
+struct StringZListHRDeVisitor;
 
-impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
+impl<'de> de::Visitor<'de> for StringZListHRDeVisitor {
     type Value = StringZList;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -149,28 +156,17 @@ impl<'de> de::Visitor<'de> for StringZListHRDeserializer {
     }
 }
 
-struct StringZListNHRDeserializer;
-
-impl<'de> de::Visitor<'de> for StringZListNHRDeserializer {
+impl<'de> DeserializeSeed<'de> for StringZListSerde {
     type Value = StringZList;
 
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "string")
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        let has_tail_zero = v.as_bytes().last() == Some(&0);
-        let v = if has_tail_zero { &v[.. v.len() - 1] } else { v };
-        Ok(StringZList { vec: v.split('\0').map(|x| x.into()).collect(), has_tail_zero })
-    }
-}
-
-impl<'de> Deserialize<'de> for StringZList {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_seq(StringZListHRDeserializer)
+            deserializer.deserialize_seq(StringZListHRDeVisitor)
         } else {
-            deserializer.deserialize_str(StringZListNHRDeserializer)
+            let v = StringSerde { code_page: self.code_page, len: None }.deserialize(deserializer)?;
+            let has_tail_zero = v.as_bytes().last() == Some(&0);
+            let v = if has_tail_zero { &v[.. v.len() - 1] } else { &v };
+            Ok(StringZList { vec: v.split('\0').map(|x| x.into()).collect(), has_tail_zero })
         }
     }
 }

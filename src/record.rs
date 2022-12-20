@@ -76,7 +76,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
             FieldType::StringZList => if let Field::StringZList(s) = self.field {
-                s.serialize(serializer)
+                ValueWithSeed(s, StringZListSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(
                     format!("{} {} field should have zero-terminated string list type", self.record_tag, self.field_tag)
@@ -94,14 +94,14 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             },
             FieldType::U8ListZip => if let Field::U8List(v) = self.field {
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&base64::encode(v))
+                    base64::encode(v).serialize(serializer)
                 } else {
                     let uncompressed = (|| {
                         let mut decoder = ZlibDecoder::new(Vec::new());
                         decoder.write_all(&v[..])?;
                         decoder.finish()
                     })().map_err(|_| S::Error::custom("invalid compressed data"))?;
-                    serializer.serialize_bytes(&uncompressed)
+                    uncompressed.serialize(serializer)
                 }
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte list type", self.record_tag, self.field_tag)))
@@ -416,17 +416,17 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have bool type", self.record_tag, self.field_tag)))
             },
             FieldType::I32 => if let &Field::I32(v) = self.field {
-                serializer.serialize_i32(v)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::I16 => if let &Field::I16(v) = self.field {
-                serializer.serialize_i16(v)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 16-bit int type", self.record_tag, self.field_tag)))
             },
             FieldType::I64 => if let &Field::I64(v) = self.field {
-                serializer.serialize_i64(v)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 64-bit int type", self.record_tag, self.field_tag)))
             },
@@ -446,7 +446,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have 16-bit int list type", self.record_tag, self.field_tag)))
             },
             FieldType::U8 => if let &Field::U8(v) = self.field {
-                serializer.serialize_u8(v)
+                v.serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have byte type", self.record_tag, self.field_tag)))
             },
@@ -515,9 +515,9 @@ impl SerializeSeed for RecordSerde {
     }
 }
 
-struct Base64Deserializer;
+struct Base64DeVisitor;
 
-impl<'de> de::Visitor<'de> for Base64Deserializer {
+impl<'de> de::Visitor<'de> for Base64DeVisitor {
     type Value = Vec<u8>;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, "base64") }
@@ -527,9 +527,9 @@ impl<'de> de::Visitor<'de> for Base64Deserializer {
     }
 }
 
-struct ZlibEncoderDeserializer;
+struct ZlibEncoderDeVisitor;
 
-impl<'de> de::Visitor<'de> for ZlibEncoderDeserializer {
+impl<'de> de::Visitor<'de> for ZlibEncoderDeVisitor {
     type Value = Vec<u8>;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, "bytes") }
@@ -569,14 +569,14 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                         code_page: self.code_page, separator: newline.as_str(), len: None
                     }.deserialize(deserializer).map(Field::StringList),
                 FieldType::StringZList =>
-                    StringZList::deserialize(deserializer).map(Field::StringZList),
+                    StringZListSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
                 FieldType::ScriptData =>
                     ScriptDataDeserializer { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptData),
                 FieldType::U8ListZip => if deserializer.is_human_readable() {
-                    deserializer.deserialize_str(Base64Deserializer)
+                    deserializer.deserialize_str(Base64DeVisitor)
                 } else {
-                    deserializer.deserialize_bytes(ZlibEncoderDeserializer)
+                    deserializer.deserialize_bytes(ZlibEncoderDeVisitor)
                 }.map(Field::U8List),
                 FieldType::Info => Info::deserialize(deserializer).map(Field::Info),
                 FieldType::Item => ItemSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::Item),

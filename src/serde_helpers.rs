@@ -65,9 +65,9 @@ impl SerializeSeed for NoneU8Serde {
 
     fn serialize<S: Serializer>(&self, _value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_unit()
+            ().serialize(serializer)
         } else {
-            serializer.serialize_u8(self.none)
+            self.none.serialize(serializer)
         }
     }
 }
@@ -98,9 +98,9 @@ impl SerializeSeed for BoolU8Serde {
 
     fn serialize<S: Serializer>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_bool(value)
+            value.serialize(serializer)
         } else {
-            serializer.serialize_u8(value.into())
+            u8::from(value).serialize(serializer)
         }
     }
 }
@@ -130,9 +130,9 @@ impl SerializeSeed for BoolU32Serde {
 
     fn serialize<S: Serializer>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_bool(value)
+            value.serialize(serializer)
         } else {
-            serializer.serialize_u32(value.into())
+            u32::from(value).serialize(serializer)
         }
     }
 }
@@ -242,16 +242,16 @@ impl SerializeSeed for F32AsIsSerde {
 
     fn serialize<S>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if !serializer.is_human_readable() {
-            serializer.serialize_f32(value)
+            value.serialize(serializer)
         } else if value.is_nan() {
             let d: u32 = value.to_bits();
             if d == 0xFFFFFFFF {
-                serializer.serialize_f32(value)
+                value.serialize(serializer)
             } else {
-                serializer.serialize_str(&format!("nan{d:08X}"))
+                format!("nan{d:08X}").serialize(serializer)
             }
         } else {
-            serializer.serialize_f64(f64::from_str(&value.to_string()).unwrap().copysign(value as f64))
+            f64::from_str(&value.to_string()).unwrap().copysign(value as f64).serialize(serializer)
         }
     }
 }
@@ -261,16 +261,16 @@ impl<'de> DeserializeSeed<'de> for F32AsIsSerde {
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
         if deserializer.is_human_readable() {
-            deserializer.deserialize_any(F32HRDeserializer)
+            deserializer.deserialize_any(F32HRDeVisitor)
         } else {
             Ok(f32::deserialize(deserializer)?)
         }
     }
 }
 
-struct F32HRDeserializer;
+struct F32HRDeVisitor;
 
-impl<'de> de::Visitor<'de> for F32HRDeserializer {
+impl<'de> de::Visitor<'de> for F32HRDeVisitor {
     type Value = f32;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
@@ -316,7 +316,7 @@ impl SerializeSeed for StringSerde {
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serializer.serialize_str(value)
+            value.serialize(serializer)
         } else {
             let Some(code_page) = self.code_page else {
                 return Err(S::Error::custom("code page required for binary serialization"));

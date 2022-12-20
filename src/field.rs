@@ -76,7 +76,7 @@ mod dialog_type_u32 {
         if serializer.is_human_readable() {
             v.serialize(serializer)
         } else {
-            serializer.serialize_u32(v as u32)
+            (v as u32).serialize(serializer)
         }
     }
 
@@ -562,7 +562,7 @@ mod option_i8 {
             } else {
                 -1
             };
-            serializer.serialize_i8(v)
+            v.serialize(serializer)
         }
     }
 
@@ -626,7 +626,7 @@ mod bool_either_i16 {
                 Right(false) => 0,
                 Right(true) => 1
             };
-            serializer.serialize_i16(v)
+            v.serialize(serializer)
         }
     }
 
