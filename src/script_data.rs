@@ -126,6 +126,7 @@ macro_attr! {
         End = 0x0101,
         Set = 0x0105,
         If = 0x0106,
+        Else = 0x0107,
         EndIf = 0x0109,
         SetRef = 0x010C,
         Return = 0x0124,
@@ -157,6 +158,7 @@ pub enum FuncParams {
     None,
     VarStr,
     ByteStr,
+    Byte,
     Str,
     StrText,
     StrWordInt,
@@ -171,6 +173,7 @@ impl Func {
             Func::End => FuncParams::None,
             Func::Set => FuncParams::VarStr,
             Func::If => FuncParams::ByteStr,
+            Func::Else => FuncParams::Byte,
             Func::EndIf => FuncParams::None,
             Func::SetRef => FuncParams::Str,
             Func::Return => FuncParams::None,
@@ -203,6 +206,7 @@ pub enum FuncArgs {
     None,
     VarStr(Var, String),
     ByteStr(u8, String),
+    Byte(u8),
     Str(String),
     StrText(String, String),
     StrWordInt(String, u16, i16),
@@ -227,6 +231,7 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::None => ().serialize(serializer),
             FuncArgs::VarStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::ByteStr(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Byte(a1) => a1.serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
             FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
@@ -246,6 +251,7 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
             FuncParams::None => { <()>::deserialize(deserializer)?; FuncArgs::None },
             FuncParams::VarStr => { let (a1, a2) = <(Var, String)>::deserialize(deserializer)?; FuncArgs::VarStr(a1, a2) },
             FuncParams::ByteStr => { let (a1, a2) = <(u8, String)>::deserialize(deserializer)?; FuncArgs::ByteStr(a1, a2) },
+            FuncParams::Byte => { let a1 = u8::deserialize(deserializer)?; FuncArgs::Byte(a1) },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
             FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
             FuncParams::StrWordInt => {
@@ -267,6 +273,7 @@ impl FuncArgs {
             FuncArgs::None => FuncParams::None,
             FuncArgs::VarStr(..) => FuncParams::VarStr,
             FuncArgs::ByteStr(..) => FuncParams::ByteStr,
+            FuncArgs::Byte(..) => FuncParams::Byte,
             FuncArgs::Str(..) => FuncParams::Str,
             FuncArgs::StrText(..) => FuncParams::StrText,
             FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
@@ -287,6 +294,7 @@ impl FuncArgs {
                 res.push(*a1);
                 write_str(code_page, a2, res)?;
             },
+            FuncArgs::Byte(a1) => res.push(*a1),
             FuncArgs::Str(a1) => write_str(code_page, a1, res)?,
             FuncArgs::StrText(a1, a2) => {
                 write_str(code_page, a1, res)?;
@@ -365,6 +373,10 @@ mod parser {
         )
     }
 
+    fn byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(le_u8(), |a1| FuncArgs::Byte(a1))(input)
+    }
+
     fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(string(code_page), |a1| FuncArgs::Str(a1))
     }
@@ -398,6 +410,7 @@ mod parser {
                 FuncParams::None => Ok((input, FuncArgs::None)),
                 FuncParams::VarStr => var_str_args(code_page)(input),
                 FuncParams::ByteStr => byte_str_args(code_page)(input),
+                FuncParams::Byte => byte_args(input),
                 FuncParams::Str => str_args(code_page)(input),
                 FuncParams::StrText => str_text_args(code_page)(input),
                 FuncParams::StrWordInt => str_word_int_args(code_page)(input),
