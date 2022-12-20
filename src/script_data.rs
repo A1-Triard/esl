@@ -54,15 +54,32 @@ fn write_char(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), Str
     Ok(())
 }
 
-fn write_text(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
+fn write_str_raw(
+    write_len: impl FnOnce(usize, &mut Vec<u8>) -> Result<(), ()>, code_page: CodePage, s: &str, res: &mut Vec<u8>
+) -> Result<(), String> {
     let bytes = code_page.encode(s).map_err(|e| match e {
         None => format!("the '{s}' string does not correspond to any source byte sequence"),
         Some(c) => format!("the '{c}' char is not representable in {code_page:?} func page")
     })?;
-    let len = bytes.len().try_into().map_err(|_| format!("too long string '{s}'"))?;
-    res.push(len);
+    write_len(bytes.len(), res).map_err(|()| format!("too long string '{s}'"))?;
     res.extend_from_slice(&bytes);
     Ok(())
+}
+
+fn write_str(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
+    write_str_raw(|len, res| {
+        let len = len.try_into().map_err(|_| ())?;
+        res.push(len);
+        Ok(())
+    }, code_page, s, res)
+}
+
+fn write_text(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
+    write_str_raw(|len, res| {
+        let len = len.try_into().map_err(|_| ())?;
+        write_u16(len, res);
+        Ok(())
+    }, code_page, s, res)
 }
 
 fn write_u16(v: u16, res: &mut Vec<u8>) {
@@ -94,7 +111,7 @@ impl Var {
             },
             Var::Global { name } => {
                 res.push(b'G');
-                write_text(code_page, name, res)?;
+                write_str(code_page, name, res)?;
             }
         }
         Ok(())
@@ -112,15 +129,24 @@ macro_attr! {
         EndIf = 0x0109,
         SetRef = 0x010C,
         Return = 0x0124,
+        PlaySound = 0x1002,
         Rotate = 0x1007,
+        SetAngle = 0x100D,
+        Activate = 0x1017,
         StartCombat = 0x1019,
         StopScript = 0x101C,
+        AddTopic = 0x1022,
+        SetHealth = 0x108D,
+        SetMagicka = 0x1090,
         Journal = 0x10CC,
         RaiseRank = 0x10CE,
         AddItem = 0x10D4,
         Enable = 0x10DA,
         Disable = 0x10DB,
+        ForceGreeting = 0x10E8,
+        DisableTeleporting = 0x10EF,
         Drop = 0x110D,
+        Say = 0x111B,
     }
 }
 
@@ -132,9 +158,11 @@ pub enum FuncParams {
     VarStr,
     ByteStr,
     Str,
+    StrText,
     StrWordInt,
     StrWord,
     CharFloat,
+    Float,
 }
 
 impl Func {
@@ -146,15 +174,24 @@ impl Func {
             Func::EndIf => FuncParams::None,
             Func::SetRef => FuncParams::Str,
             Func::Return => FuncParams::None,
+            Func::PlaySound => FuncParams::Str,
             Func::Rotate => FuncParams::CharFloat,
+            Func::SetAngle => FuncParams::CharFloat,
+            Func::Activate => FuncParams::None,
             Func::StartCombat => FuncParams::Str,
             Func::StopScript => FuncParams::Str,
+            Func::AddTopic => FuncParams::Str,
+            Func::SetHealth => FuncParams::Float,
+            Func::SetMagicka => FuncParams::Float,
             Func::Journal => FuncParams::StrWordInt,
             Func::RaiseRank => FuncParams::None,
             Func::AddItem => FuncParams::StrWord,
             Func::Enable => FuncParams::None,
             Func::Disable => FuncParams::None,
+            Func::ForceGreeting => FuncParams::None,
+            Func::DisableTeleporting => FuncParams::None,
             Func::Drop => FuncParams::StrWord,
+            Func::Say => FuncParams::StrText,
         }
     }
 }
@@ -167,9 +204,11 @@ pub enum FuncArgs {
     VarStr(Var, String),
     ByteStr(u8, String),
     Str(String),
+    StrText(String, String),
     StrWordInt(String, u16, i16),
     StrWord(String, u16),
     CharFloat(String, #[educe(PartialEq(method="eq_f32"))] f32),
+    Float(#[educe(PartialEq(method="eq_f32"))] f32),
 }
 
 #[derive(Clone)]
@@ -189,10 +228,12 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::VarStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::ByteStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
+            FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::CharFloat(a1, a2) =>
                 ValueWithSeed(&(a1, *a2), PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde)).serialize(serializer),
+            FuncArgs::Float(a1) => ValueWithSeed(a1, F32AsIsSerde).serialize(serializer),
         }
     }
 }
@@ -206,6 +247,7 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
             FuncParams::VarStr => { let (a1, a2) = <(Var, String)>::deserialize(deserializer)?; FuncArgs::VarStr(a1, a2) },
             FuncParams::ByteStr => { let (a1, a2) = <(u8, String)>::deserialize(deserializer)?; FuncArgs::ByteStr(a1, a2) },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
+            FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
             FuncParams::StrWordInt => {
                 let (a1, a2, a3) = <(String, u16, i16)>::deserialize(deserializer)?; FuncArgs::StrWordInt(a1, a2, a3)
             },
@@ -214,6 +256,7 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2) = PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde).deserialize(deserializer)?;
                 FuncArgs::CharFloat(a1, a2)
             },
+            FuncParams::Float => { let a1 = F32AsIsSerde.deserialize(deserializer)?; FuncArgs::Float(a1) },
         })
     }
 }
@@ -225,9 +268,11 @@ impl FuncArgs {
             FuncArgs::VarStr(..) => FuncParams::VarStr,
             FuncArgs::ByteStr(..) => FuncParams::ByteStr,
             FuncArgs::Str(..) => FuncParams::Str,
+            FuncArgs::StrText(..) => FuncParams::StrText,
             FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
             FuncArgs::StrWord(..) => FuncParams::StrWord,
             FuncArgs::CharFloat(..) => FuncParams::CharFloat,
+            FuncArgs::Float(..) => FuncParams::Float,
         }
     }
 
@@ -236,26 +281,31 @@ impl FuncArgs {
             FuncArgs::None => { },
             FuncArgs::VarStr(a1, a2) => {
                 a1.write(code_page, res)?;
-                write_text(code_page, a2, res)?;
+                write_str(code_page, a2, res)?;
             },
             FuncArgs::ByteStr(a1, a2) => {
                 res.push(*a1);
+                write_str(code_page, a2, res)?;
+            },
+            FuncArgs::Str(a1) => write_str(code_page, a1, res)?,
+            FuncArgs::StrText(a1, a2) => {
+                write_str(code_page, a1, res)?;
                 write_text(code_page, a2, res)?;
             },
-            FuncArgs::Str(a1) => write_text(code_page, a1, res)?,
             FuncArgs::StrWordInt(a1, a2, a3) => {
-                write_text(code_page, a1, res)?;
+                write_str(code_page, a1, res)?;
                 write_u16(*a2, res);
                 write_i16(*a3, res);
             },
             FuncArgs::StrWord(a1, a2) => {
-                write_text(code_page, a1, res)?;
+                write_str(code_page, a1, res)?;
                 write_u16(*a2, res);
             },
             FuncArgs::CharFloat(a1, a2) => {
                 write_char(code_page, a1, res)?;
                 write_f32(*a2, res);
             },
+            FuncArgs::Float(a1) => write_f32(*a1, res),
         }
         Ok(())
     }
@@ -266,8 +316,12 @@ mod parser {
     use nom_errors::*;
     use nom_errors::bytes::*;
 
-    fn text<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
+    fn string<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
         map(flat_map(le_u8(), |len| take(len.into())), move |x| code_page.decode(x))
+    }
+
+    fn text<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
+        map(flat_map(le_u16(), |len| take(len.into())), move |x| code_page.decode(x))
     }
 
     fn ch<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
@@ -279,7 +333,7 @@ mod parser {
     }
 
     fn global_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
-        map(seq_2(tag([b'G']), text(code_page)), |(_, var)| var)
+        map(seq_2(tag([b'G']), string(code_page)), |(_, var)| var)
     }
 
     fn var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Var, (), !> {
@@ -295,7 +349,7 @@ mod parser {
         map(
             seq_2(
                 var(code_page),
-                text(code_page)
+                string(code_page)
             ),
             |(a1, a2)| FuncArgs::VarStr(a1, a2)
         )
@@ -305,27 +359,35 @@ mod parser {
         map(
             seq_2(
                 le_u8(),
-                text(code_page)
+                string(code_page)
             ),
             |(a1, a2)| FuncArgs::ByteStr(a1, a2)
         )
     }
 
     fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(text(code_page), |a1| FuncArgs::Str(a1))
+        map(string(code_page), |a1| FuncArgs::Str(a1))
+    }
+
+    fn str_text_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(seq_2(string(code_page), text(code_page)), |(a1, a2)| FuncArgs::StrText(a1, a2))
     }
 
     fn char_float_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(seq_2(ch(code_page), le_u32()), |(a1, a2)| FuncArgs::CharFloat(a1, f32::from_bits(a2)))
     }
 
+    fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(le_u32(), |a1| FuncArgs::Float(f32::from_bits(a1)))(input)
+    }
+
     fn str_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(text(code_page), le_u16()), |(a1, a2)| FuncArgs::StrWord(a1, a2))
+        map(seq_2(string(code_page), le_u16()), |(a1, a2)| FuncArgs::StrWord(a1, a2))
     }
 
     fn str_word_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
-            seq_3(text(code_page), le_u16(), le_i16()),
+            seq_3(string(code_page), le_u16(), le_i16()),
             |(a1, a2, a3)| FuncArgs::StrWordInt(a1, a2, a3)
         )
     }
@@ -337,9 +399,11 @@ mod parser {
                 FuncParams::VarStr => var_str_args(code_page)(input),
                 FuncParams::ByteStr => byte_str_args(code_page)(input),
                 FuncParams::Str => str_args(code_page)(input),
+                FuncParams::StrText => str_text_args(code_page)(input),
                 FuncParams::StrWordInt => str_word_int_args(code_page)(input),
                 FuncParams::StrWord => str_word_args(code_page)(input),
                 FuncParams::CharFloat => char_float_args(code_page)(input),
+                FuncParams::Float => float_args(input),
             }
         }
     }
