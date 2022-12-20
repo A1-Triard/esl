@@ -2630,7 +2630,7 @@ mod tests {
             data_size: 65500,
             var_table_size: 100
         };
-        let bin: Vec<u8> = code::serialize(&script_metadata, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&script_metadata, ScriptMetadataSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.name, script_metadata.name);
         assert_eq!(res.vars.shorts, script_metadata.vars.shorts);
@@ -2649,7 +2649,7 @@ mod tests {
             description: vec!["descr line1".into(), "descr line2".into()],
             records: 1333
         };
-        let bin: Vec<u8> = code::serialize(&file_metadata, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&file_metadata, FileMetadataSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
@@ -2816,7 +2816,7 @@ mod tests {
             count: -3,
             item_id: "b_item_01 ".into()
         };
-        let bin: Vec<u8> = code::serialize(&item, CodePage::English, false).unwrap();
+        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&item, ItemSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
         let res = item_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
