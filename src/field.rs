@@ -625,7 +625,7 @@ mod bool_either_i16 {
         if serializer.is_human_readable() {
             v.serialize(serializer)
         } else {
-            let v = match v {
+            let v: i16 = match v {
                 Left(false) => -2,
                 Left(true) => -1,
                 Right(false) => 0,
