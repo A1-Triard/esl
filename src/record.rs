@@ -89,7 +89,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             },
             #[cfg(esl_script_data)]
             FieldType::ScriptData => if let Field::ScriptData(data) = self.field {
-                ScriptDataSerializer { code_page: self.code_page, data }.serialize(serializer)
+                ValueWithSeed(data, ScriptDataSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have script data type", self.record_tag, self.field_tag)))
             },
@@ -574,7 +574,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
                 #[cfg(esl_script_data)]
                 FieldType::ScriptData =>
-                    ScriptDataDeserializer { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptData),
+                    ScriptDataSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptData),
                 FieldType::U8ListZip => if deserializer.is_human_readable() {
                     deserializer.deserialize_str(Base64DeVisitor)
                 } else {

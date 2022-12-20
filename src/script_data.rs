@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::DeserializeSeed;
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
+use serde_serialize_seed::SerializeSeed;
 
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -23,48 +24,187 @@ macro_attr! {
 
 enum_serde!(VarType, "var type", as u8, Unsigned, u64);
 
+impl VarType {
+    fn write(self, res: &mut Vec<u8>) {
+        res.push(self as u8);
+    }
+}
+ 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag="type")]
-pub enum ScriptStmt {
-    Raw { bytes: Vec<u8> },
-    SetLocal { var_type: VarType, var: u16, expr: String },
-    SetGlobal,
+#[serde(tag="kind")]
+pub enum Var {
+    Local { #[serde(rename="type")] var_type: VarType, index: u16 },
+    Global { name: String },
+}
+
+fn write_text(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
+    let bytes = code_page.encode(s).map_err(|e| match e {
+        None => format!("the '{s}' string does not correspond to any source byte sequence"),
+        Some(c) => format!("the '{c}' char is not representable in {code_page:?} code page")
+    })?;
+    let len = bytes.len().try_into().map_err(|_| format!("too long string '{s}'"))?;
+    res.push(len);
+    res.extend_from_slice(&bytes);
+    Ok(())
+}
+
+fn write_u16(v: u16, res: &mut Vec<u8>) {
+    res.push((v & 0xFF) as u8);
+    res.push((v >> 8) as u8);
+}
+
+impl Var {
+    fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
+        match self {
+            &Var::Local { var_type, index } => {
+                var_type.write(res);
+                write_u16(index, res);
+            },
+            Var::Global { name } => {
+                res.push(b'G');
+                write_text(code_page, name, res)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag="stmt")]
+#[repr(u16)]
+pub enum Stmt {
+    Raw { bytes: Vec<u8> } = 0x0000,
+    Set { var: Var, expr: String } = 0x0105,
+    If { stmts: u8, cond: String } = 0x0106,
+    EndIf = 0x0109,
+    End = 0x0101,
+    SetRef { id: String } = 0x010C,
+    StopScript { id: String } = 0x101C,
+    AddItem { id: String, count: u16 } = 0x10D4,
+}
+
+impl Stmt {
+    fn write(&self, code_page: CodePage, is_last: bool, res: &mut Vec<u8>) -> Result<(), String> {
+        match self {
+            Stmt::Raw { bytes } => {
+                if bytes.is_empty() { return Err("the 'raw bytes' should not be empty".into()); }
+                if !is_last { return Err("the 'raw bytes' stmt should be the last".into()); }
+                if !parser::is_raw_stmt(code_page, bytes) {
+                    return Err("known stmt signature in raw bytes".into());
+                }
+                res.extend_from_slice(&bytes);
+            },
+            Stmt::Set { var, expr } => {
+                write_u16(0x0105, res);
+                var.write(code_page, res)?;
+                write_text(code_page, expr, res)?;
+            },
+            Stmt::If { stmts, cond } => {
+                write_u16(0x0106, res);
+                res.push(*stmts);
+                write_text(code_page, cond, res)?;
+            },
+            Stmt::EndIf => write_u16(0x0109, res),
+            Stmt::End => write_u16(0x0101, res),
+            Stmt::SetRef { id } => {
+                write_u16(0x010C, res);
+                write_text(code_page, id, res)?;
+            },
+            Stmt::StopScript { id } => {
+                write_u16(0x101C, res);
+                write_text(code_page, id, res)?;
+            },
+            Stmt::AddItem { id, count } => {
+                write_u16(0x10D4, res);
+                write_text(code_page, id, res)?;
+                write_u16(*count, res);
+            },
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ScriptData(Vec<ScriptStmt>);
+pub struct ScriptData(Vec<Stmt>);
 
 mod parser {
     use super::*;
-    use nom_errors::{NomErr, NomRes, alt_5, flat_map, map, many0, result_from_parser, seq_3};
-    use nom_errors::bytes::{le_u8, le_u16, tag, take, take_all};
+    use nom_errors::*;
+    use nom_errors::bytes::*;
 
     fn text<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
         map(flat_map(le_u8(), |len| take(len.into())), move |x| code_page.decode(x))
     }
 
-    fn set_local<'a>(code_page: CodePage, var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], (u16, String), (), !> {
-        map(
-            seq_3(
-                tag([0x05, 0x01, var_type]),
-                le_u16(),
-                text(code_page)
-            ),
-            |(_, var, expr)| (var, expr)
+    fn local_var<'a>(var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], u16, (), !> {
+        map(seq_2(tag([var_type]), le_u16()), |(_, var)| var)
+    }
+
+    fn global_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
+        map(seq_2(tag([b'G']), text(code_page)), |(_, var)| var)
+    }
+
+    fn var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Var, (), !> {
+        alt_4(
+            map(local_var(b's'), |index| Var::Local { var_type: VarType::Short, index }),
+            map(local_var(b'f'), |index| Var::Local { var_type: VarType::Float, index }),
+            map(local_var(b'l'), |index| Var::Local { var_type: VarType::Long, index }),
+            map(global_var(code_page), |name| Var::Global { name })
         )
     }
 
-    fn set_global(input: &[u8]) -> NomRes<&[u8], (), (), !> {
-        map(tag([0x05, 0x01, b'G']), |_| ())(input)
+    fn set_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(
+            seq_3(
+                tag([0x05, 0x01]),
+                var(code_page),
+                text(code_page)
+            ),
+            |(_, var, expr)| Stmt::Set { var, expr }
+        )
     }
 
-    fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], ScriptStmt, !, !> {
-        alt_5(
-            map(set_local(code_page, b's'), |(var, expr)| ScriptStmt::SetLocal { var_type: VarType::Short, var, expr }),
-            map(set_local(code_page, b'f'), |(var, expr)| ScriptStmt::SetLocal { var_type: VarType::Float, var, expr }),
-            map(set_local(code_page, b'l'), |(var, expr)| ScriptStmt::SetLocal { var_type: VarType::Long, var, expr }),
-            map(set_global, |()| ScriptStmt::SetGlobal),
-            map(take_all(), |bytes: &[u8]| ScriptStmt::Raw { bytes: bytes.into() })
+    fn if_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(
+            seq_3(
+                tag([0x06, 0x01]),
+                le_u8(),
+                text(code_page)
+            ),
+            |(_, stmts, cond)| Stmt::If { stmts, cond }
+        )
+    }
+
+    fn end_if_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0x09, 0x01]), |_| Stmt::EndIf)(input)
+    }
+
+    fn end_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0x01, 0x01]), |_| Stmt::End)(input)
+    }
+
+    fn set_ref_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(seq_2(tag([0x0C, 0x01]), text(code_page)), |(_, id)| Stmt::SetRef { id })
+    }
+
+    fn stop_script_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(seq_2(tag([0x1C, 0x10]), text(code_page)), |(_, id)| Stmt::StopScript { id })
+    }
+
+    fn add_item_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(seq_3(tag([0xD4, 0x10]), text(code_page), le_u16()), |(_, id, count)| Stmt::AddItem { id, count })
+    }
+
+    fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, !, !> {
+        alt_8(
+            set_stmt(code_page),
+            if_stmt(code_page),
+            end_if_stmt,
+            end_stmt,
+            set_ref_stmt(code_page),
+            stop_script_stmt(code_page),
+            add_item_stmt(code_page),
+            map(take_all(), |bytes: &[u8]| Stmt::Raw { bytes: bytes.into() })
         )
     }
 
@@ -72,10 +212,10 @@ mod parser {
         matches!(result_from_parser(stmt(code_page)(bytes)).map_or_else(|e| match e {
             NomErr::Error(e) => e,
             NomErr::Failure(e) => e
-        }, |x| x.1), ScriptStmt::Raw { .. })
+        }, |x| x.1), Stmt::Raw { .. })
     }
 
-    pub fn stmts(code_page: CodePage, bytes: &[u8]) -> Vec<ScriptStmt> {
+    pub fn stmts(code_page: CodePage, bytes: &[u8]) -> Vec<Stmt> {
         result_from_parser(many0(stmt(code_page))(bytes)).map_or_else(|e| match e {
             NomErr::Error(e) => e,
             NomErr::Failure(e) => e
@@ -84,7 +224,7 @@ mod parser {
 }
 
 impl ScriptData {
-    pub fn new(stmts: Vec<ScriptStmt>) -> Result<ScriptData, String> {
+    pub fn new(stmts: Vec<Stmt>) -> Result<ScriptData, String> {
         let this = ScriptData(stmts);
         this.to_bytes(CodePage::Unicode)?;
         Ok(this)
@@ -93,48 +233,20 @@ impl ScriptData {
     /// # Safety
     ///
     /// The `stmts` list should be obtained from [`stmts`] / [`stmts_mut`] / [`into_stmts`] method.
-    pub unsafe fn new_unchecked(stmts: Vec<ScriptStmt>) -> ScriptData {
+    pub unsafe fn new_unchecked(stmts: Vec<Stmt>) -> ScriptData {
         ScriptData(stmts)
     }
 
-    pub fn stmts(&self) -> &[ScriptStmt] { &self.0 }
+    pub fn stmts(&self) -> &[Stmt] { &self.0 }
 
-    pub fn stmts_mut(&mut self) -> &mut [ScriptStmt] { &mut self.0 }
+    pub fn stmts_mut(&mut self) -> &mut [Stmt] { &mut self.0 }
 
-    pub fn into_stmts(self) -> Vec<ScriptStmt> { self.0 }
+    pub fn into_stmts(self) -> Vec<Stmt> { self.0 }
 
     pub fn to_bytes(&self, code_page: CodePage) -> Result<Vec<u8>, String> {
         let mut res = Vec::new();
         for (is_last, stmt) in self.0.iter().identify_last() {
-            match stmt {
-                ScriptStmt::Raw { bytes } => {
-                    if bytes.is_empty() { return Err("the 'raw bytes' should not be empty".into()); }
-                    if !is_last { return Err("the 'raw bytes' stmt should be the last".into()); }
-                    if !parser::is_raw_stmt(code_page, bytes) {
-                        return Err("known stmt signature in raw bytes".into());
-                    }
-                    res.extend_from_slice(&bytes);
-                },
-                &ScriptStmt::SetLocal { var_type, var, ref expr } => {
-                    res.push(0x05);
-                    res.push(0x01);
-                    res.push(var_type as u8);
-                    res.push((var & 0xFF) as u8);
-                    res.push((var >> 8) as u8);
-                    let expr_bytes = code_page.encode(expr).map_err(|e| match e {
-                        None => format!("the '{expr}' string does not correspond to any source byte sequence"),
-                        Some(c) => format!("the '{c}' char is not representable in {code_page:?} code page")
-                    })?;
-                    let expr_len = expr.len().try_into().map_err(|_| format!("too long expr 'expr'"))?;
-                    res.push(expr_len);
-                    res.extend_from_slice(&expr_bytes);
-                },
-                ScriptStmt::SetGlobal => {
-                    res.push(0x05);
-                    res.push(0x01);
-                    res.push(b'G');
-                },
-            }
+            stmt.write(code_page, is_last, &mut res)?;
         }
         Ok(res)
     }
@@ -144,34 +256,31 @@ impl ScriptData {
     }
 }
 
-pub struct ScriptDataSerializer<'a> {
+pub struct ScriptDataSerde {
     pub code_page: Option<CodePage>,
-    pub data: &'a ScriptData,
 }
 
-impl<'a> Serialize for ScriptDataSerializer<'a> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+impl SerializeSeed for ScriptDataSerde {
+    type Value = ScriptData;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            self.data.0.serialize(serializer)
+            value.0.serialize(serializer)
         } else {
             let Some(code_page) = self.code_page else {
                 return Err(S::Error::custom("code page required for binary serialization"));
             };
-            self.data.to_bytes(code_page).serialize(serializer)
+            value.to_bytes(code_page).serialize(serializer)
         }
     }
 }
 
-pub struct ScriptDataDeserializer {
-    pub code_page: Option<CodePage>,
-}
-
-impl<'de> DeserializeSeed<'de> for ScriptDataDeserializer {
+impl<'de> DeserializeSeed<'de> for ScriptDataSerde {
     type Value = ScriptData;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            let stmts = <Vec<ScriptStmt>>::deserialize(deserializer)?;
+            let stmts = <Vec<Stmt>>::deserialize(deserializer)?;
             ScriptData::new(stmts).map_err(D::Error::custom)
         } else {
             let Some(code_page) = self.code_page else {
