@@ -57,7 +57,10 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
                 if let Some(len) = len {
-                    ValueWithSeed(s.as_str(), ShortStringSerde { len: len.try_into().unwrap() }).serialize(serializer)
+                    ValueWithSeed(s.as_str(), ShortStringSerde {
+                        code_page: self.code_page,
+                        len: len.try_into().unwrap()
+                    }).serialize(serializer)
                 } else {
                     serializer.serialize_str(s)
                 }
@@ -70,7 +73,9 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
             FieldType::Multiline(newline) => if let Field::StringList(s) = self.field {
-                ValueWithSeed(&s[..], StringListSerde { separator: newline.as_str(), len: None }).serialize(serializer)
+                ValueWithSeed(&s[..], StringListSerde {
+                    code_page: self.code_page, separator: newline.as_str(), len: None
+                }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string list type", self.record_tag, self.field_tag)))
             },
@@ -116,7 +121,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have time type", self.record_tag, self.field_tag)))
             },
             FieldType::Item => if let Field::Item(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, ItemSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have item type", self.record_tag, self.field_tag)))
             },
@@ -136,7 +141,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have ingredient type", self.record_tag, self.field_tag)))
             },
             FieldType::ScriptMetadata => if let Field::ScriptMetadata(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, ScriptMetadataSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have script metadata type", self.record_tag, self.field_tag)))
             },
@@ -146,7 +151,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have script vars type", self.record_tag, self.field_tag)))
             },
             FieldType::FileMetadata => if let Field::FileMetadata(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, FileMetadataSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have file metadata type", self.record_tag, self.field_tag)))
             },
@@ -196,12 +201,12 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have AI travel type", self.record_tag, self.field_tag)))
             },
             FieldType::AiTarget => if let Field::AiTarget(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, AiTargetSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have AI target type", self.record_tag, self.field_tag)))
             },
             FieldType::AiActivate => if let Field::AiActivate(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, AiActivateSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have AI activate type", self.record_tag, self.field_tag)))
             },
@@ -315,7 +320,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have weather type", self.record_tag, self.field_tag)))
             },
             FieldType::SoundChance => if let Field::SoundChance(v) = self.field {
-                v.serialize(serializer)
+                ValueWithSeed(v, SoundChanceSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have sound chance type", self.record_tag, self.field_tag)))
             },
@@ -558,14 +563,16 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
                 FieldType::String(len) => if let Some(len) = len {
-                    ShortStringSerde { len: len.try_into().unwrap() }.deserialize(deserializer)
+                    ShortStringSerde { code_page: self.code_page, len: len.try_into().unwrap() }.deserialize(deserializer)
                 } else {
                     String::deserialize(deserializer)
                 }.map(Field::String),
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
-                    StringListSerde { separator: newline.as_str(), len: None }.deserialize(deserializer).map(Field::StringList),
+                    StringListSerde {
+                        code_page: self.code_page, separator: newline.as_str(), len: None
+                    }.deserialize(deserializer).map(Field::StringList),
                 FieldType::StringZList =>
                     StringZList::deserialize(deserializer).map(Field::StringZList),
                 FieldType::U8List => <Vec<u8>>::deserialize(deserializer).map(Field::U8List),
@@ -577,13 +584,15 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                     deserializer.deserialize_bytes(ZlibEncoderDeserializer)
                 }.map(Field::U8List),
                 FieldType::Info => Info::deserialize(deserializer).map(Field::Info),
-                FieldType::Item => Item::deserialize(deserializer).map(Field::Item),
+                FieldType::Item => ItemSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::Item),
                 FieldType::CurrentTime => CurrentTime::deserialize(deserializer).map(Field::CurrentTime),
                 FieldType::Time => Time::deserialize(deserializer).map(Field::Time),
                 FieldType::Ingredient => Ingredient::deserialize(deserializer).map(Field::Ingredient),
-                FieldType::ScriptMetadata => ScriptMetadata::deserialize(deserializer).map(Field::ScriptMetadata),
+                FieldType::ScriptMetadata =>
+                    ScriptMetadataSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::ScriptMetadata),
                 FieldType::ScriptVars => ScriptVars::deserialize(deserializer).map(Field::ScriptVars),
-                FieldType::FileMetadata => FileMetadata::deserialize(deserializer).map(Field::FileMetadata),
+                FieldType::FileMetadata =>
+                    FileMetadataSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::FileMetadata),
                 FieldType::NpcState => NpcState::deserialize(deserializer).map(Field::NpcState),
                 FieldType::Effect => Effect::deserialize(deserializer).map(Field::Effect),
                 FieldType::Potion => Potion::deserialize(deserializer).map(Field::Potion),
@@ -602,11 +611,14 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Ai => Ai::deserialize(deserializer).map(Field::Ai),
                 FieldType::AiWander => AiWander::deserialize(deserializer).map(Field::AiWander),
                 FieldType::AiTravel => AiTravel::deserialize(deserializer).map(Field::AiTravel),
-                FieldType::AiTarget => AiTarget::deserialize(deserializer).map(Field::AiTarget),
-                FieldType::AiActivate => AiActivate::deserialize(deserializer).map(Field::AiActivate),
+                FieldType::AiTarget =>
+                    AiTargetSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::AiTarget),
+                FieldType::AiActivate =>
+                    AiActivateSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::AiActivate),
                 FieldType::NpcFlags => <FlagsAndBlood<NpcFlags>>::deserialize(deserializer).map(Field::NpcFlags),
                 FieldType::CreatureFlags => <FlagsAndBlood<CreatureFlags>>::deserialize(deserializer).map(Field::CreatureFlags),
-                FieldType::SoundChance => SoundChance::deserialize(deserializer).map(Field::SoundChance),
+                FieldType::SoundChance =>
+                    SoundChanceSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::SoundChance),
                 FieldType::SkillMetadata => SkillMetadata::deserialize(deserializer).map(Field::SkillMetadata),
                 FieldType::Color => Color::deserialize(deserializer).map(Field::Color),
                 FieldType::Interior => Interior::deserialize(deserializer).map(Field::Interior),

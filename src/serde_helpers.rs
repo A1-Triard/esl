@@ -1,14 +1,61 @@
-use std::fmt::{self, Display, Formatter};
+use crate::code::CodePage;
+use educe::Educe;
+use either::{Either, Left,  Right};
+use phantom_type::PhantomType;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self, Unexpected, EnumAccess, MapAccess, SeqAccess, DeserializeSeed, VariantAccess};
+use serde::de::{self, Unexpected, DeserializeSeed};
 use serde::de::Error as de_Error;
 use serde::ser::Error as ser_Error;
-use serde::ser::{SerializeMap, SerializeTuple, SerializeTupleVariant};
+use serde::ser::SerializeTuple;
 use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
-use either::{Either, Left,  Right};
-use nameof::name_of;
+use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
-use crate::code::SHORT_STRING_VARIANT_INDEX;
+
+#[derive(Educe)]
+#[educe(Clone)]
+pub struct ArraySerde<T> {
+    pub len: usize,
+    pub phantom: PhantomType<T>,
+}
+
+impl<T: Serialize> SerializeSeed for ArraySerde<T> {
+    type Value = [T];
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        assert_eq!(value.len(), self.len);
+        let mut serializer = serializer.serialize_tuple(self.len)?;
+        for item in value {
+            serializer.serialize_element(item)?;
+        }
+        serializer.end()
+    }
+}
+
+struct ArrayDeVisitor<T>(PhantomType<T>);
+
+impl<'de, T: Deserialize<'de>> de::Visitor<'de> for ArrayDeVisitor<T> {
+    type Value = Vec<T>;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "array")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let mut res = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
+        while let Some(item) = seq.next_element()? {
+            res.push(item);
+        }
+        Ok(res)
+    }
+}
+
+impl<'de, T: Deserialize<'de>> DeserializeSeed<'de> for ArraySerde<T> {
+    type Value = Vec<T>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_tuple(self.len, ArrayDeVisitor(PhantomType::new()))
+    }
+}
 
 #[derive(Clone)]
 pub struct NoneU8Serde { pub none: u8 }
@@ -258,120 +305,9 @@ impl<'de> de::Visitor<'de> for F32HRDeserializer {
     }
 }
 
-struct Zeroes {
-    len: usize
-}
-
-impl Serialize for Zeroes {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut serializer = serializer.serialize_tuple(self.len)?;
-        for _ in 0 .. self.len {
-            serializer.serialize_element(&0u8)?;
-        }
-        serializer.end()
-    }
-}
-
-struct ZeroesDeserializer {
-    len: usize
-}
-
-impl<'de> DeserializeSeed<'de> for ZeroesDeserializer {
-    type Value = Zeroes;
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_tuple(self.len, self)
-    }
-}
-
-impl<'de> de::Visitor<'de> for ZeroesDeserializer {
-    type Value = Zeroes;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} zeroes", self.len)
-    }
-
-    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        for _ in 0 .. self.len {
-            let zero: u8 = seq.next_element()?.unwrap();
-            if zero != 0 {
-                return Err(A::Error::invalid_value(Unexpected::Unsigned(zero.into()), &"0"));
-            }
-        }
-        Ok(Zeroes { len: self.len })
-    }
-}
-
-struct ShortStr<'a> {
-    string: &'a str,
-    len: usize,
-}
-
-struct ShortString {
-    string: String,
-    #[allow(dead_code)]
-    len: usize,
-}
-
-impl<'a> Serialize for ShortStr<'a> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut serializer = serializer.serialize_tuple_variant(name_of!(type ShortStr), SHORT_STRING_VARIANT_INDEX, "", 2)?;
-        serializer.serialize_field(&Zeroes { len: self.len })?;
-        serializer.serialize_field(self.string)?;
-        serializer.end()
-    }
-}
-
-#[derive(Clone)]
-struct ShortStringDeserializer { len: usize }
-
-impl<'de> DeserializeSeed<'de> for ShortStringDeserializer {
-    type Value = ShortString;
-
-    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_enum(name_of!(type ShortStr), &[""], self)
-    }
-}
-
-impl<'de> de::Visitor<'de> for ShortStringDeserializer {
-    type Value = ShortString;
-
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{} character string", self.len)
-    }
-
-    fn visit_enum<A: EnumAccess<'de>>(self, data: A) -> Result<Self::Value, A::Error> {
-        let (variant_index, variant): (u32, _) = data.variant()?;
-        if variant_index != SHORT_STRING_VARIANT_INDEX {
-            return Err(A::Error::unknown_variant(&variant_index.to_string(), &[""]));
-        }
-        variant.tuple_variant(2, self)
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-        if seq.next_element_seed(ZeroesDeserializer { len: self.len })?.is_none() {
-            return Err(A::Error::missing_field("0"));
-        }
-        let Some(string): Option<String> = seq.next_element()? else {
-            return Err(A::Error::missing_field("1"));
-        };
-        Ok(ShortString { string, len: self.len })
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
-        let Some(key) = map.next_key_seed(self.clone())? else {
-            return Err(A::Error::custom("missing map entry"));
-        };
-        let _: () = map.next_value()?;
-        if map.next_key_seed(self)?.is_some() {
-            return Err(A::Error::custom("extra map entry"));
-        }
-        Ok(key)
-    }
-}
-
 #[derive(Clone)]
 pub struct ShortStringSerde {
+    pub code_page: Option<CodePage>,
     pub len: usize
 }
 
@@ -382,9 +318,21 @@ impl SerializeSeed for ShortStringSerde {
         if serializer.is_human_readable() {
             serializer.serialize_str(value)
         } else {
-            let mut serializer = serializer.serialize_map(Some(1))?;
-            serializer.serialize_entry(&ShortStr { string: value, len: self.len }, &())?;
-            serializer.end()
+            let Some(code_page) = self.code_page else {
+                return Err(S::Error::custom("code page required for binary serialization"));
+            };
+            let mut bytes = code_page.encode(value).map_err(|e| match e {
+                None => S::Error::custom(format!("the '{value}' string does not correspond to any source byte sequence")),
+                Some(c) => S::Error::custom(format!("the '{c}' char is not representable in {code_page:?} code page"))
+            })?;
+            if bytes.len() > self.len {
+                return Err(S::Error::custom(format!("short string (len = {}) does not fit (max len = {})", bytes.len(), self.len)));
+            }
+            if bytes.last() == Some(&0) {
+                return Err(S::Error::custom("short string value has tail zero"));
+            }
+            bytes.resize(self.len, 0);
+            ValueWithSeed(&bytes[..], ArraySerde { len: self.len, phantom: PhantomType::new() }).serialize(serializer)
         }
     }
 }
@@ -396,13 +344,20 @@ impl<'de> DeserializeSeed<'de> for ShortStringSerde {
         if deserializer.is_human_readable() {
             String::deserialize(deserializer)
         } else {
-            Ok(deserializer.deserialize_map(ShortStringDeserializer { len: self.len })?.string)
+            let bytes = ArraySerde { len: self.len, phantom: PhantomType::new() }.deserialize(deserializer)?;
+            let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
+            let bytes = &bytes[.. bytes.len() - trim];
+            let Some(code_page) = self.code_page else {
+                return Err(D::Error::custom("code page required for binary serialization"));
+            };
+            Ok(code_page.decode(bytes))
         }
     }
 }
 
 #[derive(Clone)]
 pub struct StringListSerde {
+    pub code_page: Option<CodePage>,
     pub separator: &'static str,
     pub len: Option<usize>
 }
@@ -437,7 +392,7 @@ impl SerializeSeed for StringListSerde {
             }
             text.truncate(text.len() - self.separator.len());
             if let Some(len) = self.len {
-                ValueWithSeed(text.as_str(), ShortStringSerde { len }).serialize(serializer)
+                ValueWithSeed(text.as_str(), ShortStringSerde { code_page: self.code_page, len }).serialize(serializer)
             } else {
                 text.serialize(serializer)
             }
@@ -456,7 +411,7 @@ impl<'de> DeserializeSeed<'de> for StringListSerde {
                 return Err(D::Error::custom("empty string list separator"));
             }
             let s = if let Some(len) = self.len {
-                ShortStringSerde { len }.deserialize(deserializer)?
+                ShortStringSerde { code_page: self.code_page, len }.deserialize(deserializer)?
             } else {
                 String::deserialize(deserializer)?
             };

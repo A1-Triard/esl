@@ -6,14 +6,17 @@ use macro_attr_2018::macro_attr;
 use nameof::name_of;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::Error as de_Error;
-use serde::de::{self, Unexpected, VariantAccess};
+use serde::de::{self, DeserializeSeed, Unexpected, VariantAccess};
+use serde::ser::SerializeStruct;
 use serde::ser::Error as ser_Error;
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::mem::transmute;
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
+use crate::code::CodePage;
 use crate::script_data::*;
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -670,54 +673,293 @@ pub struct ScriptVars {
     pub floats: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ScriptMetadata {
-    #[serde(with="string_32")]
     pub name: String,
     pub vars: ScriptVars,
     pub data_size: u32,
     pub var_table_size: u32
 }
 
-mod string_32 {
-    use serde::{Serializer, Deserializer, Serialize};
-    use serde::de::DeserializeSeed;
-    use serde_serialize_seed::ValueWithSeed;
-    use crate::serde_helpers::*;
+const SCRIPT_METADATA_NAME_FIELD: &str = name_of!(name in ScriptMetadata);
+const SCRIPT_METADATA_VARS_FIELD: &str = name_of!(vars in ScriptMetadata);
+const SCRIPT_METADATA_DATA_SIZE_FIELD: &str = name_of!(data_size in ScriptMetadata);
+const SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD: &str = name_of!(var_table_size in ScriptMetadata);
 
-    pub fn serialize<S>(s: &str, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        ValueWithSeed(s, ShortStringSerde { len: 32 }).serialize(serializer)
-    }
+const SCRIPT_METADATA_FIELDS: &[&'static str] = &[
+    SCRIPT_METADATA_NAME_FIELD,
+    SCRIPT_METADATA_VARS_FIELD,
+    SCRIPT_METADATA_DATA_SIZE_FIELD,
+    SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD,
+];
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<String, D::Error> where D: Deserializer<'de> {
-        ShortStringSerde { len: 32 }.deserialize(deserializer)
+#[derive(Clone)]
+pub struct ScriptMetadataSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for ScriptMetadataSerde {
+    type Value = ScriptMetadata;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type ScriptMetadata), 4)?;
+        serializer.serialize_field(
+            SCRIPT_METADATA_NAME_FIELD,
+            &ValueWithSeed(value.name.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.serialize_field(SCRIPT_METADATA_VARS_FIELD, &value.vars)?;
+        serializer.serialize_field(SCRIPT_METADATA_DATA_SIZE_FIELD, &value.data_size)?;
+        serializer.serialize_field(SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD, &value.var_table_size)?;
+        serializer.end()
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+enum ScriptMetadataField {
+    Name,
+    Vars,
+    DataSize,
+    VarTableSize
+}
+
+struct ScriptMetadataFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for ScriptMetadataFieldDeVisitor {
+    type Value = ScriptMetadataField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "script metadata field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            SCRIPT_METADATA_NAME_FIELD => Ok(ScriptMetadataField::Name),
+            SCRIPT_METADATA_VARS_FIELD => Ok(ScriptMetadataField::Vars),
+            SCRIPT_METADATA_DATA_SIZE_FIELD => Ok(ScriptMetadataField::DataSize),
+            SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD => Ok(ScriptMetadataField::VarTableSize),
+            x => Err(E::unknown_field(x, SCRIPT_METADATA_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for ScriptMetadataField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(ScriptMetadataFieldDeVisitor)
+    }
+}
+
+struct ScriptMetadataDeVisitor(ScriptMetadataSerde);
+
+impl<'de> de::Visitor<'de> for ScriptMetadataDeVisitor {
+    type Value = ScriptMetadata;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "script metadata")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut name = None;
+        let mut vars = None;
+        let mut data_size = None;
+        let mut var_table_size = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                ScriptMetadataField::Name =>
+                    if name.replace(map.next_value_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?).is_some() {
+                        return Err(A::Error::duplicate_field(SCRIPT_METADATA_NAME_FIELD));
+                    },
+                ScriptMetadataField::Vars => if vars.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(SCRIPT_METADATA_VARS_FIELD));
+                },
+                ScriptMetadataField::DataSize => if data_size.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(SCRIPT_METADATA_DATA_SIZE_FIELD));
+                },
+                ScriptMetadataField::VarTableSize => if var_table_size.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD));
+                },
+            }
+        }
+        let name = name.ok_or_else(|| A::Error::missing_field(SCRIPT_METADATA_NAME_FIELD))?;
+        let vars = vars.ok_or_else(|| A::Error::missing_field(SCRIPT_METADATA_VARS_FIELD))?;
+        let data_size = data_size.ok_or_else(|| A::Error::missing_field(SCRIPT_METADATA_DATA_SIZE_FIELD))?;
+        let var_table_size = var_table_size.ok_or_else(|| A::Error::missing_field(SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD))?;
+        Ok(ScriptMetadata { name, vars, data_size, var_table_size })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let name = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let vars = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        let data_size = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(2, &self))?;
+        let var_table_size = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(3, &self))?;
+        Ok(ScriptMetadata { name, vars, data_size, var_table_size })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for ScriptMetadataSerde {
+    type Value = ScriptMetadata;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type ScriptMetadata), SCRIPT_METADATA_FIELDS, ScriptMetadataDeVisitor(self))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FileMetadata {
     pub version: u32,
-    #[serde(rename="type")]
     pub file_type: FileType,
-    #[serde(with="string_32")]
     pub author: String,
-    #[serde(with="multiline_256_dos")]
     pub description: Vec<String>,
     pub records: u32
 }
 
-mod multiline_256_dos {
-    use serde::{Serializer, Deserializer, Serialize};
-    use serde::de::DeserializeSeed;
-    use serde_serialize_seed::ValueWithSeed;
-    use crate::field::*;
+const FILE_METADATA_VERSION_FIELD: &str = name_of!(version in FileMetadata);
+const FILE_METADATA_TYPE_FIELD: &str = "type";
+const FILE_METADATA_AUTHOR_FIELD: &str = name_of!(author in FileMetadata);
+const FILE_METADATA_DESCRIPTION_FIELD: &str = name_of!(description in FileMetadata);
+const FILE_METADATA_RECORDS_FIELD: &str = name_of!(records in FileMetadata);
 
-    pub fn serialize<S>(lines: &[String], serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        ValueWithSeed(lines, StringListSerde { separator: Newline::Dos.as_str(), len: Some(256) }).serialize(serializer)
+const FILE_METADATA_FIELDS: &[&'static str] = &[
+    FILE_METADATA_VERSION_FIELD,
+    FILE_METADATA_TYPE_FIELD,
+    FILE_METADATA_AUTHOR_FIELD,
+    FILE_METADATA_DESCRIPTION_FIELD,
+    FILE_METADATA_RECORDS_FIELD,
+];
+
+#[derive(Clone)]
+pub struct FileMetadataSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for FileMetadataSerde {
+    type Value = FileMetadata;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type FileMetadata), 5)?;
+        serializer.serialize_field(FILE_METADATA_VERSION_FIELD, &value.version)?;
+        serializer.serialize_field(FILE_METADATA_TYPE_FIELD, &value.file_type)?;
+        serializer.serialize_field(
+            FILE_METADATA_AUTHOR_FIELD,
+            &ValueWithSeed(value.author.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.serialize_field(
+            FILE_METADATA_DESCRIPTION_FIELD,
+            &ValueWithSeed(&value.description[..], StringListSerde {
+                code_page: self.code_page, separator: Newline::Dos.as_str(), len: Some(256)
+            })
+        )?;
+        serializer.serialize_field(FILE_METADATA_RECORDS_FIELD, &value.records)?;
+        serializer.end()
+    }
+}
+
+enum FileMetadataField {
+    Version,
+    Type,
+    Author,
+    Description,
+    Records
+}
+
+struct FileMetadataFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for FileMetadataFieldDeVisitor {
+    type Value = FileMetadataField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "file metadata field")
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error> where D: Deserializer<'de> {
-        StringListSerde { separator: Newline::Dos.as_str(), len: Some(256) }.deserialize(deserializer)
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            FILE_METADATA_VERSION_FIELD => Ok(FileMetadataField::Version),
+            FILE_METADATA_TYPE_FIELD => Ok(FileMetadataField::Type),
+            FILE_METADATA_AUTHOR_FIELD => Ok(FileMetadataField::Author),
+            FILE_METADATA_DESCRIPTION_FIELD => Ok(FileMetadataField::Description),
+            FILE_METADATA_RECORDS_FIELD => Ok(FileMetadataField::Records),
+            x => Err(E::unknown_field(x, FILE_METADATA_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for FileMetadataField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(FileMetadataFieldDeVisitor)
+    }
+}
+
+struct FileMetadataDeVisitor(FileMetadataSerde);
+
+impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
+    type Value = FileMetadata;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "file metadata")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut version = None;
+        let mut file_type = None;
+        let mut author = None;
+        let mut description = None;
+        let mut records = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                FileMetadataField::Version => if version.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(FILE_METADATA_VERSION_FIELD));
+                },
+                FileMetadataField::Type => if file_type.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(FILE_METADATA_TYPE_FIELD));
+                },
+                FileMetadataField::Author => 
+                    if author.replace(map.next_value_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?).is_some() {
+                        return Err(A::Error::duplicate_field(FILE_METADATA_AUTHOR_FIELD));
+                    },
+                FileMetadataField::Description =>
+                    if description.replace(
+                        map.next_value_seed(StringListSerde {
+                            code_page: self.0.code_page, separator: Newline::Dos.as_str(), len: Some(256)
+                        })?
+                    ).is_some() {
+                        return Err(A::Error::duplicate_field(FILE_METADATA_DESCRIPTION_FIELD));
+                    },
+                FileMetadataField::Records => if records.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(FILE_METADATA_RECORDS_FIELD));
+                },
+            }
+        }
+        let version = version.ok_or_else(|| A::Error::missing_field(FILE_METADATA_VERSION_FIELD))?;
+        let file_type = file_type.ok_or_else(|| A::Error::missing_field(FILE_METADATA_TYPE_FIELD))?;
+        let author = author.ok_or_else(|| A::Error::missing_field(FILE_METADATA_AUTHOR_FIELD))?;
+        let description = description.ok_or_else(|| A::Error::missing_field(FILE_METADATA_DESCRIPTION_FIELD))?;
+        let records = records.ok_or_else(|| A::Error::missing_field(FILE_METADATA_RECORDS_FIELD))?;
+        Ok(FileMetadata { version, file_type, author, description, records })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let version = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let file_type = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        let author = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(2, &self))?;
+        let description = seq.next_element_seed(StringListSerde {
+            code_page: self.0.code_page, separator: Newline::Dos.as_str(), len: Some(256)
+        })?.ok_or_else(|| A::Error::invalid_length(3, &self))?;
+        let records = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(4, &self))?;
+        Ok(FileMetadata { version, file_type, author, description, records })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for FileMetadataSerde {
+    type Value = FileMetadata;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type FileMetadata), FILE_METADATA_FIELDS, FileMetadataDeVisitor(self))
     }
 }
 
@@ -918,11 +1160,111 @@ impl From<NpcNHRSurrogate12> for Npc {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Item {
     pub count: i32,
-    #[serde(with="string_32")]
     pub item_id: String,
+}
+
+const ITEM_COUNT_FIELD: &str = name_of!(count in Item);
+const ITEM_ITEM_ID_FIELD: &str = name_of!(item_id in Item);
+
+const ITEM_FIELDS: &[&'static str] = &[
+    ITEM_COUNT_FIELD,
+    ITEM_ITEM_ID_FIELD,
+];
+
+#[derive(Clone)]
+pub struct ItemSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for ItemSerde {
+    type Value = Item;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type Item), 2)?;
+        serializer.serialize_field(ITEM_COUNT_FIELD, &value.count)?;
+        serializer.serialize_field(
+            ITEM_ITEM_ID_FIELD,
+            &ValueWithSeed(value.item_id.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.end()
+    }
+}
+
+enum ItemField {
+    Count,
+    ItemId,
+}
+
+struct ItemFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for ItemFieldDeVisitor {
+    type Value = ItemField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "item field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            ITEM_COUNT_FIELD => Ok(ItemField::Count),
+            ITEM_ITEM_ID_FIELD => Ok(ItemField::ItemId),
+            x => Err(E::unknown_field(x, ITEM_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for ItemField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(ItemFieldDeVisitor)
+    }
+}
+
+struct ItemDeVisitor(ItemSerde);
+
+impl<'de> de::Visitor<'de> for ItemDeVisitor {
+    type Value = Item;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "item")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut count = None;
+        let mut item_id = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                ItemField::Count => if count.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(ITEM_COUNT_FIELD));
+                },
+                ItemField::ItemId => 
+                    if item_id.replace(map.next_value_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?).is_some() {
+                        return Err(A::Error::duplicate_field(ITEM_ITEM_ID_FIELD));
+                    },
+            }
+        }
+        let count = count.ok_or_else(|| A::Error::missing_field(ITEM_COUNT_FIELD))?;
+        let item_id = item_id.ok_or_else(|| A::Error::missing_field(ITEM_ITEM_ID_FIELD))?;
+        Ok(Item { count, item_id })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let count = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let item_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        Ok(Item { count, item_id })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for ItemSerde {
+    type Value = Item;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type Item), ITEM_FIELDS, ItemDeVisitor(self))
+    }
 }
 
 macro_attr! {
@@ -1037,15 +1379,7 @@ enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct AiTravel {
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub x: f32,
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub y: f32,
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub z: f32,
+    pub pos: Pos,
     pub flags: AiTravelFlags
 }
 
@@ -1060,32 +1394,262 @@ bitflags_ext! {
 
 enum_serde!(AiTargetFlags, "AI target flags", u8, bits, try from_bits, Unsigned, u64);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Educe)]
+#[derive(Debug, Clone, Educe)]
 #[educe(Eq, PartialEq)]
 pub struct AiTarget {
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub x: f32,
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub y: f32,
-    #[educe(PartialEq(method="eq_f32"))]
-    #[serde(with="float_32")]
-    pub z: f32,
+    pub pos: Pos,
     pub duration: u16,
-    #[serde(with="string_32")]
     pub actor_id: String,
-    #[serde(with="bool_u8")]
     pub reset: bool,
     pub flags: AiTargetFlags
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+const AI_TARGET_POS_FIELD: &str = name_of!(pos in AiTarget);
+const AI_TARGET_DURATION_FIELD: &str = name_of!(duration in AiTarget);
+const AI_TARGET_ACTOR_ID_FIELD: &str = name_of!(actor_id in AiTarget);
+const AI_TARGET_RESET_FIELD: &str = name_of!(reset in AiTarget);
+const AI_TARGET_FLAGS_FIELD: &str = name_of!(flags in AiTarget);
+
+const AI_TARGET_FIELDS: &[&'static str] = &[
+    AI_TARGET_POS_FIELD,
+    AI_TARGET_DURATION_FIELD,
+    AI_TARGET_ACTOR_ID_FIELD,
+    AI_TARGET_RESET_FIELD,
+    AI_TARGET_FLAGS_FIELD,
+];
+
+#[derive(Clone)]
+pub struct AiTargetSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for AiTargetSerde {
+    type Value = AiTarget;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type AiTarget), 5)?;
+        serializer.serialize_field(AI_TARGET_POS_FIELD, &value.pos)?;
+        serializer.serialize_field(AI_TARGET_DURATION_FIELD, &value.duration)?;
+        serializer.serialize_field(
+            AI_TARGET_ACTOR_ID_FIELD,
+            &ValueWithSeed(value.actor_id.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.serialize_field(AI_TARGET_RESET_FIELD, &ValueWithSeed(&value.reset, BoolU8Serde))?;
+        serializer.serialize_field(AI_TARGET_FLAGS_FIELD, &value.flags)?;
+        serializer.end()
+    }
+}
+
+enum AiTargetField {
+    Pos,
+    Duration,
+    ActorId,
+    Reset,
+    Flags
+}
+
+struct AiTargetFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for AiTargetFieldDeVisitor {
+    type Value = AiTargetField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "AI target field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            AI_TARGET_POS_FIELD => Ok(AiTargetField::Pos),
+            AI_TARGET_DURATION_FIELD => Ok(AiTargetField::Duration),
+            AI_TARGET_ACTOR_ID_FIELD => Ok(AiTargetField::ActorId),
+            AI_TARGET_RESET_FIELD => Ok(AiTargetField::Reset),
+            AI_TARGET_FLAGS_FIELD => Ok(AiTargetField::Flags),
+            x => Err(E::unknown_field(x, AI_TARGET_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for AiTargetField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(AiTargetFieldDeVisitor)
+    }
+}
+
+struct AiTargetDeVisitor(AiTargetSerde);
+
+impl<'de> de::Visitor<'de> for AiTargetDeVisitor {
+    type Value = AiTarget;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "AI target")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut pos = None;
+        let mut duration = None;
+        let mut actor_id = None;
+        let mut reset = None;
+        let mut flags = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                AiTargetField::Pos => if pos.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(AI_TARGET_POS_FIELD));
+                },
+                AiTargetField::Duration => if duration.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(AI_TARGET_DURATION_FIELD));
+                },
+                AiTargetField::ActorId =>
+                    if actor_id.replace(map.next_value_seed(
+                        ShortStringSerde { code_page: self.0.code_page, len: 32 }
+                    )?).is_some() {
+                        return Err(A::Error::duplicate_field(AI_TARGET_ACTOR_ID_FIELD));
+                    },
+                AiTargetField::Reset => if reset.replace(map.next_value_seed(BoolU8Serde)?).is_some() {
+                    return Err(A::Error::duplicate_field(AI_TARGET_RESET_FIELD));
+                },
+                AiTargetField::Flags => if flags.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(AI_TARGET_FLAGS_FIELD));
+                },
+            }
+        }
+        let pos = pos.ok_or_else(|| A::Error::missing_field(AI_TARGET_POS_FIELD))?;
+        let duration = duration.ok_or_else(|| A::Error::missing_field(AI_TARGET_DURATION_FIELD))?;
+        let actor_id = actor_id.ok_or_else(|| A::Error::missing_field(AI_TARGET_ACTOR_ID_FIELD))?;
+        let reset = reset.ok_or_else(|| A::Error::missing_field(AI_TARGET_RESET_FIELD))?;
+        let flags = flags.ok_or_else(|| A::Error::missing_field(AI_TARGET_FLAGS_FIELD))?;
+        Ok(AiTarget { pos, duration, actor_id, reset, flags })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let pos = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let duration = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        let actor_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(2, &self))?;
+        let reset = seq.next_element_seed(BoolU8Serde)?
+            .ok_or_else(|| A::Error::invalid_length(3, &self))?;
+        let flags = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(4, &self))?;
+        Ok(AiTarget { pos, duration, actor_id, reset, flags })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for AiTargetSerde {
+    type Value = AiTarget;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type AiTarget), AI_TARGET_FIELDS, AiTargetDeVisitor(self))
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct AiActivate {
-    #[serde(with="string_32")]
     pub object_id: String,
-    #[serde(with="bool_u8")]
     pub reset: bool
+}
+
+const AI_ACTIVATE_OBJECT_ID_FIELD: &str = name_of!(object_id in AiActivate);
+const AI_ACTIVATE_RESET_FIELD: &str = name_of!(reset in AiActivate);
+
+const AI_ACTIVATE_FIELDS: &[&'static str] = &[
+    AI_ACTIVATE_OBJECT_ID_FIELD,
+    AI_ACTIVATE_RESET_FIELD,
+];
+
+#[derive(Clone)]
+pub struct AiActivateSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for AiActivateSerde {
+    type Value = AiActivate;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type AiActivate), 2)?;
+        serializer.serialize_field(
+            AI_ACTIVATE_OBJECT_ID_FIELD,
+            &ValueWithSeed(value.object_id.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.serialize_field(AI_ACTIVATE_RESET_FIELD, &ValueWithSeed(&value.reset, BoolU8Serde))?;
+        serializer.end()
+    }
+}
+
+enum AiActivateField {
+    ObjectId,
+    Reset,
+}
+
+struct AiActivateFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for AiActivateFieldDeVisitor {
+    type Value = AiActivateField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "AI activate field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            AI_ACTIVATE_OBJECT_ID_FIELD => Ok(AiActivateField::ObjectId),
+            AI_ACTIVATE_RESET_FIELD => Ok(AiActivateField::Reset),
+            x => Err(E::unknown_field(x, AI_ACTIVATE_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for AiActivateField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(AiActivateFieldDeVisitor)
+    }
+}
+
+struct AiActivateDeVisitor(AiActivateSerde);
+
+impl<'de> de::Visitor<'de> for AiActivateDeVisitor {
+    type Value = AiActivate;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "AI activate")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut object_id = None;
+        let mut reset = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                AiActivateField::ObjectId =>
+                    if object_id.replace(map.next_value_seed(
+                        ShortStringSerde { code_page: self.0.code_page, len: 32 }
+                    )?).is_some() {
+                        return Err(A::Error::duplicate_field(AI_ACTIVATE_OBJECT_ID_FIELD));
+                    },
+                AiActivateField::Reset => if reset.replace(map.next_value_seed(BoolU8Serde)?).is_some() {
+                    return Err(A::Error::duplicate_field(AI_ACTIVATE_RESET_FIELD));
+                },
+            }
+        }
+        let object_id = object_id.ok_or_else(|| A::Error::missing_field(AI_ACTIVATE_OBJECT_ID_FIELD))?;
+        let reset = reset.ok_or_else(|| A::Error::missing_field(AI_ACTIVATE_RESET_FIELD))?;
+        Ok(AiActivate { object_id, reset })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let object_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let reset = seq.next_element_seed(BoolU8Serde)?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        Ok(AiActivate { object_id, reset })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for AiActivateSerde {
+    type Value = AiActivate;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type AiActivate), AI_ACTIVATE_FIELDS, AiActivateDeVisitor(self))
+    }
 }
 
 macro_attr! {
@@ -2530,11 +3094,113 @@ pub struct WeatherEx {
     pub blizzard: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SoundChance {
-    #[serde(with="string_32")]
     pub sound_id: String,
     pub chance: u8,
+}
+
+const SOUND_CHANCE_SOUND_ID_FIELD: &str = name_of!(sound_id in SoundChance);
+const SOUND_CHANCE_CHANCE_FIELD: &str = name_of!(chance in SoundChance);
+
+const SOUND_CHANCE_FIELDS: &[&'static str] = &[
+    SOUND_CHANCE_SOUND_ID_FIELD,
+    SOUND_CHANCE_CHANCE_FIELD,
+];
+
+#[derive(Clone)]
+pub struct SoundChanceSerde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for SoundChanceSerde {
+    type Value = SoundChance;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type SoundChance), 2)?;
+        serializer.serialize_field(
+            SOUND_CHANCE_SOUND_ID_FIELD,
+            &ValueWithSeed(value.sound_id.as_str(), ShortStringSerde { code_page: self.code_page, len: 32 })
+        )?;
+        serializer.serialize_field(SOUND_CHANCE_CHANCE_FIELD, &value.chance)?;
+        serializer.end()
+    }
+}
+
+enum SoundChanceField {
+    SoundId,
+    Chance,
+}
+
+struct SoundChanceFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for SoundChanceFieldDeVisitor {
+    type Value = SoundChanceField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "sound chance field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            SOUND_CHANCE_SOUND_ID_FIELD => Ok(SoundChanceField::SoundId),
+            SOUND_CHANCE_CHANCE_FIELD => Ok(SoundChanceField::Chance),
+            x => Err(E::unknown_field(x, SOUND_CHANCE_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for SoundChanceField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(SoundChanceFieldDeVisitor)
+    }
+}
+
+struct SoundChanceDeVisitor(SoundChanceSerde);
+
+impl<'de> de::Visitor<'de> for SoundChanceDeVisitor {
+    type Value = SoundChance;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "AI activate")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut sound_id = None;
+        let mut chance = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                SoundChanceField::SoundId =>
+                    if sound_id.replace(map.next_value_seed(
+                        ShortStringSerde { code_page: self.0.code_page, len: 32 }
+                    )?).is_some() {
+                        return Err(A::Error::duplicate_field(SOUND_CHANCE_SOUND_ID_FIELD));
+                    },
+                SoundChanceField::Chance => if chance.replace(map.next_value()?).is_some() {
+                    return Err(A::Error::duplicate_field(SOUND_CHANCE_CHANCE_FIELD));
+                },
+            }
+        }
+        let sound_id = sound_id.ok_or_else(|| A::Error::missing_field(SOUND_CHANCE_SOUND_ID_FIELD))?;
+        let chance = chance.ok_or_else(|| A::Error::missing_field(SOUND_CHANCE_CHANCE_FIELD))?;
+        Ok(SoundChance { sound_id, chance })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let sound_id = seq.next_element_seed(ShortStringSerde { code_page: self.0.code_page, len: 32 })?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let chance = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        Ok(SoundChance { sound_id, chance })
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for SoundChanceSerde {
+    type Value = SoundChance;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type SoundChance), SOUND_CHANCE_FIELDS, SoundChanceDeVisitor(self))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]

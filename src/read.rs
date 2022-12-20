@@ -1046,7 +1046,7 @@ fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
             )
         ),
         |((x, y, z), flags)| AiTravel {
-            x, y, z, flags
+            pos: Pos { x, y, z }, flags
         }
     )(input)
 }
@@ -1072,7 +1072,7 @@ fn ai_target_field<'a>(
             )
         )),
         |((x, y, z, duration, actor_id), reset, flags)| AiTarget {
-            x, y, z, duration, actor_id, reset, flags
+            pos: Pos { x, y, z }, duration, actor_id, reset, flags
         }
     )
 }
