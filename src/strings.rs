@@ -1,9 +1,12 @@
+use crate::code::CodePage;
+use crate::serde_helpers::StringSerde;
 use std::fmt::{self, Debug, Formatter};
 use std::iter::{self};
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::ser::SerializeSeq;
 use serde::ser::Error as ser_Error;
-use serde::de::{self};
+use serde::de::{self, DeserializeSeed};
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 
 #[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct StringZ {
@@ -19,68 +22,58 @@ impl<T: Into<String>> From<T> for StringZ {
     fn from(t: T) -> StringZ { StringZ { string: t.into(), has_tail_zero: true } }
 }
 
-impl Serialize for StringZ {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+#[derive(Clone)]
+pub struct StringZSerde {
+    pub code_page: Option<CodePage>,
+}
+
+impl SerializeSeed for StringZSerde {
+    type Value = StringZ;
+
+    fn serialize<S>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         if serializer.is_human_readable() {
-            let mut carets = self.string.len() - self.string.rfind(|x| x != '^')
-                .map_or(0, |i| i + self.string[i..].chars().next().unwrap().len_utf8());
-            if !self.has_tail_zero {
+            let mut carets = value.string.len() - value.string.rfind(|x| x != '^')
+                .map_or(0, |i| i + value.string[i..].chars().next().unwrap().len_utf8());
+            if !value.has_tail_zero {
                 carets += 1;
             }
-            let mut s = String::with_capacity(self.string.len() + carets);
-            s.push_str(&self.string);
+            let mut s = String::with_capacity(value.string.len() + carets);
+            s.push_str(&value.string);
             s.extend(iter::repeat('^').take(carets));
-            serializer.serialize_str(&s)
+            s.serialize(serializer)
         } else {
-            if !self.has_tail_zero && self.string.as_bytes().last() == Some(&0) {
+            if !value.has_tail_zero && value.string.as_bytes().last() == Some(&0) {
                 return Err(S::Error::custom("zero-terminated string value has tail zero"));
             }
-            let mut s = String::with_capacity(self.string.len() + if self.has_tail_zero { 1 } else { 0 });
-            s.push_str(&self.string);
-            if self.has_tail_zero {
+            let mut s = String::with_capacity(value.string.len() + if value.has_tail_zero { 1 } else { 0 });
+            s.push_str(&value.string);
+            if value.has_tail_zero {
                 s.push('\0');
             }
-            serializer.serialize_str(&s)
+            ValueWithSeed(s.as_str(), StringSerde { code_page: self.code_page, len: None }).serialize(serializer)
         }
     }
 }
 
-struct StringZDeserializer {
-    is_human_readable: bool
-}
-
-impl<'de> de::Visitor<'de> for StringZDeserializer {
+impl<'de> DeserializeSeed<'de> for StringZSerde {
     type Value = StringZ;
 
-    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "string")
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
-        self.visit_string(v.into())
-    }
-    
-    fn visit_string<E: de::Error>(self, mut string: String) -> Result<Self::Value, E> {
-        if self.is_human_readable {
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            let mut string = String::deserialize(deserializer)?;
             let carets = string.len() - string.rfind(|x| x != '^').map_or(0, |i| i + string[i..].chars().next().unwrap().len_utf8());
             let has_tail_zero = carets % 2 == 0;
             let carets = (carets + 1) / 2;
             string.truncate(string.len() - carets);
             Ok(StringZ { string, has_tail_zero })
         } else {
+            let mut string = StringSerde { code_page: self.code_page, len: None }.deserialize(deserializer)?;
             let has_tail_zero = string.as_bytes().last() == Some(&0);
             if has_tail_zero {
                 string.truncate(string.len() - 1);
             }
             Ok(StringZ { string, has_tail_zero })
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for StringZ {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        let is_human_readable = deserializer.is_human_readable();
-        deserializer.deserialize_string(StringZDeserializer { is_human_readable })
     }
 }
 

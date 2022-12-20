@@ -64,7 +64,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                 Err(S::Error::custom(format!("{} {} field should have string type", self.record_tag, self.field_tag)))
             },
             FieldType::StringZ => if let Field::StringZ(s) = self.field {
-                s.serialize(serializer)
+                ValueWithSeed(s, StringZSerde { code_page: self.code_page }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have zero-terminated string type", self.record_tag, self.field_tag)))
             },
@@ -563,7 +563,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                         code_page: self.code_page, len: len.map(|x| x.try_into().unwrap())
                     }.deserialize(deserializer).map(Field::String),
                 FieldType::StringZ =>
-                    StringZ::deserialize(deserializer).map(Field::StringZ),
+                    StringZSerde { code_page: self.code_page }.deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>
                     StringListSerde {
                         code_page: self.code_page, separator: newline.as_str(), len: None
