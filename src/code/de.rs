@@ -8,8 +8,6 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::str::{self};
 
-use crate::code::code_page::*;
-
 #[derive(Debug)]
 pub enum Error {
     Custom(String),
@@ -134,7 +132,6 @@ impl<'de> Reader<'de> for &'de [u8] {
 struct SeqDeserializer<'a, 'de, R: Reader<'de>> {
     start_pos: isize,
     size: u32,
-    code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
@@ -145,7 +142,7 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Self::Error> where T: DeserializeSeed<'de> {
         if self.reader.pos() == self.start_pos + self.size as isize { return Ok(None); }
         let element = seed.deserialize(EslDeserializer { 
-            isolated: None, code_page: self.code_page, reader: self.reader,
+            isolated: None, reader: self.reader,
             phantom: PhantomData, map_entry_value_size: None
         })?;
         if self.reader.pos() > self.start_pos + self.size as isize {
@@ -159,7 +156,6 @@ impl <'a, 'de, R: Reader<'de>> SeqAccess<'de> for SeqDeserializer<'a, 'de, R> {
 struct StructDeserializer<'r, 'a, 'de, R: Reader<'de>> {
     len: usize,
     isolated: Option<(isize, u32)>,
-    code_page: CodePage,
     reader: &'a mut R,
     map_entry_value_size: Option<&'r mut Option<u32>>,
     phantom: PhantomData<&'de ()>
@@ -175,7 +171,7 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
             if self.len == 0 { Some(size - (self.reader.pos() - start_pos) as u32) } else { None }
         });
         let element = seed.deserialize(EslDeserializer {
-            isolated, code_page: self.code_page, reader: self.reader,
+            isolated, reader: self.reader,
             phantom: PhantomData, map_entry_value_size: None
         })?;
         if let Some((start_pos, size)) = self.isolated {
@@ -192,7 +188,6 @@ impl <'r, 'a, 'de, R: Reader<'de>> SeqAccess<'de> for StructDeserializer<'r, 'a,
 
 #[derive(Debug)]
 struct MapDeserializer<'a, 'de, R: Reader<'de>> {
-    code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>,
     value_size: Option<u32>
@@ -207,7 +202,7 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
         if self.value_size.is_some() { return Ok(None); }
         let mut value_size = None;
         let key = seed.deserialize(EslDeserializer {
-            isolated: None, code_page: self.code_page, reader: self.reader,
+            isolated: None, reader: self.reader,
             phantom: PhantomData, map_entry_value_size: Some(&mut value_size)
         })?;
         self.value_size = Some(value_size.map_or_else(|| self.reader.read_u32::<LittleEndian>(), Ok)?);
@@ -216,7 +211,7 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
     
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error> where V: DeserializeSeed<'de> {
         seed.deserialize(EslDeserializer {
-            isolated: Some(self.value_size.unwrap()), code_page: self.code_page, reader: self.reader,
+            isolated: Some(self.value_size.unwrap()), reader: self.reader,
             phantom: PhantomData, map_entry_value_size: None
         })
     }
@@ -225,7 +220,6 @@ impl <'a, 'de, R: Reader<'de>> MapAccess<'de> for MapDeserializer<'a, 'de, R> {
 #[derive(Debug)]
 pub(crate) struct EnumDeserializer<'a, 'de, R: Reader<'de>> {
     size: u32,
-    code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
@@ -241,7 +235,6 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
         seed.deserialize(EslDeserializer {
             map_entry_value_size: None,
             isolated: Some(self.size),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData
         })
@@ -252,7 +245,6 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
             len,
             map_entry_value_size: None,
             isolated: Some((self.reader.pos(), self.size)),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
@@ -263,7 +255,6 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
             len: fields.len(),
             map_entry_value_size: None,
             isolated: Some((self.reader.pos(), self.size)),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
@@ -274,16 +265,15 @@ impl<'a, 'de, R: Reader<'de>> VariantAccess<'de> for EnumDeserializer<'a, 'de, R
 pub(crate) struct EslDeserializer<'r, 'a, 'de, R: Reader<'de>> {
     map_entry_value_size: Option<&'r mut Option<u32>>,
     isolated: Option<u32>,
-    code_page: CodePage,
     reader: &'a mut R,
     phantom: PhantomData<&'de ()>
 }
 
 impl<'r, 'a, 'de, R: Reader<'de>> EslDeserializer<'r, 'a, 'de, R> {
-    pub fn new(isolated: Option<u32>, code_page: CodePage, reader: &'a mut R) -> Self {
+    pub fn new(isolated: Option<u32>, reader: &'a mut R) -> Self {
         EslDeserializer {
             map_entry_value_size: None,
-            isolated, code_page, reader,
+            isolated, reader,
             phantom: PhantomData
         }
     }
@@ -424,14 +414,12 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         let size = self.deserialize_size()?;
         visitor.visit_seq(SeqDeserializer {
             size, start_pos: self.reader.pos(),
-            code_page: self.code_page,
             reader: self.reader, phantom: PhantomData
         })
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
         visitor.visit_map(MapDeserializer {
-            code_page: self.code_page,
             reader: self.reader, phantom: PhantomData,
             value_size: None
         })
@@ -443,7 +431,6 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
             len,
             map_entry_value_size,
             isolated: self.isolated.map(|size| (self.reader.pos(), size)),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
@@ -454,7 +441,6 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
             len,
             map_entry_value_size: None,
             isolated: self.isolated.map(|size| (self.reader.pos(), size)),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
@@ -465,7 +451,6 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
             len: fields.len(),
             map_entry_value_size: None,
             isolated: self.isolated.map(|size| (self.reader.pos(), size)),
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         })
@@ -486,7 +471,6 @@ impl <'r, 'a, 'de, R: Reader<'de>> EnumAccess<'de> for EslDeserializer<'r, 'a, '
         let res: Result<V::Value, Self::Error> = seed.deserialize(variant_index.into_deserializer());
         Ok((res?, EnumDeserializer {
             size: variant_index,
-            code_page: self.code_page,
             reader: self.reader,
             phantom: PhantomData,
         }))
@@ -516,7 +500,6 @@ mod tests {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
             isolated: Some(data.len() as u32),
-            code_page: CodePage::English,
             phantom: PhantomData
         }).unwrap();
         assert_eq!(d, Abcd { a: 5, c: 90, d: "S".into() });
@@ -529,7 +512,6 @@ mod tests {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
             isolated: None,
-            code_page: CodePage::Russian,
             phantom: PhantomData
         }).unwrap();
         assert_eq!(d, Abcd { a: 5, c: 90, d: "S".into() });
@@ -573,7 +555,6 @@ mod tests {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
             isolated: Some(data.len() as u32),
-            code_page: CodePage::Russian,
             phantom: PhantomData
         }).unwrap();
         assert_eq!(d.i, -3);
@@ -594,7 +575,6 @@ mod tests {
             reader: &mut (&data[..]),
             map_entry_value_size: None,
             isolated: Some(data.len() as u32),
-            code_page: CodePage::Russian,
             phantom: PhantomData
         }).unwrap();
         assert_eq!(d.len(), 1);

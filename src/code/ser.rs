@@ -7,8 +7,6 @@ use serde::serde_if_integer128;
 use std::io::{self, Write};
 use byteorder::{WriteBytesExt, LittleEndian};
 
-use crate::code::code_page::*;
-
 #[derive(Debug)]
 pub enum Error {
     Custom(String),
@@ -255,20 +253,18 @@ impl Writer for Size {
 #[derive(Debug)]
 pub(crate) struct EslSerializer<'r, 'a, W: Writer> {
     isolated: bool,
-    code_page: CodePage,
     writer: &'a mut W,
     map_entry_value_buf: Option<&'r mut Option<W::Buf>>,
 }
 
 impl<'r, 'a, W: Writer> EslSerializer<'r, 'a, W> {
-    pub fn new(isolated: bool, code_page: CodePage, writer: &'a mut W) -> Self {
-        EslSerializer { isolated, code_page, writer, map_entry_value_buf: None }
+    pub fn new(isolated: bool, writer: &'a mut W) -> Self {
+        EslSerializer { isolated, writer, map_entry_value_buf: None }
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct SeqSerializer<'a, W: Writer> {
-    code_page: CodePage,
     writer: &'a mut W,
     last_element_has_zero_size: bool,
     buf_and_start_pos: Option<(W::Buf, usize)>,
@@ -276,14 +272,12 @@ pub(crate) struct SeqSerializer<'a, W: Writer> {
 
 #[derive(Debug)]
 pub(crate) struct MapSerializer<'a, W: Writer> {
-    code_page: CodePage,
     writer: &'a mut W,
     value_buf_and_pos: Option<(W::Buf, usize)>,
 }
 
 #[derive(Debug)]
 pub(crate) struct StructSerializer<'r, 'a, W: Writer> {
-    code_page: CodePage,
     writer: &'a mut W,
     len: Option<usize>,
     start_pos_and_variant_index: Option<(usize, u32)>,
@@ -298,7 +292,7 @@ impl<'a, W: Writer> SerializeSeq for SeqSerializer<'a, W> {
         let element_pos = self.writer.pos();
         v.serialize(EslSerializer {
             isolated: false,
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             map_entry_value_buf: None,
         })?;
         self.last_element_has_zero_size = self.writer.pos() == element_pos;
@@ -324,7 +318,6 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
         let mut value_buf = None;
         key.serialize(EslSerializer {
             writer: self.writer,
-            code_page: self.code_page,
             map_entry_value_buf: Some(&mut value_buf),
             isolated: false,
         })?;
@@ -341,7 +334,6 @@ impl<'a, W: Writer> SerializeMap for MapSerializer<'a, W> {
         v.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page,
             map_entry_value_buf: None,
         })?;
         if let Some((value_buf, value_pos)) = self.value_buf_and_pos.take() {
@@ -363,7 +355,7 @@ impl<'r, 'a, W: Writer> StructSerializer<'r, 'a, W> {
         }
         v.serialize(EslSerializer {
             isolated: self.len.map_or(false, |len| len == 0),
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             map_entry_value_buf: None,
         })?;
         if let &mut Some(ref mut value_buf) = &mut self.value_buf {
@@ -590,7 +582,6 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         value.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page,
             map_entry_value_buf: None,
         })?;
         if self.writer.pos() == value_pos {
@@ -613,7 +604,6 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         v.serialize(EslSerializer {
             isolated: true,
             writer: self.writer,
-            code_page: self.code_page,
             map_entry_value_buf: None,
         })?;
         let variant_size = size(self.writer.pos() - value_pos)?;
@@ -637,7 +627,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
             } else {
                 Some((self.writer.pos(), variant_index))
             },
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             value_buf: None
         })
     }
@@ -652,7 +642,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         Ok(StructSerializer {
             len: Some(len),
             start_pos_and_variant_index: Some((self.writer.pos(), variant_index)),
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             value_buf: None
         })
     }
@@ -660,7 +650,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, Self::Error> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             start_pos_and_variant_index: None,
             value_buf: self.map_entry_value_buf
         })
@@ -669,7 +659,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_tuple_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             start_pos_and_variant_index: None,
             value_buf: None
         })
@@ -678,7 +668,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
     fn serialize_struct(self, _: &'static str, len: usize) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(StructSerializer {
             len: if self.isolated { Some(len) } else { None },
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
             start_pos_and_variant_index: None,
             value_buf: None
         })
@@ -688,7 +678,6 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         let buf = if !self.isolated { Some((self.writer.begin_isolate()?, self.writer.pos())) } else { None };
         Ok(SeqSerializer {
             writer: self.writer,
-            code_page: self.code_page,
             last_element_has_zero_size: false,
             buf_and_start_pos: buf
         })
@@ -698,7 +687,7 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         assert_eq!(len, Some(1), "Maps with length different from 1 not supported.");
         Ok(MapSerializer {
             value_buf_and_pos: None,
-            writer: self.writer, code_page: self.code_page,
+            writer: self.writer,
         })
     }
 }
@@ -720,7 +709,7 @@ mod tests {
     fn vec_serialize_struct() {
         let s = Abcd { a: 5, c: 90, d: vec![b'S'] };
         let mut v = Vec::new();
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut v)).unwrap();
         assert_eq!(v, [5, 0, 90, 0, 0, 0, 83]);
     }
 
@@ -728,7 +717,7 @@ mod tests {
     fn vec_serialize_struct_not_isolated() {
         let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
-        s.serialize(EslSerializer::new(false, CodePage::Russian, &mut v)).unwrap();
+        s.serialize(EslSerializer::new(false, &mut v)).unwrap();
         assert_eq!(v, [5, 0, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
@@ -766,7 +755,7 @@ mod tests {
         };
         s.map.insert(Key { variant: Variant::Variant2, s: "str".into() }, "value".into());
         let mut v = Vec::new();
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut v)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
@@ -782,7 +771,7 @@ mod tests {
             Key { variant: Variant::Variant1, s: "xyz".into() }
         ), 22);
         let mut v = Vec::new();
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut v)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
@@ -802,7 +791,7 @@ mod tests {
             Key { variant: Variant::Variant1, s: "xyz".into() }
         )), 22);
         let mut v = Vec::new();
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut v)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut v)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             1, 3, 0, 0, 0, 120, 121, 122,
@@ -816,7 +805,7 @@ mod tests {
         let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut w)).unwrap();
         assert_eq!(v, [5, 0, 90, 0, 0, 0, 83]);
     }
 
@@ -825,7 +814,7 @@ mod tests {
         let s = Abcd { a: 5, c: 90, d: "S".into() };
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer::new(false, CodePage::Russian, &mut w)).unwrap();
+        s.serialize(EslSerializer::new(false, &mut w)).unwrap();
         assert_eq!(v, [5, 0, 90, 0, 0, 0, 1, 0, 0, 0, 83]);
     }
 
@@ -839,7 +828,7 @@ mod tests {
         s.map.insert(Key { variant: Variant::Variant2, s: "xyz".into() }, "value".into());
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut w)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 120, 121, 122,
             5, 0, 0, 0, 118, 97, 108, 117, 101,
@@ -856,7 +845,7 @@ mod tests {
         ), 22);
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut w)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             8, 0, 0, 0,
@@ -874,7 +863,7 @@ mod tests {
         )), 22);
         let mut v = Vec::new();
         let mut w = GenericWriter { write_buf: None, writer: &mut v, pos: 0 };
-        s.serialize(EslSerializer::new(true, CodePage::Russian, &mut w)).unwrap();
+        s.serialize(EslSerializer::new(true, &mut w)).unwrap();
         assert_eq!(v, vec![
             2, 3, 0, 0, 0, 115, 116, 114,
             1, 3, 0, 0, 0, 120, 121, 122,

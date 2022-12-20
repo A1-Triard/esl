@@ -156,7 +156,9 @@ mod tests {
     fn serialize_file(file: &Vec<Record>, isolated: bool) -> Result<Vec<u8>, code::ser::Error> {
         let mut res = Vec::new();
         for (is_last, record) in file.iter().identify_last() {
-            code::serialize_into_vec(&ValueWithSeed(record, RecordSerde { code_page: Some(CodePage::Russian) }), &mut res, CodePage::Russian, isolated && is_last)?;
+            code::serialize_into_vec(
+                &ValueWithSeed(record, RecordSerde { code_page: Some(CodePage::Russian) }), &mut res, isolated && is_last
+            )?;
         }
         Ok(res)
     }
@@ -176,7 +178,7 @@ mod tests {
     }
 
     fn deserialize_record(bytes: &mut &[u8], isolated: bool) -> Result<Record, code::de::Error> {
-        code::deserialize_from_slice_seed(RecordSerde { code_page: Some(CodePage::Russian) }, bytes, CodePage::Russian, isolated)
+        code::deserialize_from_slice_seed(RecordSerde { code_page: Some(CodePage::Russian) }, bytes, isolated)
     }
 
     #[test]
@@ -343,7 +345,7 @@ mod tests {
                 }))
             ]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
@@ -352,7 +354,8 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false)
+            .unwrap();
         assert_eq!(record, deserialized);
     }
 
@@ -371,7 +374,7 @@ mod tests {
                 speed: 1.0
             }))]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
@@ -380,7 +383,8 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false)
+            .unwrap();
         assert_eq!(record, deserialized);
     }
 
@@ -393,7 +397,7 @@ mod tests {
                 "\0\0\0".into(),
             ]))]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), CodePage::English, false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
             let mut records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bytes);
@@ -402,7 +406,7 @@ mod tests {
             read
         };
         assert_eq!(record, read);
-        let deserialized = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, CodePage::Russian, false).unwrap();
+        let deserialized = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false).unwrap();
         assert_eq!(record, deserialized);
     }
 
