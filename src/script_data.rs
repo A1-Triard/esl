@@ -1,16 +1,19 @@
 #![cfg(esl_script_data)]
+use crate::field::eq_f32;
 use crate::code_page::CodePage;
-use crate::serde_helpers::HexDump;
+use crate::serde_helpers::{F32AsIsSerde, HexDump};
+use educe::Educe;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;
 use macro_attr_2018::macro_attr;
 use nameof::name_of;
+use phantom_type::PhantomType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
 use serde::ser::SerializeStruct;
 use serde::ser::Error as ser_Error;
-use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
+use serde_serialize_seed::{PairSerde, SerializeSeed, StatelessSerde, ValueWithSeed};
 use std::fmt::{self, Formatter};
 
 macro_attr! {
@@ -39,6 +42,18 @@ pub enum Var {
     Global { name: String },
 }
 
+fn write_char(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
+    let bytes = code_page.encode(s).map_err(|e| match e {
+        None => format!("the '{s}' string does not correspond to any source byte sequence"),
+        Some(c) => format!("the '{c}' char is not representable in {code_page:?} func page")
+    })?;
+    if bytes.len() != 1 {
+        return Err(format!("multiply chars '{s}"));
+    }
+    res.push(bytes[0]);
+    Ok(())
+}
+
 fn write_text(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
     let bytes = code_page.encode(s).map_err(|e| match e {
         None => format!("the '{s}' string does not correspond to any source byte sequence"),
@@ -57,6 +72,17 @@ fn write_u16(v: u16, res: &mut Vec<u8>) {
 
 fn write_i16(v: i16, res: &mut Vec<u8>) {
     write_u16(v as u16, res);
+}
+
+fn write_u32(v: u32, res: &mut Vec<u8>) {
+    res.push((v & 0xFF) as u8);
+    res.push((v >> 8) as u8);
+    res.push((v >> 16) as u8);
+    res.push((v >> 24) as u8);
+}
+
+fn write_f32(v: f32, res: &mut Vec<u8>) {
+    write_u32(v.to_bits(), res);
 }
 
 impl Var {
@@ -86,6 +112,8 @@ macro_attr! {
         EndIf = 0x0109,
         SetRef = 0x010C,
         Return = 0x0124,
+        Rotate = 0x1007,
+        StartCombat = 0x1019,
         StopScript = 0x101C,
         Journal = 0x10CC,
         RaiseRank = 0x10CE,
@@ -106,6 +134,7 @@ pub enum FuncParams {
     Str,
     StrWordInt,
     StrWord,
+    CharFloat,
 }
 
 impl Func {
@@ -117,6 +146,8 @@ impl Func {
             Func::EndIf => FuncParams::None,
             Func::SetRef => FuncParams::Str,
             Func::Return => FuncParams::None,
+            Func::Rotate => FuncParams::CharFloat,
+            Func::StartCombat => FuncParams::Str,
             Func::StopScript => FuncParams::Str,
             Func::Journal => FuncParams::StrWordInt,
             Func::RaiseRank => FuncParams::None,
@@ -128,7 +159,9 @@ impl Func {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
+#[derive(Educe)]
+#[educe(PartialEq, Eq)]
 pub enum FuncArgs {
     None,
     VarStr(Var, String),
@@ -136,6 +169,7 @@ pub enum FuncArgs {
     Str(String),
     StrWordInt(String, u16, i16),
     StrWord(String, u16),
+    CharFloat(String, #[educe(PartialEq(method="eq_f32"))] f32),
 }
 
 #[derive(Clone)]
@@ -157,6 +191,8 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::Str(a1) => a1.serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::CharFloat(a1, a2) =>
+                ValueWithSeed(&(a1, *a2), PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde)).serialize(serializer),
         }
     }
 }
@@ -174,6 +210,10 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2, a3) = <(String, u16, i16)>::deserialize(deserializer)?; FuncArgs::StrWordInt(a1, a2, a3)
             },
             FuncParams::StrWord => { let (a1, a2) = <(String, u16)>::deserialize(deserializer)?; FuncArgs::StrWord(a1, a2) },
+            FuncParams::CharFloat => {
+                let (a1, a2) = PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde).deserialize(deserializer)?;
+                FuncArgs::CharFloat(a1, a2)
+            },
         })
     }
 }
@@ -187,6 +227,7 @@ impl FuncArgs {
             FuncArgs::Str(..) => FuncParams::Str,
             FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
             FuncArgs::StrWord(..) => FuncParams::StrWord,
+            FuncArgs::CharFloat(..) => FuncParams::CharFloat,
         }
     }
 
@@ -211,6 +252,10 @@ impl FuncArgs {
                 write_text(code_page, a1, res)?;
                 write_u16(*a2, res);
             },
+            FuncArgs::CharFloat(a1, a2) => {
+                write_char(code_page, a1, res)?;
+                write_f32(*a2, res);
+            },
         }
         Ok(())
     }
@@ -223,6 +268,10 @@ mod parser {
 
     fn text<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
         map(flat_map(le_u8(), |len| take(len.into())), move |x| code_page.decode(x))
+    }
+
+    fn ch<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
+        map(take(1), move |x| code_page.decode(x))
     }
 
     fn local_var<'a>(var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], u16, (), !> {
@@ -266,6 +315,10 @@ mod parser {
         map(text(code_page), |a1| FuncArgs::Str(a1))
     }
 
+    fn char_float_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(seq_2(ch(code_page), le_u32()), |(a1, a2)| FuncArgs::CharFloat(a1, f32::from_bits(a2)))
+    }
+
     fn str_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(seq_2(text(code_page), le_u16()), |(a1, a2)| FuncArgs::StrWord(a1, a2))
     }
@@ -286,6 +339,7 @@ mod parser {
                 FuncParams::Str => str_args(code_page)(input),
                 FuncParams::StrWordInt => str_word_int_args(code_page)(input),
                 FuncParams::StrWord => str_word_args(code_page)(input),
+                FuncParams::CharFloat => char_float_args(code_page)(input),
             }
         }
     }
