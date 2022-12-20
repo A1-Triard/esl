@@ -56,14 +56,10 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
             FieldType::String(len) => if let Field::String(s) = self.field {
-                if let Some(len) = len {
-                    ValueWithSeed(s.as_str(), ShortStringSerde {
-                        code_page: self.code_page,
-                        len: len.try_into().unwrap()
-                    }).serialize(serializer)
-                } else {
-                    serializer.serialize_str(s)
-                }
+                ValueWithSeed(s.as_str(), ShortStringSerde {
+                    code_page: self.code_page,
+                    len: len.map(|x| x.try_into().unwrap())
+                }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!("{} {} field should have string type", self.record_tag, self.field_tag)))
             },
@@ -562,11 +558,10 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
-                FieldType::String(len) => if let Some(len) = len {
-                    ShortStringSerde { code_page: self.code_page, len: len.try_into().unwrap() }.deserialize(deserializer)
-                } else {
-                    String::deserialize(deserializer)
-                }.map(Field::String),
+                FieldType::String(len) =>
+                    ShortStringSerde {
+                        code_page: self.code_page, len: len.map(|x| x.try_into().unwrap())
+                    }.deserialize(deserializer).map(Field::String),
                 FieldType::StringZ =>
                     StringZ::deserialize(deserializer).map(Field::StringZ),
                 FieldType::Multiline(newline) =>

@@ -308,7 +308,7 @@ impl<'de> de::Visitor<'de> for F32HRDeserializer {
 #[derive(Clone)]
 pub struct ShortStringSerde {
     pub code_page: Option<CodePage>,
-    pub len: usize
+    pub len: Option<usize>
 }
 
 impl SerializeSeed for ShortStringSerde {
@@ -325,14 +325,20 @@ impl SerializeSeed for ShortStringSerde {
                 None => S::Error::custom(format!("the '{value}' string does not correspond to any source byte sequence")),
                 Some(c) => S::Error::custom(format!("the '{c}' char is not representable in {code_page:?} code page"))
             })?;
-            if bytes.len() > self.len {
-                return Err(S::Error::custom(format!("short string (len = {}) does not fit (max len = {})", bytes.len(), self.len)));
+            if let Some(len) = self.len {
+                if bytes.len() > len {
+                    return Err(S::Error::custom(format!(
+                        "short string (len = {}) does not fit (max len = {})", bytes.len(), len
+                    )));
+                }
+                if bytes.last() == Some(&0) {
+                    return Err(S::Error::custom("short string value has tail zero"));
+                }
+                bytes.resize(len, 0);
+                ValueWithSeed(&bytes[..], ArraySerde { len, phantom: PhantomType::new() }).serialize(serializer)
+            } else {
+                bytes.serialize(serializer)
             }
-            if bytes.last() == Some(&0) {
-                return Err(S::Error::custom("short string value has tail zero"));
-            }
-            bytes.resize(self.len, 0);
-            ValueWithSeed(&bytes[..], ArraySerde { len: self.len, phantom: PhantomType::new() }).serialize(serializer)
         }
     }
 }
@@ -344,9 +350,17 @@ impl<'de> DeserializeSeed<'de> for ShortStringSerde {
         if deserializer.is_human_readable() {
             String::deserialize(deserializer)
         } else {
-            let bytes = ArraySerde { len: self.len, phantom: PhantomType::new() }.deserialize(deserializer)?;
-            let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
-            let bytes = &bytes[.. bytes.len() - trim];
+            let bytes = if let Some(len) = self.len {
+                ArraySerde { len, phantom: PhantomType::new() }.deserialize(deserializer)?
+            } else {
+                <Vec<u8>>::deserialize(deserializer)?
+            };
+            let bytes = if self.len.is_some() {
+                let trim = bytes.iter().copied().rev().take_while(|&x| x == 0).count();
+                &bytes[.. bytes.len() - trim]
+            } else {
+                &bytes
+            };
             let Some(code_page) = self.code_page else {
                 return Err(D::Error::custom("code page required for binary serialization"));
             };
@@ -391,11 +405,7 @@ impl SerializeSeed for StringListSerde {
                 text.push_str(self.separator);
             }
             text.truncate(text.len() - self.separator.len());
-            if let Some(len) = self.len {
-                ValueWithSeed(text.as_str(), ShortStringSerde { code_page: self.code_page, len }).serialize(serializer)
-            } else {
-                text.serialize(serializer)
-            }
+            ValueWithSeed(text.as_str(), ShortStringSerde { code_page: self.code_page, len: self.len }).serialize(serializer)
         }
     }
 }
@@ -410,11 +420,7 @@ impl<'de> DeserializeSeed<'de> for StringListSerde {
             if self.separator.is_empty() {
                 return Err(D::Error::custom("empty string list separator"));
             }
-            let s = if let Some(len) = self.len {
-                ShortStringSerde { code_page: self.code_page, len }.deserialize(deserializer)?
-            } else {
-                String::deserialize(deserializer)?
-            };
+            let s = ShortStringSerde { code_page: self.code_page, len: self.len }.deserialize(deserializer)?;
             Ok(s.split(self.separator).map(|x| x.into()).collect())
         }
     }
