@@ -1,15 +1,17 @@
 #![cfg(esl_script_data)]
-
 use crate::code_page::CodePage;
+use crate::serde_helpers::HexDump;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;
-use iter_identify_first_last::IteratorIdentifyFirstLastExt;
 use macro_attr_2018::macro_attr;
+use nameof::name_of;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::DeserializeSeed;
+use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
+use serde::ser::SerializeStruct;
 use serde::ser::Error as ser_Error;
-use serde_serialize_seed::SerializeSeed;
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
+use std::fmt::{self, Formatter};
 
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -40,7 +42,7 @@ pub enum Var {
 fn write_text(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
     let bytes = code_page.encode(s).map_err(|e| match e {
         None => format!("the '{s}' string does not correspond to any source byte sequence"),
-        Some(c) => format!("the '{c}' char is not representable in {code_page:?} code page")
+        Some(c) => format!("the '{c}' char is not representable in {code_page:?} func page")
     })?;
     let len = bytes.len().try_into().map_err(|_| format!("too long string '{s}'"))?;
     res.push(len);
@@ -73,99 +75,146 @@ impl Var {
     }
 }
 
-mod hex_dump {
-    use super::*;
-    use crate::serde_helpers::HexDump;
-    use serde::{Serializer, Deserializer, Serialize};
-    use serde_serialize_seed::ValueWithSeed;
-
-    pub fn serialize<S>(v: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        ValueWithSeed(&v[..], HexDump).serialize(serializer)
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error> where D: Deserializer<'de> {
-        HexDump.deserialize(deserializer)
+macro_attr! {
+    #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+    #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
+    #[repr(u16)]
+    pub enum Func {
+        End = 0x0101,
+        Set = 0x0105,
+        If = 0x0106,
+        EndIf = 0x0109,
+        SetRef = 0x010C,
+        Return = 0x0124,
+        StopScript = 0x101C,
+        Journal = 0x10CC,
+        RaiseRank = 0x10CE,
+        AddItem = 0x10D4,
+        Enable = 0x10DA,
+        Disable = 0x10DB,
+        Drop = 0x110D,
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(tag="stmt")]
-#[repr(u16)]
-pub enum Stmt {
-    Raw { #[serde(with="hex_dump")] bytes: Vec<u8> } = 0x0000,
-    End = 0x0101,
-    Set { var: Var, expr: String } = 0x0105,
-    If { stmts: u8, cond: String } = 0x0106,
-    EndIf = 0x0109,
-    SetRef { id: String } = 0x010C,
-    Return = 0x0124,
-    StopScript { id: String } = 0x101C,
-    Journal { id: String, value: u16, extra: i16 } = 0x10CC,
-    RaiseRank = 0x10CE,
-    AddItem { id: String, count: u16 } = 0x10D4,
-    Enable = 0x10DA,
-    Disable = 0x10DB,
-    Drop { id: String, count: u16 } = 0x110D,
+enum_serde!(Func, "func", as u16, Unsigned, u64);
+
+#[derive(Debug, Clone, Eq, PartialEq, Copy, Ord, PartialOrd, Hash)]
+pub enum FuncParams {
+    None,
+    VarStr,
+    ByteStr,
+    Str,
+    StrWordInt,
+    StrWord,
 }
 
-impl Stmt {
-    fn write(&self, code_page: CodePage, is_last: bool, res: &mut Vec<u8>) -> Result<(), String> {
+impl Func {
+    pub fn params(self) -> FuncParams {
         match self {
-            Stmt::Raw { bytes } => {
-                if bytes.is_empty() { return Err("the 'raw bytes' should not be empty".into()); }
-                if !is_last { return Err("the 'raw bytes' stmt should be the last".into()); }
-                if !parser::is_raw_stmt(code_page, bytes) {
-                    return Err("known stmt signature in raw bytes".into());
-                }
-                res.extend_from_slice(&bytes);
+            Func::End => FuncParams::None,
+            Func::Set => FuncParams::VarStr,
+            Func::If => FuncParams::ByteStr,
+            Func::EndIf => FuncParams::None,
+            Func::SetRef => FuncParams::Str,
+            Func::Return => FuncParams::None,
+            Func::StopScript => FuncParams::Str,
+            Func::Journal => FuncParams::StrWordInt,
+            Func::RaiseRank => FuncParams::None,
+            Func::AddItem => FuncParams::StrWord,
+            Func::Enable => FuncParams::None,
+            Func::Disable => FuncParams::None,
+            Func::Drop => FuncParams::StrWord,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum FuncArgs {
+    None,
+    VarStr(Var, String),
+    ByteStr(u8, String),
+    Str(String),
+    StrWordInt(String, u16, i16),
+    StrWord(String, u16),
+}
+
+#[derive(Clone)]
+pub struct FuncArgsSerde {
+    pub params: FuncParams
+}
+
+impl SerializeSeed for FuncArgsSerde {
+    type Value = FuncArgs;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        if self.params != value.params() {
+            return Err(S::Error::custom("stmt args params mismatch"));
+        }
+        match value {
+            FuncArgs::None => ().serialize(serializer),
+            FuncArgs::VarStr(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::ByteStr(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Str(a1) => a1.serialize(serializer),
+            FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
+            FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
+    type Value = FuncArgs;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        Ok(match self.params {
+            FuncParams::None => { <()>::deserialize(deserializer)?; FuncArgs::None },
+            FuncParams::VarStr => { let (a1, a2) = <(Var, String)>::deserialize(deserializer)?; FuncArgs::VarStr(a1, a2) },
+            FuncParams::ByteStr => { let (a1, a2) = <(u8, String)>::deserialize(deserializer)?; FuncArgs::ByteStr(a1, a2) },
+            FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
+            FuncParams::StrWordInt => {
+                let (a1, a2, a3) = <(String, u16, i16)>::deserialize(deserializer)?; FuncArgs::StrWordInt(a1, a2, a3)
             },
-            Stmt::Set { var, expr } => {
-                write_u16(0x0105, res);
-                var.write(code_page, res)?;
-                write_text(code_page, expr, res)?;
+            FuncParams::StrWord => { let (a1, a2) = <(String, u16)>::deserialize(deserializer)?; FuncArgs::StrWord(a1, a2) },
+        })
+    }
+}
+
+impl FuncArgs {
+    pub fn params(&self) -> FuncParams {
+        match self {
+            FuncArgs::None => FuncParams::None,
+            FuncArgs::VarStr(..) => FuncParams::VarStr,
+            FuncArgs::ByteStr(..) => FuncParams::ByteStr,
+            FuncArgs::Str(..) => FuncParams::Str,
+            FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
+            FuncArgs::StrWord(..) => FuncParams::StrWord,
+        }
+    }
+
+    fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
+        match self {
+            FuncArgs::None => { },
+            FuncArgs::VarStr(a1, a2) => {
+                a1.write(code_page, res)?;
+                write_text(code_page, a2, res)?;
             },
-            Stmt::If { stmts, cond } => {
-                write_u16(0x0106, res);
-                res.push(*stmts);
-                write_text(code_page, cond, res)?;
+            FuncArgs::ByteStr(a1, a2) => {
+                res.push(*a1);
+                write_text(code_page, a2, res)?;
             },
-            Stmt::EndIf => write_u16(0x0109, res),
-            Stmt::End => write_u16(0x0101, res),
-            Stmt::Return => write_u16(0x0124, res),
-            Stmt::Enable => write_u16(0x10DA, res),
-            Stmt::Disable => write_u16(0x10DB, res),
-            Stmt::RaiseRank => write_u16(0x10CE, res),
-            Stmt::SetRef { id } => {
-                write_u16(0x010C, res);
-                write_text(code_page, id, res)?;
+            FuncArgs::Str(a1) => write_text(code_page, a1, res)?,
+            FuncArgs::StrWordInt(a1, a2, a3) => {
+                write_text(code_page, a1, res)?;
+                write_u16(*a2, res);
+                write_i16(*a3, res);
             },
-            Stmt::StopScript { id } => {
-                write_u16(0x101C, res);
-                write_text(code_page, id, res)?;
-            },
-            Stmt::AddItem { id, count } => {
-                write_u16(0x10D4, res);
-                write_text(code_page, id, res)?;
-                write_u16(*count, res);
-            },
-            Stmt::Journal { id, value, extra } => {
-                write_u16(0x10CC, res);
-                write_text(code_page, id, res)?;
-                write_u16(*value, res);
-                write_i16(*extra, res);
-            },
-            Stmt::Drop { id, count } => {
-                write_u16(0x110D, res);
-                write_text(code_page, id, res)?;
-                write_u16(*count, res);
+            FuncArgs::StrWord(a1, a2) => {
+                write_text(code_page, a1, res)?;
+                write_u16(*a2, res);
             },
         }
         Ok(())
     }
 }
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ScriptData(Vec<Stmt>);
 
 mod parser {
     use super::*;
@@ -193,158 +242,298 @@ mod parser {
         )
     }
 
-    fn set_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+    fn var_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
-            seq_3(
-                tag([0x05, 0x01]),
+            seq_2(
                 var(code_page),
                 text(code_page)
             ),
-            |(_, var, expr)| Stmt::Set { var, expr }
+            |(a1, a2)| FuncArgs::VarStr(a1, a2)
         )
     }
 
-    fn if_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+    fn byte_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
-            seq_3(
-                tag([0x06, 0x01]),
+            seq_2(
                 le_u8(),
                 text(code_page)
             ),
-            |(_, stmts, cond)| Stmt::If { stmts, cond }
+            |(a1, a2)| FuncArgs::ByteStr(a1, a2)
         )
     }
 
-    fn end_if_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0x09, 0x01]), |_| Stmt::EndIf)(input)
+    fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(text(code_page), |a1| FuncArgs::Str(a1))
     }
 
-    fn return_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0x24, 0x01]), |_| Stmt::Return)(input)
+    fn str_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(seq_2(text(code_page), le_u16()), |(a1, a2)| FuncArgs::StrWord(a1, a2))
     }
 
-    fn end_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0x01, 0x01]), |_| Stmt::End)(input)
-    }
-
-    fn enable_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0xDA, 0x10]), |_| Stmt::Enable)(input)
-    }
-
-    fn disable_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0xDB, 0x10]), |_| Stmt::Disable)(input)
-    }
-
-    fn raise_rank_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
-        map(tag([0xCE, 0x10]), |_| Stmt::RaiseRank)(input)
-    }
-
-    fn set_ref_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
-        map(seq_2(tag([0x0C, 0x01]), text(code_page)), |(_, id)| Stmt::SetRef { id })
-    }
-
-    fn stop_script_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
-        map(seq_2(tag([0x1C, 0x10]), text(code_page)), |(_, id)| Stmt::StopScript { id })
-    }
-
-    fn add_item_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
-        map(seq_3(tag([0xD4, 0x10]), text(code_page), le_u16()), |(_, id, count)| Stmt::AddItem { id, count })
-    }
-
-    fn journal_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+    fn str_word_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
-            seq_4(tag([0xCC, 0x10]), text(code_page), le_u16(), le_i16()),
-            |(_, id, value, extra)| Stmt::Journal { id, value, extra }
+            seq_3(text(code_page), le_u16(), le_i16()),
+            |(a1, a2, a3)| FuncArgs::StrWordInt(a1, a2, a3)
         )
     }
 
-    fn drop_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
-        map(seq_3(tag([0x0D, 0x11]), text(code_page), le_u16()), |(_, id, count)| Stmt::Drop { id, count })
+    fn func_args<'a>(code_page: CodePage, func: Func) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        move |input| {
+            match func.params() {
+                FuncParams::None => Ok((input, FuncArgs::None)),
+                FuncParams::VarStr => var_str_args(code_page)(input),
+                FuncParams::ByteStr => byte_str_args(code_page)(input),
+                FuncParams::Str => str_args(code_page)(input),
+                FuncParams::StrWordInt => str_word_int_args(code_page)(input),
+                FuncParams::StrWord => str_word_args(code_page)(input),
+            }
+        }
     }
 
-    fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, !, !> {
-        alt_14(
-            set_stmt(code_page),
-            if_stmt(code_page),
-            end_if_stmt,
-            end_stmt,
-            return_stmt,
-            enable_stmt,
-            disable_stmt,
-            raise_rank_stmt,
-            set_ref_stmt(code_page),
-            stop_script_stmt(code_page),
-            add_item_stmt(code_page),
-            journal_stmt(code_page),
-            drop_stmt(code_page),
-            map(take_all(), |bytes: &[u8]| Stmt::Raw { bytes: bytes.into() })
-        )
+    fn func(input: &[u8]) -> NomRes<&[u8], Func, (), !> {
+        map_res(le_u16(), |func| Func::n(func).ok_or(()))(input)
     }
 
-    pub fn is_raw_stmt(code_page: CodePage, bytes: &[u8]) -> bool {
-        matches!(result_from_parser(stmt(code_page)(bytes)).map_or_else(|e| match e {
-            NomErr::Error(e) => e,
-            NomErr::Failure(e) => e
-        }, |x| x.1), Stmt::Raw { .. })
+    pub fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        flat_map(func, move |func| map(func_args(code_page, func), move |args| Stmt { func, args }))
     }
 
-    pub fn stmts(code_page: CodePage, bytes: &[u8]) -> Vec<Stmt> {
-        result_from_parser(many0(stmt(code_page))(bytes)).map_or_else(|e| match e {
-            NomErr::Error(e) => e,
-            NomErr::Failure(e) => e
-        }, |x| x.1)
+    pub fn stmts(code_page: CodePage, input: &[u8]) -> (&[u8], Vec<Stmt>) {
+        result_from_parser(many0(stmt(code_page))(input)).unwrap_or_else(|x| match x {
+            NomErr::Error(x) => x,
+            NomErr::Failure(x) => x
+        })
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Stmt {
+    pub func: Func,
+    pub args: FuncArgs,
+}
+
+impl Stmt {
+    fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
+        write_u16(self.func as u16, res);
+        self.args.write(code_page, res)?;
+        Ok(())
+    }
+}
+
+const STMT_FUNC_FIELD: &str = name_of!(func in Stmt);
+const STMT_ARGS_FIELD: &str = name_of!(args in Stmt);
+
+const STMT_FIELDS: &[&'static str] = &[
+    STMT_FUNC_FIELD,
+    STMT_ARGS_FIELD,
+];
+
+impl Serialize for Stmt {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type Stmt), 2)?;
+        serializer.serialize_field(STMT_FUNC_FIELD, &self.func)?;
+        serializer.serialize_field(STMT_ARGS_FIELD, &ValueWithSeed(&self.args, FuncArgsSerde { params: self.func.params() }))?;
+        serializer.end()
+    }
+}
+
+enum StmtField {
+    Func,
+    Args,
+}
+
+struct StmtFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for StmtFieldDeVisitor {
+    type Value = StmtField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "stmt field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            STMT_FUNC_FIELD => Ok(StmtField::Func),
+            STMT_ARGS_FIELD => Ok(StmtField::Args),
+            x => Err(E::unknown_field(x, STMT_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for StmtField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(StmtFieldDeVisitor)
+    }
+}
+
+struct StmtDeVisitor;
+
+impl<'de> de::Visitor<'de> for StmtDeVisitor {
+    type Value = Stmt;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "stmt")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut func: Option<Func> = None;
+        let mut args = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                StmtField::Func =>
+                    if func.replace(map.next_value()?).is_some() {
+                        return Err(A::Error::duplicate_field(STMT_FUNC_FIELD));
+                    },
+                StmtField::Args => {
+                    let Some(func) = func else {
+                        return Err(A::Error::custom("the 'args' field should be prceeded by the 'func' field"));
+                    };
+                    if args.replace(map.next_value_seed(FuncArgsSerde { params: func.params() })?).is_some() {
+                        return Err(A::Error::duplicate_field(STMT_ARGS_FIELD));
+                    }
+                },
+            }
+        }
+        let func = func.ok_or_else(|| A::Error::missing_field(STMT_FUNC_FIELD))?;
+        let args = args.ok_or_else(|| A::Error::missing_field(STMT_ARGS_FIELD))?;
+        Ok(Stmt { func, args })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let func: Func = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let args = seq.next_element_seed(FuncArgsSerde { params: func.params() })?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        Ok(Stmt { func, args })
+    }
+}
+
+impl<'de> Deserialize<'de> for Stmt {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_struct(name_of!(type Stmt), STMT_FIELDS, StmtDeVisitor)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ScriptData {
+    pub stmts: Vec<Stmt>,
+    pub raw: Vec<u8>,
 }
 
 impl ScriptData {
-    pub fn new(stmts: Vec<Stmt>) -> Result<ScriptData, String> {
-        let this = ScriptData(stmts);
-        this.to_bytes(CodePage::Unicode)?;
-        Ok(this)
-    }
-
-    /// # Safety
-    ///
-    /// The `stmts` list should be obtained from [`stmts`] / [`stmts_mut`] / [`into_stmts`] method.
-    pub unsafe fn new_unchecked(stmts: Vec<Stmt>) -> ScriptData {
-        ScriptData(stmts)
-    }
-
-    pub fn stmts(&self) -> &[Stmt] { &self.0 }
-
-    pub fn stmts_mut(&mut self) -> &mut [Stmt] { &mut self.0 }
-
-    pub fn into_stmts(self) -> Vec<Stmt> { self.0 }
-
     pub fn to_bytes(&self, code_page: CodePage) -> Result<Vec<u8>, String> {
-        let mut res = Vec::new();
-        for (is_last, stmt) in self.0.iter().identify_last() {
-            stmt.write(code_page, is_last, &mut res)?;
+        let mut bytes = Vec::new();
+        for stmt in &self.stmts {
+            stmt.write(code_page, &mut bytes)?;
         }
-        Ok(res)
+        if parser::stmt(code_page)(&self.raw).is_ok() {
+            return Err("known func in raw bytes".into());
+        }
+        bytes.extend_from_slice(&self.raw);
+        Ok(bytes)
     }
 
-    pub fn from_bytes(code_page: CodePage, bytes: &[u8]) -> Self {
-        ScriptData(parser::stmts(code_page, bytes))
+    pub fn from_bytes(code_page: CodePage, bytes: &[u8]) -> ScriptData {
+        let (bytes, stmts) = parser::stmts(code_page, bytes);
+        ScriptData { stmts, raw: bytes.into() }
     }
 }
 
+#[derive(Clone)]
 pub struct ScriptDataSerde {
     pub code_page: Option<CodePage>,
 }
+
+const SCRIPT_DATA_STMTS_FIELD: &str = name_of!(stmts in ScriptData);
+const SCRIPT_DATA_RAW_FIELD: &str = name_of!(raw in ScriptData);
+
+const SCRIPT_DATA_FIELDS: &[&'static str] = &[
+    SCRIPT_DATA_STMTS_FIELD,
+    SCRIPT_DATA_RAW_FIELD,
+];
 
 impl SerializeSeed for ScriptDataSerde {
     type Value = ScriptData;
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            value.0.serialize(serializer)
+            let mut serializer = serializer.serialize_struct(name_of!(type ScriptData), 2)?;
+            serializer.serialize_field(SCRIPT_DATA_STMTS_FIELD, &value.stmts)?;
+            serializer.serialize_field(SCRIPT_DATA_RAW_FIELD, &ValueWithSeed(&value.raw[..], HexDump))?;
+            serializer.end()
         } else {
             let Some(code_page) = self.code_page else {
-                return Err(S::Error::custom("code page required for binary serialization"));
+                return Err(S::Error::custom("func page required for binary serialization"));
             };
             value.to_bytes(code_page).serialize(serializer)
         }
+    }
+}
+
+enum ScriptDataField {
+    Stmts,
+    Raw,
+}
+
+struct ScriptDataFieldDeVisitor;
+
+impl<'de> de::Visitor<'de> for ScriptDataFieldDeVisitor {
+    type Value = ScriptDataField;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "script data field")
+    }
+
+    fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+        match value {
+            SCRIPT_DATA_STMTS_FIELD => Ok(ScriptDataField::Stmts),
+            SCRIPT_DATA_RAW_FIELD => Ok(ScriptDataField::Raw),
+            x => Err(E::unknown_field(x, SCRIPT_DATA_FIELDS)),
+        }
+    }
+}
+
+impl<'de> de::Deserialize<'de> for ScriptDataField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_identifier(ScriptDataFieldDeVisitor)
+    }
+}
+
+struct ScriptDataDeVisitor;
+
+impl<'de> de::Visitor<'de> for ScriptDataDeVisitor {
+    type Value = ScriptData;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "script data")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
+        let mut stmts = None;
+        let mut raw = None;
+        while let Some(field) = map.next_key()? {
+            match field {
+                ScriptDataField::Stmts =>
+                    if stmts.replace(map.next_value()?).is_some() {
+                        return Err(A::Error::duplicate_field(SCRIPT_DATA_STMTS_FIELD));
+                    },
+                ScriptDataField::Raw =>
+                    if raw.replace(map.next_value_seed(HexDump)?).is_some() {
+                        return Err(A::Error::duplicate_field(SCRIPT_DATA_RAW_FIELD));
+                    },
+            }
+        }
+        let stmts = stmts.ok_or_else(|| A::Error::missing_field(SCRIPT_DATA_STMTS_FIELD))?;
+        let raw = raw.ok_or_else(|| A::Error::missing_field(SCRIPT_DATA_RAW_FIELD))?;
+        Ok(ScriptData { stmts, raw })
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
+        let stmts = seq.next_element()?
+            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
+        let raw = seq.next_element_seed(HexDump)?
+            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
+        Ok(ScriptData { stmts, raw })
     }
 }
 
@@ -353,14 +542,12 @@ impl<'de> DeserializeSeed<'de> for ScriptDataSerde {
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            let stmts = <Vec<Stmt>>::deserialize(deserializer)?;
-            ScriptData::new(stmts).map_err(D::Error::custom)
+            deserializer.deserialize_struct(name_of!(type ScriptData), SCRIPT_DATA_FIELDS, ScriptDataDeVisitor)
         } else {
             let Some(code_page) = self.code_page else {
-                return Err(D::Error::custom("code page required for binary serialization"));
+                return Err(D::Error::custom("func page required for binary deserialization"));
             };
-            let bytes = <Vec<u8>>::deserialize(deserializer)?;
-            Ok(ScriptData::from_bytes(code_page, &bytes))
+            Ok(ScriptData::from_bytes(code_page, &<Vec<u8>>::deserialize(deserializer)?))
         }
     }
 }

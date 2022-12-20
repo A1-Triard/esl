@@ -26,7 +26,7 @@ iter-identify_first_last = "0.0.1"
 macro-attr-2018 = "2.1.2"
 nameof = "1.2.2"
 nom = "7.1.1"
-nom-errors = "0.0.10"
+nom-errors = "0.0.11"
 phantom-type = "0.4.2"
 serde = { version = "1.0.147", features = ["derive"] }
 serde-serialize-seed = "0.0.4"
