@@ -53,6 +53,10 @@ fn write_u16(v: u16, res: &mut Vec<u8>) {
     res.push((v >> 8) as u8);
 }
 
+fn write_i16(v: i16, res: &mut Vec<u8>) {
+    write_u16(v as u16, res);
+}
+
 impl Var {
     fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
         match self {
@@ -69,18 +73,39 @@ impl Var {
     }
 }
 
+mod hex_dump {
+    use super::*;
+    use crate::serde_helpers::HexDump;
+    use serde::{Serializer, Deserializer, Serialize};
+    use serde_serialize_seed::ValueWithSeed;
+
+    pub fn serialize<S>(v: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        ValueWithSeed(&v[..], HexDump).serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error> where D: Deserializer<'de> {
+        HexDump.deserialize(deserializer)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag="stmt")]
 #[repr(u16)]
 pub enum Stmt {
-    Raw { bytes: Vec<u8> } = 0x0000,
+    Raw { #[serde(with="hex_dump")] bytes: Vec<u8> } = 0x0000,
+    End = 0x0101,
     Set { var: Var, expr: String } = 0x0105,
     If { stmts: u8, cond: String } = 0x0106,
     EndIf = 0x0109,
-    End = 0x0101,
     SetRef { id: String } = 0x010C,
+    Return = 0x0124,
     StopScript { id: String } = 0x101C,
+    Journal { id: String, value: u16, extra: i16 } = 0x10CC,
+    RaiseRank = 0x10CE,
     AddItem { id: String, count: u16 } = 0x10D4,
+    Enable = 0x10DA,
+    Disable = 0x10DB,
+    Drop { id: String, count: u16 } = 0x110D,
 }
 
 impl Stmt {
@@ -106,6 +131,10 @@ impl Stmt {
             },
             Stmt::EndIf => write_u16(0x0109, res),
             Stmt::End => write_u16(0x0101, res),
+            Stmt::Return => write_u16(0x0124, res),
+            Stmt::Enable => write_u16(0x10DA, res),
+            Stmt::Disable => write_u16(0x10DB, res),
+            Stmt::RaiseRank => write_u16(0x10CE, res),
             Stmt::SetRef { id } => {
                 write_u16(0x010C, res);
                 write_text(code_page, id, res)?;
@@ -116,6 +145,17 @@ impl Stmt {
             },
             Stmt::AddItem { id, count } => {
                 write_u16(0x10D4, res);
+                write_text(code_page, id, res)?;
+                write_u16(*count, res);
+            },
+            Stmt::Journal { id, value, extra } => {
+                write_u16(0x10CC, res);
+                write_text(code_page, id, res)?;
+                write_u16(*value, res);
+                write_i16(*extra, res);
+            },
+            Stmt::Drop { id, count } => {
+                write_u16(0x110D, res);
                 write_text(code_page, id, res)?;
                 write_u16(*count, res);
             },
@@ -179,8 +219,24 @@ mod parser {
         map(tag([0x09, 0x01]), |_| Stmt::EndIf)(input)
     }
 
+    fn return_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0x24, 0x01]), |_| Stmt::Return)(input)
+    }
+
     fn end_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
         map(tag([0x01, 0x01]), |_| Stmt::End)(input)
+    }
+
+    fn enable_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0xDA, 0x10]), |_| Stmt::Enable)(input)
+    }
+
+    fn disable_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0xDB, 0x10]), |_| Stmt::Disable)(input)
+    }
+
+    fn raise_rank_stmt(input: &[u8]) -> NomRes<&[u8], Stmt, (), !> {
+        map(tag([0xCE, 0x10]), |_| Stmt::RaiseRank)(input)
     }
 
     fn set_ref_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
@@ -195,15 +251,32 @@ mod parser {
         map(seq_3(tag([0xD4, 0x10]), text(code_page), le_u16()), |(_, id, count)| Stmt::AddItem { id, count })
     }
 
+    fn journal_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(
+            seq_4(tag([0xCC, 0x10]), text(code_page), le_u16(), le_i16()),
+            |(_, id, value, extra)| Stmt::Journal { id, value, extra }
+        )
+    }
+
+    fn drop_stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
+        map(seq_3(tag([0x0D, 0x11]), text(code_page), le_u16()), |(_, id, count)| Stmt::Drop { id, count })
+    }
+
     fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, !, !> {
-        alt_8(
+        alt_14(
             set_stmt(code_page),
             if_stmt(code_page),
             end_if_stmt,
             end_stmt,
+            return_stmt,
+            enable_stmt,
+            disable_stmt,
+            raise_rank_stmt,
             set_ref_stmt(code_page),
             stop_script_stmt(code_page),
             add_item_stmt(code_page),
+            journal_stmt(code_page),
+            drop_stmt(code_page),
             map(take_all(), |bytes: &[u8]| Stmt::Raw { bytes: bytes.into() })
         )
     }

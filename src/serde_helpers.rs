@@ -1,6 +1,7 @@
 use crate::code_page::CodePage;
 use educe::Educe;
 use either::{Either, Left,  Right};
+use iter_identify_first_last::IteratorIdentifyFirstLastExt;
 use phantom_type::PhantomType;
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use serde::de::{self, Unexpected, DeserializeSeed};
@@ -9,7 +10,48 @@ use serde::ser::Error as ser_Error;
 use serde::ser::SerializeTuple;
 use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use std::fmt::{self, Display, Formatter};
+use std::fmt::Write as fmt_Write;
 use std::str::FromStr;
+
+#[derive(Clone)]
+pub struct HexDump;
+
+impl SerializeSeed for HexDump {
+    type Value = [u8];
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            let lines = value.chunks(32).map(|x| {
+                let mut s = String::with_capacity(32 * 2 + 31);
+                for (is_first, b) in x.iter().copied().identify_first() {
+                    if !is_first { s.push(' '); }
+                    write!(&mut s, "{b:02X}").unwrap();
+                }
+                s
+            }).collect::<Vec<_>>();
+            lines.serialize(serializer)
+        } else {
+            value.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for HexDump {
+    type Value = Vec<u8>;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            let lines = <Vec<String>>::deserialize(deserializer)?;
+            lines
+                .into_iter()
+                .flat_map(|x| x.split(' ').filter(|x| !x.is_empty()).map(|x| u8::from_str_radix(x, 16)).collect::<Vec<_>>())
+                .try_collect()
+                .map_err(|x| D::Error::custom(x.to_string()))
+        } else {
+            <Vec<u8>>::deserialize(deserializer)
+        }
+    }
+}
 
 #[derive(Educe)]
 #[educe(Clone)]
