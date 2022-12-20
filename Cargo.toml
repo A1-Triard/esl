@@ -29,7 +29,7 @@ nom = "7.1.1"
 nom-errors = "0.0.11"
 phantom-type = "0.4.2"
 serde = { version = "1.0.147", features = ["derive"] }
-serde-serialize-seed = "0.0.6"
+serde-serialize-seed = "0.0.7"
 utf8-chars = "2.0.2"
 
 [build-dependencies]

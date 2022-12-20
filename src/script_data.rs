@@ -13,7 +13,7 @@ use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
 use serde::ser::SerializeStruct;
 use serde::ser::Error as ser_Error;
-use serde_serialize_seed::{PairSerde, SerializeSeed, StatelessSerde, ValueWithSeed};
+use serde_serialize_seed::{PairSerde, SerializeSeed, StatelessSerde, Tuple4Serde, ValueWithSeed};
 use std::fmt::{self, Formatter};
 
 macro_attr! {
@@ -135,6 +135,7 @@ macro_attr! {
         SetAngle = 0x100D,
         Activate = 0x1017,
         StartCombat = 0x1019,
+        StopCombat = 0x101A,
         StopScript = 0x101C,
         AddTopic = 0x1022,
         SetHealth = 0x108D,
@@ -144,8 +145,10 @@ macro_attr! {
         AddItem = 0x10D4,
         Enable = 0x10DA,
         Disable = 0x10DB,
+        PlaceAtPC = 0x10E6,
         ForceGreeting = 0x10E8,
         DisableTeleporting = 0x10EF,
+        SetFight = 0x1100,
         Drop = 0x110D,
         Say = 0x111B,
     }
@@ -160,6 +163,7 @@ pub enum FuncParams {
     ByteStr,
     Byte,
     Str,
+    StrWordFloatWord,
     StrText,
     StrWordInt,
     StrWord,
@@ -182,6 +186,7 @@ impl Func {
             Func::SetAngle => FuncParams::CharFloat,
             Func::Activate => FuncParams::None,
             Func::StartCombat => FuncParams::Str,
+            Func::StopCombat => FuncParams::None,
             Func::StopScript => FuncParams::Str,
             Func::AddTopic => FuncParams::Str,
             Func::SetHealth => FuncParams::Float,
@@ -191,8 +196,10 @@ impl Func {
             Func::AddItem => FuncParams::StrWord,
             Func::Enable => FuncParams::None,
             Func::Disable => FuncParams::None,
+            Func::PlaceAtPC => FuncParams::StrWordFloatWord,
             Func::ForceGreeting => FuncParams::None,
             Func::DisableTeleporting => FuncParams::None,
+            Func::SetFight => FuncParams::Float,
             Func::Drop => FuncParams::StrWord,
             Func::Say => FuncParams::StrText,
         }
@@ -208,6 +215,7 @@ pub enum FuncArgs {
     ByteStr(u8, String),
     Byte(u8),
     Str(String),
+    StrWordFloatWord(String, u16, #[educe(PartialEq(method="eq_f32"))] f32, u16),
     StrText(String, String),
     StrWordInt(String, u16, i16),
     StrWord(String, u16),
@@ -233,6 +241,13 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::ByteStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Byte(a1) => a1.serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
+            FuncArgs::StrWordFloatWord(a1, a2, a3, a4) =>
+                ValueWithSeed(&(a1, *a2, *a3, *a4), Tuple4Serde(
+                    StatelessSerde(PhantomType::new()),
+                    StatelessSerde(PhantomType::new()),
+                    F32AsIsSerde,
+                    StatelessSerde(PhantomType::new())
+                )).serialize(serializer),
             FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
@@ -253,6 +268,15 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
             FuncParams::ByteStr => { let (a1, a2) = <(u8, String)>::deserialize(deserializer)?; FuncArgs::ByteStr(a1, a2) },
             FuncParams::Byte => { let a1 = u8::deserialize(deserializer)?; FuncArgs::Byte(a1) },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
+            FuncParams::StrWordFloatWord => {
+                let (a1, a2, a3, a4) = Tuple4Serde(
+                    StatelessSerde(PhantomType::new()),
+                    StatelessSerde(PhantomType::new()),
+                    F32AsIsSerde,
+                    StatelessSerde(PhantomType::new())
+                ).deserialize(deserializer)?;
+                FuncArgs::StrWordFloatWord(a1, a2, a3, a4)
+            },
             FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
             FuncParams::StrWordInt => {
                 let (a1, a2, a3) = <(String, u16, i16)>::deserialize(deserializer)?; FuncArgs::StrWordInt(a1, a2, a3)
@@ -275,6 +299,7 @@ impl FuncArgs {
             FuncArgs::ByteStr(..) => FuncParams::ByteStr,
             FuncArgs::Byte(..) => FuncParams::Byte,
             FuncArgs::Str(..) => FuncParams::Str,
+            FuncArgs::StrWordFloatWord(..) => FuncParams::StrWordFloatWord,
             FuncArgs::StrText(..) => FuncParams::StrText,
             FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
             FuncArgs::StrWord(..) => FuncParams::StrWord,
@@ -296,6 +321,12 @@ impl FuncArgs {
             },
             FuncArgs::Byte(a1) => res.push(*a1),
             FuncArgs::Str(a1) => write_str(code_page, a1, res)?,
+            FuncArgs::StrWordFloatWord(a1, a2, a3, a4) => {
+                write_str(code_page, a1, res)?;
+                write_u16(*a2, res);
+                write_f32(*a3, res);
+                write_u16(*a4, res);
+            },
             FuncArgs::StrText(a1, a2) => {
                 write_str(code_page, a1, res)?;
                 write_text(code_page, a2, res)?;
@@ -397,6 +428,13 @@ mod parser {
         map(seq_2(string(code_page), le_u16()), |(a1, a2)| FuncArgs::StrWord(a1, a2))
     }
 
+    fn str_word_float_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(
+            seq_4(string(code_page), le_u16(), le_u32(), le_u16()),
+            |(a1, a2, a3, a4)| FuncArgs::StrWordFloatWord(a1, a2, f32::from_bits(a3), a4)
+        )
+    }
+
     fn str_word_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
             seq_3(string(code_page), le_u16(), le_i16()),
@@ -412,6 +450,7 @@ mod parser {
                 FuncParams::ByteStr => byte_str_args(code_page)(input),
                 FuncParams::Byte => byte_args(input),
                 FuncParams::Str => str_args(code_page)(input),
+                FuncParams::StrWordFloatWord => str_word_float_word_args(code_page)(input),
                 FuncParams::StrText => str_text_args(code_page)(input),
                 FuncParams::StrWordInt => str_word_int_args(code_page)(input),
                 FuncParams::StrWord => str_word_args(code_page)(input),
