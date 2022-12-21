@@ -23,7 +23,7 @@ macro_attr! {
         Short = b's',
         Float = b'f',
         Long = b'l',
-        Mistery = b'V',
+        Mystery = b'V',
     }
 }
 
@@ -176,7 +176,7 @@ impl Var {
         Ok(())
     }
 }
-
+  
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
     #[derive(Debug, N, EnumDisplay!, EnumFromStr!)]
@@ -190,14 +190,19 @@ macro_attr! {
         EndIf = 0x0109,
         SetRef = 0x010C,
         Return = 0x0124,
+        EnableRest = 0x013F,
         MessageBox = 0x1000,
         PlaySound = 0x1002,
+        StreamMusic = 0x1003,
+        Position = 0x1004,
         PositionCell = 0x1005,
         Rotate = 0x1007,
+        MoveWorld = 0x1008,
         SetAngle = 0x100D,
         SetAtStart = 0x1010,
         PlayGroup = 0x1014,
         Activate = 0x1017,
+        OnActivate = 0x1018,
         StartCombat = 0x1019,
         StopCombat = 0x101A,
         StartScript = 0x101B,
@@ -212,38 +217,76 @@ macro_attr! {
         ModPersonality = 0x1037,
         ModLuck = 0x103A,
         SetMarksman = 0x1081,
+        ModMercantile = 0x1085,
         SetHealth = 0x108D,
         ModHealth = 0x108E,
         SetMagicka = 0x1090,
         ModMagicka = 0x1091,
         ModFatigue = 0x1094,
+        ModReputation = 0x1097,
         SetDisposition = 0x1099,
         ModDisposition = 0x109A,
         SetPCCrimeLevel = 0x109C,
         Journal = 0x10CC,
         RaiseRank = 0x10CE,
+        PCRaiseRank = 0x10D0,
+        PCClearExpelled = 0x10D3,
         AddItem = 0x10D4,
         RemoveItem = 0x10D5,
         Enable = 0x10DA,
         Disable = 0x10DB,
         EnablePlayerControls = 0x10DD,
         DisablePlayerControls = 0x10DE,
+        EnablePlayerViewSwitch = 0x10E2,
+        DisablePlayerViewSwitch = 0x10E3,
         ShowRestMenu = 0x10E5,
         PlaceAtPC = 0x10E6,
         ForceGreeting = 0x10E8,
+        EnableTeleporting = 0x10EE,
         DisableTeleporting = 0x10EF,
+        AiEscort = 0x10F4,
         AiFollow = 0x10F6,
         AiTravel = 0x10F8,
         AiWander = 0x10F9,
         SetFight = 0x1100,
+        ModFight = 0x1101,
+        SetFlee = 0x1103,
         SetHello = 0x1109,
         Drop = 0x110D,
+        EnableStatsMenu = 0x1117,
+        EnableInventoryMenu = 0x1118,
+        EnableMapMenu = 0x1119,
+        EnableMagicMenu = 0x111A,
         Say = 0x111B,
+        AddSpell = 0x111D,
+        RemoveSpell = 0x111E,
         Cast = 0x1123,
+        ChangeWeather = 0x1124,
+        ModRegion = 0x1125,
         EnableNameMenu = 0x1126,
+        EnableRaceMenu = 0x1127,
+        EnableClassMenu = 0x1128,
+        EnableBirthMenu = 0x1129,
         PlaySound3D = 0x112C,
+        PlaySound3DVP = 0x112D,
+        PlayLoopSound3DVP = 0x112F,
+        ModCurrentHealth = 0x1132,
+        Unlock = 0x1137,
+        EnablePlayerJumping = 0x113F,
+        DisablePlayerJumping = 0x1140,
+        EnableVanityMode = 0x114B,
+        DisableVanityMode = 0x114C,
         PayFine = 0x114F,
+        StopSound = 0x1151,
+        ShowMap = 0x1152,
         PlayBink = 0x1155,
+        EnablePlayerFighting = 0x1159,
+        DisablePlayerFighting = 0x115A,
+        EnablePlayerMagic = 0x115C,
+        DisablePlayerMagic = 0x115D,
+        DontSaveObject = 0x115F,
+        EnableStatReviewMenu = 0x1160,
+        Fall = 0x1166,
     }
 }
 
@@ -258,9 +301,12 @@ pub enum FuncParams {
     Float,
     Float3Byte,
     Float3WordListByte,
+    Float4,
     Float4Str,
     Str,
     StrByte,
+    StrByte8,
+    StrFloat2,
     StrWord,
     StrWordFloatWord,
     StrWordFloat3Byte,
@@ -278,47 +324,85 @@ impl Func {
         match self {
             Func::Activate => FuncParams::None,
             Func::AddItem => FuncParams::StrWord,
+            Func::AddSpell => FuncParams::Str,
             Func::AddTopic => FuncParams::Str,
+            Func::AiEscort => FuncParams::StrWordFloat3Byte,
             Func::AiFollow => FuncParams::StrWordFloat3Byte,
             Func::AiTravel => FuncParams::Float3Byte,
             Func::AiWander => FuncParams::Float3WordListByte,
             Func::Cast => FuncParams::Str2,
+            Func::ChangeWeather => FuncParams::StrWord,
             Func::Disable => FuncParams::None,
             Func::DisablePlayerControls => FuncParams::None,
+            Func::DisablePlayerFighting => FuncParams::None,
+            Func::DisablePlayerJumping => FuncParams::None,
+            Func::DisablePlayerMagic => FuncParams::None,
+            Func::DisablePlayerViewSwitch => FuncParams::None,
             Func::DisableTeleporting => FuncParams::None,
+            Func::DisableVanityMode => FuncParams::None,
+            Func::DontSaveObject => FuncParams::None,
             Func::Drop => FuncParams::StrWord,
             Func::Else => FuncParams::Byte,
             Func::ElseIf => FuncParams::ByteStr,
             Func::Enable => FuncParams::None,
+            Func::EnableBirthMenu => FuncParams::None,
+            Func::EnableClassMenu => FuncParams::None,
+            Func::EnableInventoryMenu => FuncParams::None,
+            Func::EnableMagicMenu => FuncParams::None,
+            Func::EnableMapMenu => FuncParams::None,
             Func::EnableNameMenu => FuncParams::None,
             Func::EnablePlayerControls => FuncParams::None,
+            Func::EnablePlayerFighting => FuncParams::None,
+            Func::EnablePlayerJumping => FuncParams::None,
+            Func::EnablePlayerMagic => FuncParams::None,
+            Func::EnablePlayerViewSwitch => FuncParams::None,
+            Func::EnableRaceMenu => FuncParams::None,
+            Func::EnableRest => FuncParams::None,
+            Func::EnableStatReviewMenu => FuncParams::None,
+            Func::EnableStatsMenu => FuncParams::None,
+            Func::EnableTeleporting => FuncParams::None,
+            Func::EnableVanityMode => FuncParams::None,
             Func::End => FuncParams::None,
             Func::EndIf => FuncParams::None,
+            Func::Fall => FuncParams::None,
             Func::ForceGreeting => FuncParams::None,
             Func::If => FuncParams::ByteStr,
             Func::Journal => FuncParams::StrWordInt,
             Func::MessageBox => FuncParams::TextVarListStrList,
             Func::ModAgility => FuncParams::Float,
+            Func::ModCurrentHealth => FuncParams::Float,
             Func::ModDisposition => FuncParams::Float,
             Func::ModEndurance => FuncParams::Float,
             Func::ModFatigue => FuncParams::Float,
+            Func::ModFight => FuncParams::Float,
             Func::ModHealth => FuncParams::Float,
             Func::ModIntelligence => FuncParams::Float,
             Func::ModLuck => FuncParams::Float,
             Func::ModMagicka => FuncParams::Float,
+            Func::ModMercantile => FuncParams::Float,
             Func::ModPersonality => FuncParams::Float,
+            Func::ModRegion => FuncParams::StrByte8,
+            Func::ModReputation => FuncParams::Float,
             Func::ModSpeed => FuncParams::Float,
             Func::ModStrength => FuncParams::Float,
             Func::ModWillpower => FuncParams::Float,
+            Func::MoveWorld => FuncParams::CharFloat,
+            Func::OnActivate => FuncParams::None,
             Func::PayFine => FuncParams::None,
+            Func::PCClearExpelled => FuncParams::Str,
+            Func::PCRaiseRank => FuncParams::Str,
             Func::PlaceAtPC => FuncParams::StrWordFloatWord,
             Func::PlayBink => FuncParams::StrByte,
             Func::PlayGroup => FuncParams::WordByte,
+            Func::PlayLoopSound3DVP => FuncParams::StrFloat2,
             Func::PlaySound => FuncParams::Str,
             Func::PlaySound3D => FuncParams::Str,
+            Func::PlaySound3DVP => FuncParams::StrFloat2,
+            Func::Position => FuncParams::Float4,
             Func::PositionCell => FuncParams::Float4Str,
             Func::RaiseRank => FuncParams::None,
             Func::RemoveItem => FuncParams::StrWord,
+            Func::RemoveSpell => FuncParams::Str,
             Func::Return => FuncParams::None,
             Func::Rotate => FuncParams::CharFloat,
             Func::Say => FuncParams::StrText,
@@ -327,17 +411,22 @@ impl Func {
             Func::SetAtStart => FuncParams::None,
             Func::SetDisposition => FuncParams::Float,
             Func::SetFight => FuncParams::Float,
+            Func::SetFlee => FuncParams::Float,
             Func::SetHealth => FuncParams::Float,
             Func::SetHello => FuncParams::Float,
             Func::SetMagicka => FuncParams::Float,
             Func::SetMarksman => FuncParams::Float,
             Func::SetPCCrimeLevel => FuncParams::Float,
             Func::SetRef => FuncParams::Str,
+            Func::ShowMap => FuncParams::Str,
             Func::ShowRestMenu => FuncParams::None,
             Func::StartCombat => FuncParams::Str,
             Func::StartScript => FuncParams::Str,
             Func::StopCombat => FuncParams::None,
             Func::StopScript => FuncParams::Str,
+            Func::StopSound => FuncParams::Str,
+            Func::StreamMusic => FuncParams::Str,
+            Func::Unlock => FuncParams::None,
         }
     }
 }
@@ -351,9 +440,12 @@ pub enum FuncArgs {
     Float(Float),
     Float3Byte([Float; 3], u8),
     Float3WordListByte([Float; 3], Vec<u16>, u8),
+    Float4([Float; 4]),
     Float4Str([Float; 4], String),
     Str(String),
     StrByte(String, u8),
+    StrByte8(String, [u8; 8]),
+    StrFloat2(String, [Float; 2]),
     StrText(String, String),
     StrWord(String, u16),
     StrWordFloatWord(String, u16, Float, u16),
@@ -385,10 +477,13 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::CharFloat(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float(a1) => a1.serialize(serializer),
             FuncArgs::Float3Byte(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Float4(a1) => a1.serialize(serializer),
             FuncArgs::Float4Str(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float3WordListByte(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
             FuncArgs::StrByte(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::StrByte8(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::StrFloat2(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrWordFloatWord(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
@@ -424,12 +519,17 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2, a3) = <([Float; 3], Vec<u16>, u8)>::deserialize(deserializer)?;
                 FuncArgs::Float3WordListByte(a1, a2, a3)
             },
+            FuncParams::Float4 => { let a1 = <[Float; 4]>::deserialize(deserializer)?; FuncArgs::Float4(a1) },
             FuncParams::Float4Str => {
                 let (a1, a2) = <([Float; 4], String)>::deserialize(deserializer)?;
                 FuncArgs::Float4Str(a1, a2)
             },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
             FuncParams::StrByte => { let (a1, a2) = <(String, u8)>::deserialize(deserializer)?; FuncArgs::StrByte(a1, a2) },
+            FuncParams::StrByte8 => { let (a1, a2) = <(String, [u8; 8])>::deserialize(deserializer)?; FuncArgs::StrByte8(a1, a2) },
+            FuncParams::StrFloat2 => {
+                let (a1, a2) = <(String, [Float; 2])>::deserialize(deserializer)?; FuncArgs::StrFloat2(a1, a2)
+            },
             FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
             FuncParams::StrWord => { let (a1, a2) = <(String, u16)>::deserialize(deserializer)?; FuncArgs::StrWord(a1, a2) },
             FuncParams::StrWordFloatWord => {
@@ -464,10 +564,13 @@ impl FuncArgs {
             FuncArgs::CharFloat(..) => FuncParams::CharFloat,
             FuncArgs::Float(..) => FuncParams::Float,
             FuncArgs::Float3Byte(..) => FuncParams::Float3Byte,
+            FuncArgs::Float4(..) => FuncParams::Float4,
             FuncArgs::Float4Str(..) => FuncParams::Float4Str,
             FuncArgs::Float3WordListByte(..) => FuncParams::Float3WordListByte,
             FuncArgs::Str(..) => FuncParams::Str,
             FuncArgs::StrByte(..) => FuncParams::StrByte,
+            FuncArgs::StrByte8(..) => FuncParams::StrByte8,
+            FuncArgs::StrFloat2(..) => FuncParams::StrFloat2,
             FuncArgs::StrText(..) => FuncParams::StrText,
             FuncArgs::StrWord(..) => FuncParams::StrWord,
             FuncArgs::StrWordFloatWord(..) => FuncParams::StrWordFloatWord,
@@ -507,6 +610,12 @@ impl FuncArgs {
                 write_word_list(a2, res)?;
                 res.push(*a3);
             },
+            FuncArgs::Float4([a1_1, a1_2, a1_3, a1_4]) => {
+                a1_1.write(res)?;
+                a1_2.write(res)?;
+                a1_3.write(res)?;
+                a1_4.write(res)?;
+            },
             FuncArgs::Float4Str([a1_1, a1_2, a1_3, a1_4], a2) => {
                 a1_1.write(res)?;
                 a1_2.write(res)?;
@@ -518,6 +627,22 @@ impl FuncArgs {
             FuncArgs::StrByte(a1, a2) => {
                 write_str(code_page, a1, res)?;
                 res.push(*a2);
+            },
+            FuncArgs::StrByte8(a1, [a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8]) => {
+                write_str(code_page, a1, res)?;
+                res.push(*a2_1);
+                res.push(*a2_2);
+                res.push(*a2_3);
+                res.push(*a2_4);
+                res.push(*a2_5);
+                res.push(*a2_6);
+                res.push(*a2_7);
+                res.push(*a2_8);
+            },
+            FuncArgs::StrFloat2(a1, [a2_1, a2_2]) => {
+                write_str(code_page, a1, res)?;
+                a2_1.write(res)?;
+                a2_2.write(res)?;
             },
             FuncArgs::StrText(a1, a2) => {
                 write_str(code_page, a1, res)?;
@@ -671,6 +796,13 @@ mod parser {
         )(input)
     }
 
+    fn float_4_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(
+            seq_4(float, float, float, float),
+            |(a1_1, a1_2, a1_3, a1_4)| FuncArgs::Float4([a1_1, a1_2, a1_3, a1_4])
+        )(input)
+    }
+
     fn float_4_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
             seq_5(float, float, float, float, string(code_page)),
@@ -689,6 +821,28 @@ mod parser {
                 le_u8()
             ),
             |(a1, a2)| FuncArgs::StrByte(a1, a2)
+        )
+    }
+
+    fn str_byte_8_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(
+            seq_2(
+                string(code_page),
+                seq_8(le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8())
+            ),
+            |(a1, (a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8))| FuncArgs::StrByte8(
+                a1, [a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8]
+            )
+        )
+    }
+
+    fn str_float_2_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(
+            seq_2(
+                string(code_page),
+                seq_2(float, float)
+            ),
+            |(a1, (a2_1, a2_2))| FuncArgs::StrFloat2(a1, [a2_1, a2_2])
         )
     }
 
@@ -760,9 +914,12 @@ mod parser {
                 FuncParams::Float => float_args(input),
                 FuncParams::Float3Byte => float_3_byte_args(input),
                 FuncParams::Float3WordListByte => float_3_word_list_byte_args(input),
+                FuncParams::Float4 => float_4_args(input),
                 FuncParams::Float4Str => float_4_str_args(code_page)(input),
                 FuncParams::Str => str_args(code_page)(input),
                 FuncParams::StrByte => str_byte_args(code_page)(input),
+                FuncParams::StrByte8 => str_byte_8_args(code_page)(input),
+                FuncParams::StrFloat2 => str_float_2_args(code_page)(input),
                 FuncParams::StrText => str_text_args(code_page)(input),
                 FuncParams::StrWord => str_word_args(code_page)(input),
                 FuncParams::StrWordFloatWord => str_word_float_word_args(code_page)(input),
