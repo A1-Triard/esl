@@ -145,6 +145,7 @@ macro_attr! {
         Set = 0x0105,
         If = 0x0106,
         Else = 0x0107,
+        ElseIf = 0x0108,
         EndIf = 0x0109,
         SetRef = 0x010C,
         Return = 0x0124,
@@ -169,10 +170,12 @@ macro_attr! {
         PlaceAtPC = 0x10E6,
         ForceGreeting = 0x10E8,
         DisableTeleporting = 0x10EF,
+        AiTravel = 0x10F8,
         SetFight = 0x1100,
         Drop = 0x110D,
         Say = 0x111B,
         Cast = 0x1123,
+        EnableNameMenu = 0x1126,
     }
 }
 
@@ -195,6 +198,7 @@ pub enum FuncParams {
     StrWord,
     CharFloat,
     Float,
+    FloatFloatFloatByte,
 }
 
 impl Func {
@@ -204,6 +208,7 @@ impl Func {
             Func::Set => FuncParams::VarStr,
             Func::If => FuncParams::ByteStr,
             Func::Else => FuncParams::Byte,
+            Func::ElseIf => FuncParams::ByteStr,
             Func::EndIf => FuncParams::None,
             Func::SetRef => FuncParams::Str,
             Func::Return => FuncParams::None,
@@ -228,10 +233,12 @@ impl Func {
             Func::PlaceAtPC => FuncParams::StrWordFloatWord,
             Func::ForceGreeting => FuncParams::None,
             Func::DisableTeleporting => FuncParams::None,
+            Func::AiTravel => FuncParams::FloatFloatFloatByte,
             Func::SetFight => FuncParams::Float,
             Func::Drop => FuncParams::StrWord,
             Func::Say => FuncParams::StrText,
             Func::Cast => FuncParams::StrStr,
+            Func::EnableNameMenu => FuncParams::None,
         }
     }
 }
@@ -255,6 +262,12 @@ pub enum FuncArgs {
     StrWord(String, u16),
     CharFloat(String, #[educe(PartialEq(method="eq_f32"))] f32),
     Float(#[educe(PartialEq(method="eq_f32"))] f32),
+    FloatFloatFloatByte(
+        #[educe(PartialEq(method="eq_f32"))] f32,
+        #[educe(PartialEq(method="eq_f32"))] f32,
+        #[educe(PartialEq(method="eq_f32"))] f32,
+        u8
+    ),
 }
 
 #[derive(Clone)]
@@ -292,6 +305,13 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::CharFloat(a1, a2) =>
                 ValueWithSeed(&(a1, *a2), PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde)).serialize(serializer),
             FuncArgs::Float(a1) => ValueWithSeed(a1, F32AsIsSerde).serialize(serializer),
+            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => 
+                ValueWithSeed(&(*a1, *a2, *a3, *a4), Tuple4Serde(
+                    F32AsIsSerde,
+                    F32AsIsSerde,
+                    F32AsIsSerde,
+                    StatelessSerde(PhantomType::new())
+                )).serialize(serializer),
         }
     }
 }
@@ -332,6 +352,15 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 FuncArgs::CharFloat(a1, a2)
             },
             FuncParams::Float => { let a1 = F32AsIsSerde.deserialize(deserializer)?; FuncArgs::Float(a1) },
+            FuncParams::FloatFloatFloatByte => {
+                let (a1, a2, a3, a4) = Tuple4Serde(
+                    F32AsIsSerde,
+                    F32AsIsSerde,
+                    F32AsIsSerde,
+                    StatelessSerde(PhantomType::new())
+                ).deserialize(deserializer)?;
+                FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
+            },
         })
     }
 }
@@ -354,6 +383,7 @@ impl FuncArgs {
             FuncArgs::StrWord(..) => FuncParams::StrWord,
             FuncArgs::CharFloat(..) => FuncParams::CharFloat,
             FuncArgs::Float(..) => FuncParams::Float,
+            FuncArgs::FloatFloatFloatByte(..) => FuncParams::FloatFloatFloatByte,
         }
     }
 
@@ -405,6 +435,12 @@ impl FuncArgs {
                 write_f32(*a2, res);
             },
             FuncArgs::Float(a1) => write_f32(*a1, res),
+            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => {
+                write_f32(*a1, res);
+                write_f32(*a2, res);
+                write_f32(*a3, res);
+                res.push(*a4);
+            },
         }
         Ok(())
     }
@@ -507,6 +543,13 @@ mod parser {
         map(seq_2(ch(code_page), le_u32()), |(a1, a2)| FuncArgs::CharFloat(a1, f32::from_bits(a2)))
     }
 
+    fn float_float_float_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(
+            seq_4(le_u32(), le_u32(), le_u32(), le_u8()),
+            |(a1, a2, a3, a4)| FuncArgs::FloatFloatFloatByte(f32::from_bits(a1), f32::from_bits(a2), f32::from_bits(a3), a4)
+        )(input)
+    }
+
     fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
         map(le_u32(), |a1| FuncArgs::Float(f32::from_bits(a1)))(input)
     }
@@ -547,6 +590,7 @@ mod parser {
                 FuncParams::StrWord => str_word_args(code_page)(input),
                 FuncParams::CharFloat => char_float_args(code_page)(input),
                 FuncParams::Float => float_args(input),
+                FuncParams::FloatFloatFloatByte => float_float_float_byte_args(input),
             }
         }
     }
