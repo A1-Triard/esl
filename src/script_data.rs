@@ -182,6 +182,7 @@ macro_attr! {
         Return = 0x0124,
         MessageBox = 0x1000,
         PlaySound = 0x1002,
+        PositionCell = 0x1005,
         Rotate = 0x1007,
         SetAngle = 0x100D,
         Activate = 0x1017,
@@ -190,9 +191,20 @@ macro_attr! {
         StartScript = 0x101B,
         StopScript = 0x101C,
         AddTopic = 0x1022,
+        ModStrength = 0x1025,
+        ModIntelligence = 0x1028,
+        ModWillpower = 0x102B,
+        ModAgility = 0x102E,
+        ModSpeed = 0x1031,
+        ModEndurance = 0x1034,
+        ModPersonality = 0x1037,
+        ModLuck = 0x103A,
         SetMarksman = 0x1081,
         SetHealth = 0x108D,
+        ModHealth = 0x108E,
         SetMagicka = 0x1090,
+        ModMagicka = 0x1091,
+        ModFatigue = 0x1094,
         SetPCCrimeLevel = 0x109C,
         Journal = 0x10CC,
         RaiseRank = 0x10CE,
@@ -205,6 +217,7 @@ macro_attr! {
         DisableTeleporting = 0x10EF,
         AiTravel = 0x10F8,
         SetFight = 0x1100,
+        SetHello = 0x1109,
         Drop = 0x110D,
         Say = 0x111B,
         Cast = 0x1123,
@@ -232,6 +245,7 @@ pub enum FuncParams {
     CharFloat,
     Float,
     FloatFloatFloatByte,
+    FloatFloatFloatFloatStr,
 }
 
 impl Func {
@@ -247,6 +261,7 @@ impl Func {
             Func::Return => FuncParams::None,
             Func::MessageBox => FuncParams::TextVarListStrList,
             Func::PlaySound => FuncParams::Str,
+            Func::PositionCell => FuncParams::FloatFloatFloatFloatStr,
             Func::Rotate => FuncParams::CharFloat,
             Func::SetAngle => FuncParams::CharFloat,
             Func::Activate => FuncParams::None,
@@ -255,9 +270,20 @@ impl Func {
             Func::StartScript => FuncParams::Str,
             Func::StopScript => FuncParams::Str,
             Func::AddTopic => FuncParams::Str,
+            Func::ModStrength => FuncParams::Float,
+            Func::ModIntelligence => FuncParams::Float,
+            Func::ModWillpower => FuncParams::Float,
+            Func::ModAgility => FuncParams::Float,
+            Func::ModSpeed => FuncParams::Float,
+            Func::ModEndurance => FuncParams::Float,
+            Func::ModPersonality => FuncParams::Float,
+            Func::ModLuck => FuncParams::Float,
             Func::SetMarksman => FuncParams::Float,
             Func::SetHealth => FuncParams::Float,
+            Func::ModHealth => FuncParams::Float,
             Func::SetMagicka => FuncParams::Float,
+            Func::ModMagicka => FuncParams::Float,
+            Func::ModFatigue => FuncParams::Float,
             Func::SetPCCrimeLevel => FuncParams::Var,
             Func::Journal => FuncParams::StrWordInt,
             Func::RaiseRank => FuncParams::None,
@@ -270,6 +296,7 @@ impl Func {
             Func::DisableTeleporting => FuncParams::None,
             Func::AiTravel => FuncParams::FloatFloatFloatByte,
             Func::SetFight => FuncParams::Float,
+            Func::SetHello => FuncParams::Float,
             Func::Drop => FuncParams::StrWord,
             Func::Say => FuncParams::StrText,
             Func::Cast => FuncParams::StrStr,
@@ -295,7 +322,8 @@ pub enum FuncArgs {
     StrWord(String, u16),
     Float(Float),
     CharFloat(String, Float),
-    FloatFloatFloatByte(Float, Float, Float, u8)
+    FloatFloatFloatByte(Float, Float, Float, u8),
+    FloatFloatFloatFloatStr(Float, Float, Float, Float, String),
 }
 
 #[derive(Clone)]
@@ -327,6 +355,7 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::CharFloat(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float(a1) => a1.serialize(serializer),
             FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
+            FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5) => (a1, a2, a3, a4, a5).serialize(serializer),
         }
     }
 }
@@ -366,6 +395,10 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2, a3, a4) = <(Float, Float, Float, u8)>::deserialize(deserializer)?;
                 FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
             },
+            FuncParams::FloatFloatFloatFloatStr => {
+                let (a1, a2, a3, a4, a5) = <(Float, Float, Float, Float, String)>::deserialize(deserializer)?;
+                FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5)
+            },
         })
     }
 }
@@ -389,6 +422,7 @@ impl FuncArgs {
             FuncArgs::CharFloat(..) => FuncParams::CharFloat,
             FuncArgs::Float(..) => FuncParams::Float,
             FuncArgs::FloatFloatFloatByte(..) => FuncParams::FloatFloatFloatByte,
+            FuncArgs::FloatFloatFloatFloatStr(..) => FuncParams::FloatFloatFloatFloatStr,
         }
     }
 
@@ -445,6 +479,13 @@ impl FuncArgs {
                 a2.write(res)?;
                 a3.write(res)?;
                 res.push(*a4);
+            },
+            FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5) => {
+                a1.write(res)?;
+                a2.write(res)?;
+                a3.write(res)?;
+                a4.write(res)?;
+                write_str(code_page, a5, res)?;
             },
         }
         Ok(())
@@ -577,6 +618,13 @@ mod parser {
         )(input)
     }
 
+    fn float_float_float_float_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(
+            seq_5(float, float, float, float, string(code_page)),
+            |(a1, a2, a3, a4, a5)| FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5)
+        )
+    }
+
     fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
         map(float, |a1| FuncArgs::Float(a1))(input)
     }
@@ -618,6 +666,7 @@ mod parser {
                 FuncParams::CharFloat => char_float_args(code_page)(input),
                 FuncParams::Float => float_args(input),
                 FuncParams::FloatFloatFloatByte => float_float_float_byte_args(input),
+                FuncParams::FloatFloatFloatFloatStr => float_float_float_float_str_args(code_page)(input),
             }
         }
     }
