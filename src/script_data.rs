@@ -38,7 +38,7 @@ impl VarType {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag="kind")]
 pub enum Var {
-    Local { #[serde(rename="type")] var_type: VarType, index: u16 },
+    Local { owner: Option<String>, #[serde(rename="type")] var_type: VarType, index: u16 },
     Global { name: String },
 }
 
@@ -123,7 +123,11 @@ fn write_f32(v: f32, res: &mut Vec<u8>) {
 impl Var {
     fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
         match self {
-            &Var::Local { var_type, index } => {
+            &Var::Local { ref owner, var_type, index } => {
+                if let Some(owner) = owner {
+                    res.push(b'r');
+                    write_str(code_page, owner, res)?;
+                }
                 var_type.write(res);
                 write_u16(index, res);
             },
@@ -471,8 +475,20 @@ mod parser {
         map(take(1), move |x| code_page.decode(x))
     }
 
-    fn local_var<'a>(var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], u16, (), !> {
+    fn local_var_ty<'a>(var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], u16, (), !> {
         map(seq_2(tag([var_type]), le_u16()), |(_, var)| var)
+    }
+
+    fn local_var(input: &[u8]) -> NomRes<&[u8], (VarType, u16), (), !> {
+        alt_3(
+            map(local_var_ty(b's'), |index| (VarType::Short, index)),
+            map(local_var_ty(b'f'), |index| (VarType::Float, index)),
+            map(local_var_ty(b'l'), |index| (VarType::Long, index)),
+        )(input)
+    }
+
+    fn owner_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], (String, VarType, u16), (), !> {
+        map(seq_3(tag([b'r']), string(code_page), local_var), |(_, owner, var)| (owner, var.0, var.1))
     }
 
     fn global_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
@@ -480,10 +496,9 @@ mod parser {
     }
 
     fn var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Var, (), !> {
-        alt_4(
-            map(local_var(b's'), |index| Var::Local { var_type: VarType::Short, index }),
-            map(local_var(b'f'), |index| Var::Local { var_type: VarType::Float, index }),
-            map(local_var(b'l'), |index| Var::Local { var_type: VarType::Long, index }),
+        alt_3(
+            map(owner_var(code_page), |(owner, var_type, index)| Var::Local { owner: Some(owner), var_type, index }),
+            map(local_var, |(var_type, index)| Var::Local { owner: None, var_type, index }),
             map(global_var(code_page), |name| Var::Global { name })
         )
     }
