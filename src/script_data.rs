@@ -23,6 +23,7 @@ macro_attr! {
         Short = b's',
         Float = b'f',
         Long = b'l',
+        Mistery = b'V',
     }
 }
 
@@ -216,6 +217,7 @@ macro_attr! {
         SetMagicka = 0x1090,
         ModMagicka = 0x1091,
         ModFatigue = 0x1094,
+        SetDisposition = 0x1099,
         ModDisposition = 0x109A,
         SetPCCrimeLevel = 0x109C,
         Journal = 0x10CC,
@@ -323,6 +325,7 @@ impl Func {
             Func::Set => FuncParams::VarStr,
             Func::SetAngle => FuncParams::CharFloat,
             Func::SetAtStart => FuncParams::None,
+            Func::SetDisposition => FuncParams::Float,
             Func::SetFight => FuncParams::Float,
             Func::SetHealth => FuncParams::Float,
             Func::SetHello => FuncParams::Float,
@@ -606,16 +609,12 @@ mod parser {
         map(take(1), move |x| code_page.decode(x))
     }
 
-    fn local_var_ty<'a>(var_type: u8) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], u16, (), !> {
-        map(seq_2(tag([var_type]), le_u16()), |(_, var)| var)
+    fn var_type(input: &[u8]) -> NomRes<&[u8], VarType, (), !> {
+        map_res(le_u8(), |x| VarType::n(x).ok_or(()))(input)
     }
 
     fn local_var(input: &[u8]) -> NomRes<&[u8], (VarType, u16), (), !> {
-        alt_3(
-            map(local_var_ty(b's'), |index| (VarType::Short, index)),
-            map(local_var_ty(b'f'), |index| (VarType::Float, index)),
-            map(local_var_ty(b'l'), |index| (VarType::Long, index)),
-        )(input)
+        map(seq_2(var_type, le_u16()), |(var_type, index)| (var_type, index))(input)
     }
 
     fn owner_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], (String, VarType, u16), (), !> {
