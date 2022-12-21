@@ -1,19 +1,18 @@
 #![cfg(esl_script_data)]
-use crate::field::eq_f32;
+use crate::field::{eq_f32, float_32};
 use crate::code_page::CodePage;
-use crate::serde_helpers::{F32AsIsSerde, HexDump};
+use crate::serde_helpers::HexDump;
 use educe::Educe;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;
 use macro_attr_2018::macro_attr;
 use nameof::name_of;
-use phantom_type::PhantomType;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, DeserializeSeed};
 use serde::de::Error as de_Error;
 use serde::ser::SerializeStruct;
 use serde::ser::Error as ser_Error;
-use serde_serialize_seed::{PairSerde, SerializeSeed, StatelessSerde, Tuple4Serde, ValueWithSeed};
+use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use std::fmt::{self, Formatter};
 
 macro_attr! {
@@ -35,6 +34,38 @@ impl VarType {
     }
 }
  
+#[derive(Debug, Clone, Copy, Educe, Serialize, Deserialize)]
+#[educe(Eq, PartialEq)]
+#[serde(tag="kind")]
+pub enum Float {
+    Val {
+        #[educe(PartialEq(method="eq_f32"))]
+        #[serde(with="float_32")]
+        val: f32
+    },
+    Var { #[serde(rename="type")] var_type: VarType, index: u16 },
+}
+
+impl Float {
+    fn write(self, res: &mut Vec<u8>) -> Result<(), String> {
+        match self {
+            Float::Var { var_type, index } => {
+                var_type.write(res);
+                write_u16(index, res);
+                res.push(0);
+            },
+            Float::Val { val } => {
+                let bits = val.to_bits();
+                if VarType::n((bits & 0xFF) as u8).is_some() {
+                    return Err("denied float value '{val}/{bits:08X}'".to_string());
+                }
+                write_u32(bits, res);
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(tag="kind")]
 pub enum Var {
@@ -116,10 +147,6 @@ fn write_u32(v: u32, res: &mut Vec<u8>) {
     res.push((v >> 24) as u8);
 }
 
-fn write_f32(v: f32, res: &mut Vec<u8>) {
-    write_u32(v.to_bits(), res);
-}
-
 impl Var {
     fn write(&self, code_page: CodePage, res: &mut Vec<u8>) -> Result<(), String> {
         match self {
@@ -163,7 +190,7 @@ macro_attr! {
         StartScript = 0x101B,
         StopScript = 0x101C,
         AddTopic = 0x1022,
-        //SetMarksman = 0x1081,
+        SetMarksman = 0x1081,
         SetHealth = 0x108D,
         SetMagicka = 0x1090,
         SetPCCrimeLevel = 0x109C,
@@ -228,7 +255,7 @@ impl Func {
             Func::StartScript => FuncParams::Str,
             Func::StopScript => FuncParams::Str,
             Func::AddTopic => FuncParams::Str,
-            //Func::SetMarksman => FuncParams::Float,
+            Func::SetMarksman => FuncParams::Float,
             Func::SetHealth => FuncParams::Float,
             Func::SetMagicka => FuncParams::Float,
             Func::SetPCCrimeLevel => FuncParams::Var,
@@ -251,9 +278,7 @@ impl Func {
     }
 }
 
-#[derive(Debug, Clone)]
-#[derive(Educe)]
-#[educe(PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FuncArgs {
     None,
     Var(Var),
@@ -261,21 +286,16 @@ pub enum FuncArgs {
     ByteStr(u8, String),
     Byte(u8),
     Str(String),
-    StrWordFloatWord(String, u16, #[educe(PartialEq(method="eq_f32"))] f32, u16),
+    StrWordFloatWord(String, u16, Float, u16),
     StrText(String, String),
     StrStr(String, String),
     Text(String),
     TextVarListStrList(String, Vec<Var>, Vec<String>),
     StrWordInt(String, u16, i16),
     StrWord(String, u16),
-    CharFloat(String, #[educe(PartialEq(method="eq_f32"))] f32),
-    Float(#[educe(PartialEq(method="eq_f32"))] f32),
-    FloatFloatFloatByte(
-        #[educe(PartialEq(method="eq_f32"))] f32,
-        #[educe(PartialEq(method="eq_f32"))] f32,
-        #[educe(PartialEq(method="eq_f32"))] f32,
-        u8
-    ),
+    Float(Float),
+    CharFloat(String, Float),
+    FloatFloatFloatByte(Float, Float, Float, u8)
 }
 
 #[derive(Clone)]
@@ -297,29 +317,16 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::ByteStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Byte(a1) => a1.serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
-            FuncArgs::StrWordFloatWord(a1, a2, a3, a4) =>
-                ValueWithSeed(&(a1, *a2, *a3, *a4), Tuple4Serde(
-                    StatelessSerde(PhantomType::new()),
-                    StatelessSerde(PhantomType::new()),
-                    F32AsIsSerde,
-                    StatelessSerde(PhantomType::new())
-                )).serialize(serializer),
+            FuncArgs::StrWordFloatWord(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
             FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Text(a1) => a1.serialize(serializer),
             FuncArgs::TextVarListStrList(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
-            FuncArgs::CharFloat(a1, a2) =>
-                ValueWithSeed(&(a1, *a2), PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde)).serialize(serializer),
-            FuncArgs::Float(a1) => ValueWithSeed(a1, F32AsIsSerde).serialize(serializer),
-            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => 
-                ValueWithSeed(&(*a1, *a2, *a3, *a4), Tuple4Serde(
-                    F32AsIsSerde,
-                    F32AsIsSerde,
-                    F32AsIsSerde,
-                    StatelessSerde(PhantomType::new())
-                )).serialize(serializer),
+            FuncArgs::CharFloat(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Float(a1) => a1.serialize(serializer),
+            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
         }
     }
 }
@@ -336,12 +343,7 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
             FuncParams::Byte => { let a1 = u8::deserialize(deserializer)?; FuncArgs::Byte(a1) },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
             FuncParams::StrWordFloatWord => {
-                let (a1, a2, a3, a4) = Tuple4Serde(
-                    StatelessSerde(PhantomType::new()),
-                    StatelessSerde(PhantomType::new()),
-                    F32AsIsSerde,
-                    StatelessSerde(PhantomType::new())
-                ).deserialize(deserializer)?;
+                let (a1, a2, a3, a4) = <(String, u16, Float, u16)>::deserialize(deserializer)?;
                 FuncArgs::StrWordFloatWord(a1, a2, a3, a4)
             },
             FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
@@ -356,17 +358,12 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
             },
             FuncParams::StrWord => { let (a1, a2) = <(String, u16)>::deserialize(deserializer)?; FuncArgs::StrWord(a1, a2) },
             FuncParams::CharFloat => {
-                let (a1, a2) = PairSerde(StatelessSerde(PhantomType::new()), F32AsIsSerde).deserialize(deserializer)?;
+                let (a1, a2) = <(String, Float)>::deserialize(deserializer)?;
                 FuncArgs::CharFloat(a1, a2)
             },
-            FuncParams::Float => { let a1 = F32AsIsSerde.deserialize(deserializer)?; FuncArgs::Float(a1) },
+            FuncParams::Float => { let a1 = Float::deserialize(deserializer)?; FuncArgs::Float(a1) },
             FuncParams::FloatFloatFloatByte => {
-                let (a1, a2, a3, a4) = Tuple4Serde(
-                    F32AsIsSerde,
-                    F32AsIsSerde,
-                    F32AsIsSerde,
-                    StatelessSerde(PhantomType::new())
-                ).deserialize(deserializer)?;
+                let (a1, a2, a3, a4) = <(Float, Float, Float, u8)>::deserialize(deserializer)?;
                 FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
             },
         })
@@ -412,7 +409,7 @@ impl FuncArgs {
             FuncArgs::StrWordFloatWord(a1, a2, a3, a4) => {
                 write_str(code_page, a1, res)?;
                 write_u16(*a2, res);
-                write_f32(*a3, res);
+                a3.write(res)?;
                 write_u16(*a4, res);
             },
             FuncArgs::StrText(a1, a2) => {
@@ -440,13 +437,13 @@ impl FuncArgs {
             },
             FuncArgs::CharFloat(a1, a2) => {
                 write_char(code_page, a1, res)?;
-                write_f32(*a2, res);
+                a2.write(res)?;
             },
-            FuncArgs::Float(a1) => write_f32(*a1, res),
+            FuncArgs::Float(a1) => a1.write(res)?,
             FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => {
-                write_f32(*a1, res);
-                write_f32(*a2, res);
-                write_f32(*a3, res);
+                a1.write(res)?;
+                a2.write(res)?;
+                a3.write(res)?;
                 res.push(*a4);
             },
         }
@@ -458,6 +455,17 @@ mod parser {
     use super::*;
     use nom_errors::*;
     use nom_errors::bytes::*;
+
+    fn float(input: &[u8]) -> NomRes<&[u8], Float, (), !> {
+        map_res(le_u32(), |bits| {
+            if let Some(var_type) = VarType::n((bits & 0xFF) as u8) {
+                if (bits >> 24) != 0 { return Err(()); }
+                Ok(Float::Var { var_type, index: ((bits >> 8) & 0xFFFF) as u16 })
+            } else { 
+                Ok(Float::Val { val: f32::from_bits(bits) })
+            }
+        })(input)
+    }
 
     fn string<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
         map(flat_map(le_u8(), |len| take(len.into())), move |x| code_page.decode(x))
@@ -559,18 +567,18 @@ mod parser {
     }
 
     fn char_float_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(ch(code_page), le_u32()), |(a1, a2)| FuncArgs::CharFloat(a1, f32::from_bits(a2)))
+        map(seq_2(ch(code_page), float), |(a1, a2)| FuncArgs::CharFloat(a1, a2))
     }
 
     fn float_float_float_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
         map(
-            seq_4(le_u32(), le_u32(), le_u32(), le_u8()),
-            |(a1, a2, a3, a4)| FuncArgs::FloatFloatFloatByte(f32::from_bits(a1), f32::from_bits(a2), f32::from_bits(a3), a4)
+            seq_4(float, float, float, le_u8()),
+            |(a1, a2, a3, a4)| FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
         )(input)
     }
 
     fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(le_u32(), |a1| FuncArgs::Float(f32::from_bits(a1)))(input)
+        map(float, |a1| FuncArgs::Float(a1))(input)
     }
 
     fn str_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -579,8 +587,8 @@ mod parser {
 
     fn str_word_float_word_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
-            seq_4(string(code_page), le_u16(), le_u32(), le_u16()),
-            |(a1, a2, a3, a4)| FuncArgs::StrWordFloatWord(a1, a2, f32::from_bits(a3), a4)
+            seq_4(string(code_page), le_u16(), float, le_u16()),
+            |(a1, a2, a3, a4)| FuncArgs::StrWordFloatWord(a1, a2, a3, a4)
         )
     }
 
