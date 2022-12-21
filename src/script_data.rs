@@ -267,7 +267,6 @@ pub enum FuncParams {
     Str2,
     Text,
     TextVarListStrList,
-    Var,
     VarStr,
     WordByte,
 }
@@ -360,7 +359,6 @@ pub enum FuncArgs {
     Str2([String; 2]),
     Text(String),
     TextVarListStrList(String, Vec<Var>, Vec<String>),
-    Var(Var),
     VarStr(Var, String),
     WordByte(u16, u8),
 }
@@ -396,7 +394,6 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::Str2(a1) => a1.serialize(serializer),
             FuncArgs::Text(a1) => a1.serialize(serializer),
             FuncArgs::TextVarListStrList(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
-            FuncArgs::Var(a1) => a1.serialize(serializer),
             FuncArgs::VarStr(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::WordByte(a1, a2) => (a1, a2).serialize(serializer),
         }
@@ -449,7 +446,6 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2, a3) = <(String, Vec<Var>, Vec<String>)>::deserialize(deserializer)?;
                 FuncArgs::TextVarListStrList(a1, a2, a3)
             },
-            FuncParams::Var => { let a1 = Var::deserialize(deserializer)?; FuncArgs::Var(a1) },
             FuncParams::VarStr => { let (a1, a2) = <(Var, String)>::deserialize(deserializer)?; FuncArgs::VarStr(a1, a2) },
             FuncParams::WordByte => { let (a1, a2) = <(u16, u8)>::deserialize(deserializer)?; FuncArgs::WordByte(a1, a2) },
         })
@@ -477,7 +473,6 @@ impl FuncArgs {
             FuncArgs::Str2(..) => FuncParams::Str2,
             FuncArgs::Text(..) => FuncParams::Text,
             FuncArgs::TextVarListStrList(..) => FuncParams::TextVarListStrList,
-            FuncArgs::Var(..) => FuncParams::Var,
             FuncArgs::VarStr(..) => FuncParams::VarStr,
             FuncArgs::WordByte(..) => FuncParams::WordByte,
         }
@@ -558,7 +553,6 @@ impl FuncArgs {
                 write_var_list(code_page, &a2, res)?;
                 write_str_list(code_page, &a3, res)?;
             },
-            FuncArgs::Var(a1) => a1.write(code_page, res)?,
             FuncArgs::VarStr(a1, a2) => {
                 a1.write(code_page, res)?;
                 write_str(code_page, a2, res)?;
@@ -743,10 +737,6 @@ mod parser {
         )
     }
 
-    fn var_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(var(code_page), |a1| FuncArgs::Var(a1))
-    }
-
     fn var_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
             seq_2(
@@ -782,7 +772,6 @@ mod parser {
                 FuncParams::Str2 => str_2_args(code_page)(input),
                 FuncParams::Text => text_args(code_page)(input),
                 FuncParams::TextVarListStrList => text_var_list_str_list_args(code_page)(input),
-                FuncParams::Var => var_args(code_page)(input),
                 FuncParams::VarStr => var_str_args(code_page)(input),
                 FuncParams::WordByte => word_byte_args(input),
             }
