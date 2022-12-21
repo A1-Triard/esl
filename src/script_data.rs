@@ -237,15 +237,16 @@ pub enum FuncParams {
     Str,
     StrWordFloatWord,
     StrText,
-    StrStr,
+    Str2,
     Text,
     TextVarListStrList,
     StrWordInt,
     StrWord,
     CharFloat,
     Float,
-    FloatFloatFloatByte,
-    FloatFloatFloatFloatStr,
+    Float3Byte,
+    Float4Str,
+    //Float3Word9Byte,
 }
 
 impl Func {
@@ -261,7 +262,7 @@ impl Func {
             Func::Return => FuncParams::None,
             Func::MessageBox => FuncParams::TextVarListStrList,
             Func::PlaySound => FuncParams::Str,
-            Func::PositionCell => FuncParams::FloatFloatFloatFloatStr,
+            Func::PositionCell => FuncParams::Float4Str,
             Func::Rotate => FuncParams::CharFloat,
             Func::SetAngle => FuncParams::CharFloat,
             Func::Activate => FuncParams::None,
@@ -294,12 +295,12 @@ impl Func {
             Func::PlaceAtPC => FuncParams::StrWordFloatWord,
             Func::ForceGreeting => FuncParams::None,
             Func::DisableTeleporting => FuncParams::None,
-            Func::AiTravel => FuncParams::FloatFloatFloatByte,
+            Func::AiTravel => FuncParams::Float3Byte,
             Func::SetFight => FuncParams::Float,
             Func::SetHello => FuncParams::Float,
             Func::Drop => FuncParams::StrWord,
             Func::Say => FuncParams::StrText,
-            Func::Cast => FuncParams::StrStr,
+            Func::Cast => FuncParams::Str2,
             Func::EnableNameMenu => FuncParams::None,
         }
     }
@@ -315,15 +316,16 @@ pub enum FuncArgs {
     Str(String),
     StrWordFloatWord(String, u16, Float, u16),
     StrText(String, String),
-    StrStr(String, String),
+    Str2([String; 2]),
     Text(String),
     TextVarListStrList(String, Vec<Var>, Vec<String>),
     StrWordInt(String, u16, i16),
     StrWord(String, u16),
     Float(Float),
     CharFloat(String, Float),
-    FloatFloatFloatByte(Float, Float, Float, u8),
-    FloatFloatFloatFloatStr(Float, Float, Float, Float, String),
+    Float3Byte([Float; 3], u8),
+    Float4Str([Float; 4], String),
+    //Float3Word9Byte(Float, Float, Float, Float, String),
 }
 
 #[derive(Clone)]
@@ -347,15 +349,15 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::Str(a1) => a1.serialize(serializer),
             FuncArgs::StrWordFloatWord(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
             FuncArgs::StrText(a1, a2) => (a1, a2).serialize(serializer),
-            FuncArgs::StrStr(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Str2(a1) => a1.serialize(serializer),
             FuncArgs::Text(a1) => a1.serialize(serializer),
             FuncArgs::TextVarListStrList(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWordInt(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
             FuncArgs::StrWord(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::CharFloat(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float(a1) => a1.serialize(serializer),
-            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => (a1, a2, a3, a4).serialize(serializer),
-            FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5) => (a1, a2, a3, a4, a5).serialize(serializer),
+            FuncArgs::Float3Byte(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Float4Str(a1, a2) => (a1, a2).serialize(serializer),
         }
     }
 }
@@ -376,7 +378,7 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 FuncArgs::StrWordFloatWord(a1, a2, a3, a4)
             },
             FuncParams::StrText => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrText(a1, a2) },
-            FuncParams::StrStr => { let (a1, a2) = <(String, String)>::deserialize(deserializer)?; FuncArgs::StrStr(a1, a2) },
+            FuncParams::Str2 => { let a1 = <[String; 2]>::deserialize(deserializer)?; FuncArgs::Str2(a1) },
             FuncParams::Text => { let a1 = String::deserialize(deserializer)?; FuncArgs::Text(a1) },
             FuncParams::TextVarListStrList => {
                 let (a1, a2, a3) = <(String, Vec<Var>, Vec<String>)>::deserialize(deserializer)?;
@@ -391,13 +393,13 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 FuncArgs::CharFloat(a1, a2)
             },
             FuncParams::Float => { let a1 = Float::deserialize(deserializer)?; FuncArgs::Float(a1) },
-            FuncParams::FloatFloatFloatByte => {
-                let (a1, a2, a3, a4) = <(Float, Float, Float, u8)>::deserialize(deserializer)?;
-                FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
+            FuncParams::Float3Byte => {
+                let (a1, a2) = <([Float; 3], u8)>::deserialize(deserializer)?;
+                FuncArgs::Float3Byte(a1, a2)
             },
-            FuncParams::FloatFloatFloatFloatStr => {
-                let (a1, a2, a3, a4, a5) = <(Float, Float, Float, Float, String)>::deserialize(deserializer)?;
-                FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5)
+            FuncParams::Float4Str => {
+                let (a1, a2) = <([Float; 4], String)>::deserialize(deserializer)?;
+                FuncArgs::Float4Str(a1, a2)
             },
         })
     }
@@ -414,15 +416,15 @@ impl FuncArgs {
             FuncArgs::Str(..) => FuncParams::Str,
             FuncArgs::StrWordFloatWord(..) => FuncParams::StrWordFloatWord,
             FuncArgs::StrText(..) => FuncParams::StrText,
-            FuncArgs::StrStr(..) => FuncParams::StrStr,
+            FuncArgs::Str2(..) => FuncParams::Str2,
             FuncArgs::Text(..) => FuncParams::Text,
             FuncArgs::TextVarListStrList(..) => FuncParams::TextVarListStrList,
             FuncArgs::StrWordInt(..) => FuncParams::StrWordInt,
             FuncArgs::StrWord(..) => FuncParams::StrWord,
             FuncArgs::CharFloat(..) => FuncParams::CharFloat,
             FuncArgs::Float(..) => FuncParams::Float,
-            FuncArgs::FloatFloatFloatByte(..) => FuncParams::FloatFloatFloatByte,
-            FuncArgs::FloatFloatFloatFloatStr(..) => FuncParams::FloatFloatFloatFloatStr,
+            FuncArgs::Float3Byte(..) => FuncParams::Float3Byte,
+            FuncArgs::Float4Str(..) => FuncParams::Float4Str,
         }
     }
 
@@ -450,9 +452,9 @@ impl FuncArgs {
                 write_str(code_page, a1, res)?;
                 write_text(code_page, a2, res)?;
             },
-            FuncArgs::StrStr(a1, a2) => {
-                write_str(code_page, a1, res)?;
-                write_str(code_page, a2, res)?;
+            FuncArgs::Str2([a1_1, a1_2]) => {
+                write_str(code_page, a1_1, res)?;
+                write_str(code_page, a1_2, res)?;
             },
             FuncArgs::Text(a1) => write_text(code_page, a1, res)?,
             FuncArgs::TextVarListStrList(a1, a2, a3) => {
@@ -474,18 +476,18 @@ impl FuncArgs {
                 a2.write(res)?;
             },
             FuncArgs::Float(a1) => a1.write(res)?,
-            FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4) => {
-                a1.write(res)?;
-                a2.write(res)?;
-                a3.write(res)?;
-                res.push(*a4);
+            FuncArgs::Float3Byte([a1_1, a1_2, a1_3], a2) => {
+                a1_1.write(res)?;
+                a1_2.write(res)?;
+                a1_3.write(res)?;
+                res.push(*a2);
             },
-            FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5) => {
-                a1.write(res)?;
-                a2.write(res)?;
-                a3.write(res)?;
-                a4.write(res)?;
-                write_str(code_page, a5, res)?;
+            FuncArgs::Float4Str([a1_1, a1_2, a1_3, a1_4], a2) => {
+                a1_1.write(res)?;
+                a1_2.write(res)?;
+                a1_3.write(res)?;
+                a1_4.write(res)?;
+                write_str(code_page, a2, res)?;
             },
         }
         Ok(())
@@ -592,8 +594,8 @@ mod parser {
         map(seq_2(string(code_page), text(code_page)), |(a1, a2)| FuncArgs::StrText(a1, a2))
     }
 
-    fn str_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(string(code_page), string(code_page)), |(a1, a2)| FuncArgs::StrStr(a1, a2))
+    fn str_2_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+        map(seq_2(string(code_page), string(code_page)), |(a1_1, a1_2)| FuncArgs::Str2([a1_1, a1_2]))
     }
 
     fn text_var_list_str_list_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -611,17 +613,17 @@ mod parser {
         map(seq_2(ch(code_page), float), |(a1, a2)| FuncArgs::CharFloat(a1, a2))
     }
 
-    fn float_float_float_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+    fn float_3_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
         map(
             seq_4(float, float, float, le_u8()),
-            |(a1, a2, a3, a4)| FuncArgs::FloatFloatFloatByte(a1, a2, a3, a4)
+            |(a1_1, a1_2, a1_3, a2)| FuncArgs::Float3Byte([a1_1, a1_2, a1_3], a2)
         )(input)
     }
 
-    fn float_float_float_float_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
+    fn float_4_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
             seq_5(float, float, float, float, string(code_page)),
-            |(a1, a2, a3, a4, a5)| FuncArgs::FloatFloatFloatFloatStr(a1, a2, a3, a4, a5)
+            |(a1_1, a1_2, a1_3, a1_4, a2)| FuncArgs::Float4Str([a1_1, a1_2, a1_3, a1_4], a2)
         )
     }
 
@@ -659,14 +661,14 @@ mod parser {
                 FuncParams::TextVarListStrList => text_var_list_str_list_args(code_page)(input),
                 FuncParams::StrWordFloatWord => str_word_float_word_args(code_page)(input),
                 FuncParams::StrText => str_text_args(code_page)(input),
-                FuncParams::StrStr => str_str_args(code_page)(input),
+                FuncParams::Str2 => str_2_args(code_page)(input),
                 FuncParams::Text => text_args(code_page)(input),
                 FuncParams::StrWordInt => str_word_int_args(code_page)(input),
                 FuncParams::StrWord => str_word_args(code_page)(input),
                 FuncParams::CharFloat => char_float_args(code_page)(input),
                 FuncParams::Float => float_args(input),
-                FuncParams::FloatFloatFloatByte => float_float_float_byte_args(input),
-                FuncParams::FloatFloatFloatFloatStr => float_float_float_float_str_args(code_page)(input),
+                FuncParams::Float3Byte => float_3_byte_args(input),
+                FuncParams::Float4Str => float_4_str_args(code_page)(input),
             }
         }
     }
