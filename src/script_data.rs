@@ -57,7 +57,7 @@ impl Float {
             },
             Float::Val { val } => {
                 let bits = val.to_bits();
-                if VarType::n((bits & 0xFF) as u8).is_some() {
+                if VarType::n((bits & 0xFF) as u8).is_some() && (bits >> 24) == 0 {
                     return Err("denied float value '{val}/{bits:08X}'".to_string());
                 }
                 write_u32(bits, res);
@@ -700,13 +700,14 @@ mod parser {
     use nom_errors::bytes::*;
 
     fn float(input: &[u8]) -> NomRes<&[u8], Float, (), !> {
-        map_res(le_u32(), |bits| {
+        map(le_u32(), |bits| {
             if let Some(var_type) = VarType::n((bits & 0xFF) as u8) {
-                if (bits >> 24) != 0 { return Err(()); }
-                Ok(Float::Var { var_type, index: ((bits >> 8) & 0xFFFF) as u16 })
-            } else { 
-                Ok(Float::Val { val: f32::from_bits(bits) })
-            }
+                if (bits >> 24) != 0 {
+                    None
+                } else {
+                    Some(Float::Var { var_type, index: ((bits >> 8) & 0xFFFF) as u16 })
+                }
+            } else { None }.unwrap_or(Float::Val { val: f32::from_bits(bits) })
         })(input)
     }
 
