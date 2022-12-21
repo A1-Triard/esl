@@ -216,6 +216,7 @@ macro_attr! {
         ForceGreeting = 0x10E8,
         DisableTeleporting = 0x10EF,
         AiTravel = 0x10F8,
+        AiWander = 0x10F9,
         SetFight = 0x1100,
         SetHello = 0x1109,
         Drop = 0x110D,
@@ -246,7 +247,7 @@ pub enum FuncParams {
     Float,
     Float3Byte,
     Float4Str,
-    //Float3Word9Byte,
+    Float3Word9Byte,
 }
 
 impl Func {
@@ -296,6 +297,7 @@ impl Func {
             Func::ForceGreeting => FuncParams::None,
             Func::DisableTeleporting => FuncParams::None,
             Func::AiTravel => FuncParams::Float3Byte,
+            Func::AiWander => FuncParams::Float3Word9Byte,
             Func::SetFight => FuncParams::Float,
             Func::SetHello => FuncParams::Float,
             Func::Drop => FuncParams::StrWord,
@@ -325,7 +327,7 @@ pub enum FuncArgs {
     CharFloat(String, Float),
     Float3Byte([Float; 3], u8),
     Float4Str([Float; 4], String),
-    //Float3Word9Byte(Float, Float, Float, Float, String),
+    Float3Word9Byte([Float; 3], [u16; 9], u8),
 }
 
 #[derive(Clone)]
@@ -358,6 +360,7 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::Float(a1) => a1.serialize(serializer),
             FuncArgs::Float3Byte(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float4Str(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Float3Word9Byte(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
         }
     }
 }
@@ -401,6 +404,10 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2) = <([Float; 4], String)>::deserialize(deserializer)?;
                 FuncArgs::Float4Str(a1, a2)
             },
+            FuncParams::Float3Word9Byte => {
+                let (a1, a2, a3) = <([Float; 3], [u16; 9], u8)>::deserialize(deserializer)?;
+                FuncArgs::Float3Word9Byte(a1, a2, a3)
+            },
         })
     }
 }
@@ -425,6 +432,7 @@ impl FuncArgs {
             FuncArgs::Float(..) => FuncParams::Float,
             FuncArgs::Float3Byte(..) => FuncParams::Float3Byte,
             FuncArgs::Float4Str(..) => FuncParams::Float4Str,
+            FuncArgs::Float3Word9Byte(..) => FuncParams::Float3Word9Byte,
         }
     }
 
@@ -488,6 +496,21 @@ impl FuncArgs {
                 a1_3.write(res)?;
                 a1_4.write(res)?;
                 write_str(code_page, a2, res)?;
+            },
+            FuncArgs::Float3Word9Byte([a1_1, a1_2, a1_3], [a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8, a2_9], a3) => {
+                a1_1.write(res)?;
+                a1_2.write(res)?;
+                a1_3.write(res)?;
+                write_u16(*a2_1, res);
+                write_u16(*a2_2, res);
+                write_u16(*a2_3, res);
+                write_u16(*a2_4, res);
+                write_u16(*a2_5, res);
+                write_u16(*a2_6, res);
+                write_u16(*a2_7, res);
+                write_u16(*a2_8, res);
+                write_u16(*a2_9, res);
+                res.push(*a3);
             },
         }
         Ok(())
@@ -620,6 +643,25 @@ mod parser {
         )(input)
     }
 
+    fn float_3_word_9_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(
+            seq_3(
+                seq_3(float, float, float),
+                seq_9(le_u16(), le_u16(), le_u16(), le_u16(), le_u16(), le_u16(), le_u16(), le_u16(), le_u16()),
+                le_u8()
+            ),
+            |(
+                (a1_1, a1_2, a1_3),
+                (a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8, a2_9),
+                a3
+            )| FuncArgs::Float3Word9Byte(
+                [a1_1, a1_2, a1_3],
+                [a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8, a2_9],
+                a3
+            )
+        )(input)
+    }
+
     fn float_4_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
         map(
             seq_5(float, float, float, float, string(code_page)),
@@ -668,6 +710,7 @@ mod parser {
                 FuncParams::CharFloat => char_float_args(code_page)(input),
                 FuncParams::Float => float_args(input),
                 FuncParams::Float3Byte => float_3_byte_args(input),
+                FuncParams::Float3Word9Byte => float_3_word_9_byte_args(input),
                 FuncParams::Float4Str => float_4_str_args(code_page)(input),
             }
         }
