@@ -1,4 +1,3 @@
-#![cfg(esl_script_data)]
 use crate::field::{eq_f32, float_32};
 use crate::code_page::CodePage;
 use crate::serde_helpers::HexDump;

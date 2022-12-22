@@ -1,5 +1,4 @@
 use crate::code_page::CodePage;
-#[cfg(esl_script_data)]
 use crate::script_data::*;
 use crate::strings::*;
 use crate::serde_helpers::*;
@@ -143,7 +142,6 @@ pub(crate) enum FieldType {
     Item, Sound, EffectMetadata, Race, SoundGen, Info, Faction, SkillMetadata, Interior,
     CurrentTime, Time, EffectArg,
     Attributes, Skills, Tag,
-    #[cfg(esl_script_data)]
     ScriptData
 }
  
@@ -405,10 +403,7 @@ impl FieldType {
             (SCPT, _, RNAM) => FieldType::I32,
             (_, _, RNAM) => FieldType::StringZ,
             (_, _, RUN_) => FieldType::Bool32,
-            #[cfg(esl_script_data)]
             (SCPT, _, SCDT) => FieldType::ScriptData,
-            #[cfg(not(esl_script_data))]
-            (SCPT, _, SCDT) => FieldType::U8ListZip,
             (SCPT, _, SCHD) => FieldType::ScriptMetadata,
             (TES3, _, SCRD) => FieldType::U8ListZip,
             (_, _, SCRI) => FieldType::StringZ,
@@ -3500,7 +3495,6 @@ macro_rules! define_field {
     }
 }
 
-#[cfg(esl_script_data)]
 define_field!(
     Ai(Ai),
     AiActivate(AiActivate),
@@ -3573,80 +3567,6 @@ define_field!(
     Attributes(Attributes<u32>),
     Skills(Skills<u32>),
     ScriptData(ScriptData),
-);
-
-#[cfg(not(esl_script_data))]
-define_field!(
-    Ai(Ai),
-    AiActivate(AiActivate),
-    AiTarget(AiTarget),
-    AiTravel(AiTravel),
-    AiWander(AiWander),
-    Apparatus(Apparatus),
-    Armor(Armor),
-    BipedObject(BipedObject),
-    BodyPart(BodyPart),
-    Book(Book),
-    Cell(Cell),
-    Class(Class),
-    Clothing(Clothing),
-    Color(Color),
-    ContainerFlags(ContainerFlags),
-    Creature(Creature),
-    CreatureFlags(FlagsAndBlood<CreatureFlags>),
-    DialogType(DialogType),
-    Effect(Effect),
-    EffectIndex(EffectIndex),
-    Tag(Tag),
-    EffectMetadata(EffectMetadata),
-    Enchantment(Enchantment),
-    F32(#[educe(PartialEq(method="eq_f32"))] f32),
-    F32List(#[educe(PartialEq(method="eq_f32_list"))] Vec<f32>),
-    Faction(Faction),
-    FileMetadata(FileMetadata),
-    Grid(Grid),
-    I16(i16),
-    I16List(Vec<i16>),
-    I32(i32),
-    I32List(Vec<i32>),
-    I64(i64),
-    Info(Info),
-    Ingredient(Ingredient),
-    Interior(Interior),
-    Item(Item),
-    Light(Light),
-    MiscItem(MiscItem),
-    Npc(Npc),
-    NpcFlags(FlagsAndBlood<NpcFlags>),
-    NpcState(NpcState),
-    PathGrid(PathGrid),
-    Pos(Pos),
-    PosRot(PosRot),
-    Potion(Potion),
-    Race(Race),
-    ScriptMetadata(ScriptMetadata),
-    ScriptVars(ScriptVars),
-    Skill(Skill),
-    SkillMetadata(SkillMetadata),
-    Sound(Sound),
-    SoundChance(SoundChance),
-    SoundGen(SoundGen),
-    Spell(Spell),
-    String(String),
-    StringList(Vec<String>),
-    StringZ(StringZ),
-    StringZList(StringZList),
-    Tool(Tool),
-    U8(u8),
-    Bool(bool),
-    U8List(Vec<u8>),
-    Weapon(Weapon),
-    Weather(Weather),
-    CurrentTime(CurrentTime),
-    Time(Time),
-    EffectArg(EffectArg),
-    Attributes(Attributes<u32>),
-    Skills(Skills<u32>),
 );
 
 impl From<()> for Field {

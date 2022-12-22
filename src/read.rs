@@ -1,5 +1,4 @@
 use crate::code_page::CodePage;
-#[cfg(esl_script_data)]
 use crate::script_data::*;
 use crate::strings::*;
 use crate::field::*;
@@ -181,7 +180,6 @@ fn u8_list_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
     Ok((&input[input.len() .. ], input.into()))
 }
 
-#[cfg(esl_script_data)]
 fn script_data_field<E>(code_page: CodePage) -> impl FnMut(&[u8]) -> IResult<&[u8], ScriptData, E> {
     move |input| Ok((&input[input.len() .. ], ScriptData::from_bytes(code_page, input)))
 }
@@ -1625,7 +1623,6 @@ fn field_body<'a>(
         let field_type = FieldType::from_tags(record_tag, prev_tag, field_tag);
         match field_type {
             FieldType::U8List => map(u8_list_field, Field::U8List)(input),
-            #[cfg(esl_script_data)]
             FieldType::ScriptData => map(script_data_field(code_page), Field::ScriptData)(input),
             FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
             FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
