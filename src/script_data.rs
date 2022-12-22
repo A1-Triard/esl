@@ -827,8 +827,8 @@ impl FuncArgs {
             FuncArgs::Text(a1) => write_text(code_page, a1, res)?,
             FuncArgs::TextVarListStrList(a1, a2, a3) => {
                 write_text(code_page, a1, res)?;
-                write_var_list(code_page, &a2, res)?;
-                write_str_list(code_page, &a3, res)?;
+                write_var_list(code_page, a2, res)?;
+                write_str_list(code_page, a3, res)?;
             },
             FuncArgs::VarStr(a1, a2) => {
                 a1.write(code_page, res)?;
@@ -905,7 +905,7 @@ mod parser {
     }
 
     fn byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(le_u8(), |a1| FuncArgs::Byte(a1))(input)
+        map(le_u8(), FuncArgs::Byte)(input)
     }
 
     fn byte_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -923,7 +923,7 @@ mod parser {
     }
 
     fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(float, |a1| FuncArgs::Float(a1))(input)
+        map(float, FuncArgs::Float)(input)
     }
 
     fn float_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -964,7 +964,7 @@ mod parser {
     }
 
     fn int_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(le_i16(), |a1| FuncArgs::Int(a1))(input)
+        map(le_i16(), FuncArgs::Int)(input)
     }
 
     fn int_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
@@ -976,7 +976,7 @@ mod parser {
     }
 
     fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(string(code_page), |a1| FuncArgs::Str(a1))
+        map(string(code_page), FuncArgs::Str)
     }
 
     fn str_byte_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -1049,7 +1049,7 @@ mod parser {
     }
 
     fn text_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(text(code_page), |a1| FuncArgs::Text(a1))
+        map(text(code_page), FuncArgs::Text)
     }
 
     fn text_var_list_str_list_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -1136,7 +1136,7 @@ impl Stmt {
 const STMT_FUNC_FIELD: &str = name_of!(func in Stmt);
 const STMT_ARGS_FIELD: &str = name_of!(args in Stmt);
 
-const STMT_FIELDS: &[&'static str] = &[
+const STMT_FIELDS: &[&str] = &[
     STMT_FUNC_FIELD,
     STMT_ARGS_FIELD,
 ];
@@ -1260,7 +1260,7 @@ pub struct ScriptDataSerde {
 const SCRIPT_DATA_STMTS_FIELD: &str = name_of!(stmts in ScriptData);
 const SCRIPT_DATA_RAW_FIELD: &str = name_of!(raw in ScriptData);
 
-const SCRIPT_DATA_FIELDS: &[&'static str] = &[
+const SCRIPT_DATA_FIELDS: &[&str] = &[
     SCRIPT_DATA_STMTS_FIELD,
     SCRIPT_DATA_RAW_FIELD,
 ];

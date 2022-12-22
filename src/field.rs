@@ -685,7 +685,7 @@ const SCRIPT_METADATA_VARS_FIELD: &str = name_of!(vars in ScriptMetadata);
 const SCRIPT_METADATA_DATA_SIZE_FIELD: &str = name_of!(data_size in ScriptMetadata);
 const SCRIPT_METADATA_VAR_TABLE_SIZE_FIELD: &str = name_of!(var_table_size in ScriptMetadata);
 
-const SCRIPT_METADATA_FIELDS: &[&'static str] = &[
+const SCRIPT_METADATA_FIELDS: &[&str] = &[
     SCRIPT_METADATA_NAME_FIELD,
     SCRIPT_METADATA_VARS_FIELD,
     SCRIPT_METADATA_DATA_SIZE_FIELD,
@@ -822,7 +822,7 @@ const FILE_METADATA_AUTHOR_FIELD: &str = name_of!(author in FileMetadata);
 const FILE_METADATA_DESCRIPTION_FIELD: &str = name_of!(description in FileMetadata);
 const FILE_METADATA_RECORDS_FIELD: &str = name_of!(records in FileMetadata);
 
-const FILE_METADATA_FIELDS: &[&'static str] = &[
+const FILE_METADATA_FIELDS: &[&str] = &[
     FILE_METADATA_VERSION_FIELD,
     FILE_METADATA_TYPE_FIELD,
     FILE_METADATA_AUTHOR_FIELD,
@@ -1172,7 +1172,7 @@ pub struct Item {
 const ITEM_COUNT_FIELD: &str = name_of!(count in Item);
 const ITEM_ITEM_ID_FIELD: &str = name_of!(item_id in Item);
 
-const ITEM_FIELDS: &[&'static str] = &[
+const ITEM_FIELDS: &[&str] = &[
     ITEM_COUNT_FIELD,
     ITEM_ITEM_ID_FIELD,
 ];
@@ -1415,7 +1415,7 @@ const AI_TARGET_ACTOR_ID_FIELD: &str = name_of!(actor_id in AiTarget);
 const AI_TARGET_RESET_FIELD: &str = name_of!(reset in AiTarget);
 const AI_TARGET_FLAGS_FIELD: &str = name_of!(flags in AiTarget);
 
-const AI_TARGET_FIELDS: &[&'static str] = &[
+const AI_TARGET_FIELDS: &[&str] = &[
     AI_TARGET_POS_FIELD,
     AI_TARGET_DURATION_FIELD,
     AI_TARGET_ACTOR_ID_FIELD,
@@ -1557,7 +1557,7 @@ pub struct AiActivate {
 const AI_ACTIVATE_OBJECT_ID_FIELD: &str = name_of!(object_id in AiActivate);
 const AI_ACTIVATE_RESET_FIELD: &str = name_of!(reset in AiActivate);
 
-const AI_ACTIVATE_FIELDS: &[&'static str] = &[
+const AI_ACTIVATE_FIELDS: &[&str] = &[
     AI_ACTIVATE_OBJECT_ID_FIELD,
     AI_ACTIVATE_RESET_FIELD,
 ];
@@ -3108,7 +3108,7 @@ pub struct SoundChance {
 const SOUND_CHANCE_SOUND_ID_FIELD: &str = name_of!(sound_id in SoundChance);
 const SOUND_CHANCE_CHANCE_FIELD: &str = name_of!(chance in SoundChance);
 
-const SOUND_CHANCE_FIELDS: &[&'static str] = &[
+const SOUND_CHANCE_FIELDS: &[&str] = &[
     SOUND_CHANCE_SOUND_ID_FIELD,
     SOUND_CHANCE_CHANCE_FIELD,
 ];
