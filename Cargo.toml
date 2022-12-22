@@ -1,7 +1,7 @@
 [package]
 edition = "2021"
 name = "esl"
-version = "0.17.0"
+version = "0.17.1"
 #rust-version = "nightly"
 authors = ["warlock <internalmike@gmail.com>"]
 description = "A library for reading, writing and processing ESM/ESP/ESS files."
@@ -30,6 +30,7 @@ nom-errors = "0.0.12"
 phantom-type = "0.4.2"
 serde = { version = "1.0.147", features = ["derive"] }
 serde-serialize-seed = "0.0.9"
+serde_tagged = "0.2.0"
 utf8-chars = "2.0.2"
 
 [build-dependencies]

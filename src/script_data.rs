@@ -76,7 +76,7 @@ pub enum Var {
 fn write_char(code_page: CodePage, s: &str, res: &mut Vec<u8>) -> Result<(), String> {
     let bytes = code_page.encode(s).map_err(|e| match e {
         None => format!("the '{s}' string does not correspond to any source byte sequence"),
-        Some(c) => format!("the '{c}' char is not representable in {code_page:?} func page")
+        Some(c) => format!("the '{c}' char is not representable in {code_page:?} code page")
     })?;
     if bytes.len() != 1 {
         return Err(format!("multiply chars '{s}"));
@@ -90,7 +90,7 @@ fn write_str_raw(
 ) -> Result<(), String> {
     let bytes = code_page.encode(s).map_err(|e| match e {
         None => format!("the '{s}' string does not correspond to any source byte sequence"),
-        Some(c) => format!("the '{c}' char is not representable in {code_page:?} func page")
+        Some(c) => format!("the '{c}' char is not representable in {code_page:?} code page")
     })?;
     write_len(bytes.len(), res).map_err(|()| format!("too long string '{s}'"))?;
     res.extend_from_slice(&bytes);
@@ -1136,29 +1136,32 @@ impl Stmt {
 const STMT_FUNC_FIELD: &str = name_of!(func in Stmt);
 const STMT_ARGS_FIELD: &str = name_of!(args in Stmt);
 
-const STMT_FIELDS: &[&str] = &[
-    STMT_FUNC_FIELD,
+const TAGGED_STMT_FIELDS: &[&str] = &[
     STMT_ARGS_FIELD,
 ];
 
-impl Serialize for Stmt {
+struct TaggedStmt<'a>(&'a Stmt);
+
+struct TaggedStmtBuf(Stmt);
+
+struct TaggedStmtDe(Func);
+
+impl<'a> Serialize for TaggedStmt<'a> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut serializer = serializer.serialize_struct(name_of!(type Stmt), 2)?;
-        serializer.serialize_field(STMT_FUNC_FIELD, &self.func)?;
-        serializer.serialize_field(STMT_ARGS_FIELD, &ValueWithSeed(&self.args, FuncArgsSerde { params: self.func.params() }))?;
+        let mut serializer = serializer.serialize_struct(name_of!(type Stmt), 1)?;
+        serializer.serialize_field(STMT_ARGS_FIELD, &ValueWithSeed(&self.0.args, FuncArgsSerde { params: self.0.func.params() }))?;
         serializer.end()
     }
 }
 
-enum StmtField {
-    Func,
-    Args,
+enum TaggedStmtField {
+    Args
 }
 
-struct StmtFieldDeVisitor;
+struct TaggedStmtFieldDeVisitor;
 
-impl<'de> de::Visitor<'de> for StmtFieldDeVisitor {
-    type Value = StmtField;
+impl<'de> de::Visitor<'de> for TaggedStmtFieldDeVisitor {
+    type Value = TaggedStmtField;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "stmt field")
@@ -1166,64 +1169,82 @@ impl<'de> de::Visitor<'de> for StmtFieldDeVisitor {
 
     fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
         match value {
-            STMT_FUNC_FIELD => Ok(StmtField::Func),
-            STMT_ARGS_FIELD => Ok(StmtField::Args),
-            x => Err(E::unknown_field(x, STMT_FIELDS)),
+            STMT_ARGS_FIELD => Ok(TaggedStmtField::Args),
+            x => Err(E::unknown_field(x, TAGGED_STMT_FIELDS)),
         }
     }
 }
 
-impl<'de> de::Deserialize<'de> for StmtField {
+impl<'de> de::Deserialize<'de> for TaggedStmtField {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_identifier(StmtFieldDeVisitor)
+        deserializer.deserialize_identifier(TaggedStmtFieldDeVisitor)
     }
 }
 
-struct StmtDeVisitor;
+struct TaggedStmtDeVisitor(Func);
 
-impl<'de> de::Visitor<'de> for StmtDeVisitor {
-    type Value = Stmt;
+impl<'de> de::Visitor<'de> for TaggedStmtDeVisitor {
+    type Value = TaggedStmtBuf;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "stmt")
     }
 
     fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: de::MapAccess<'de> {
-        let mut func: Option<Func> = None;
         let mut args = None;
-        while let Some(field) = map.next_key()? {
-            match field {
-                StmtField::Func =>
-                    if func.replace(map.next_value()?).is_some() {
-                        return Err(A::Error::duplicate_field(STMT_FUNC_FIELD));
-                    },
-                StmtField::Args => {
-                    let Some(func) = func else {
-                        return Err(A::Error::custom("the 'args' field should be prceeded by the 'func' field"));
-                    };
-                    if args.replace(map.next_value_seed(FuncArgsSerde { params: func.params() })?).is_some() {
-                        return Err(A::Error::duplicate_field(STMT_ARGS_FIELD));
-                    }
-                },
+        while let Some(TaggedStmtField::Args) = map.next_key()? {
+            if args.replace(map.next_value_seed(FuncArgsSerde { params: self.0.params() })?).is_some() {
+                return Err(A::Error::duplicate_field(STMT_ARGS_FIELD));
             }
         }
-        let func = func.ok_or_else(|| A::Error::missing_field(STMT_FUNC_FIELD))?;
         let args = args.ok_or_else(|| A::Error::missing_field(STMT_ARGS_FIELD))?;
-        Ok(Stmt { func, args })
+        Ok(TaggedStmtBuf(Stmt { func: self.0, args }))
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
-        let func: Func = seq.next_element()?
+        let args = seq.next_element_seed(FuncArgsSerde { params: self.0.params() })?
             .ok_or_else(|| A::Error::invalid_length(0, &self))?;
-        let args = seq.next_element_seed(FuncArgsSerde { params: func.params() })?
-            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
-        Ok(Stmt { func, args })
+        Ok(TaggedStmtBuf(Stmt { func: self.0, args }))
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for TaggedStmtDe {
+    type Value = TaggedStmtBuf;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        deserializer.deserialize_struct(name_of!(type Stmt), TAGGED_STMT_FIELDS, TaggedStmtDeVisitor(self.0))
+    }
+}
+
+impl Serialize for Stmt {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serde_tagged::ser::internal::serialize(
+            serializer,
+            STMT_FUNC_FIELD,
+            &self.func,
+            &TaggedStmt(self)
+        )
+    }
+}
+
+struct TaggedStmtDeSeedFactory;
+
+impl<'de> serde_tagged::de::SeedFactory<'de, Func> for TaggedStmtDeSeedFactory {
+    type Value = TaggedStmtBuf;
+    type Seed = TaggedStmtDe;
+
+    fn seed<E: de::Error>(self, tag: Func) -> Result<Self::Seed, E> {
+        Ok(TaggedStmtDe(tag))
     }
 }
 
 impl<'de> Deserialize<'de> for Stmt {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_struct(name_of!(type Stmt), STMT_FIELDS, StmtDeVisitor)
+        serde_tagged::de::internal::deserialize(
+            deserializer,
+            STMT_FUNC_FIELD,
+            TaggedStmtDeSeedFactory,
+        ).map(|x| x.0)
     }
 }
 
@@ -1276,7 +1297,7 @@ impl SerializeSeed for ScriptDataSerde {
             serializer.end()
         } else {
             let Some(code_page) = self.code_page else {
-                return Err(S::Error::custom("func page required for binary serialization"));
+                return Err(S::Error::custom("code page required for binary serialization"));
             };
             value.to_bytes(code_page).map_err(S::Error::custom)?.serialize(serializer)
         }
@@ -1358,7 +1379,7 @@ impl<'de> DeserializeSeed<'de> for ScriptDataSerde {
             deserializer.deserialize_struct(name_of!(type ScriptData), SCRIPT_DATA_FIELDS, ScriptDataDeVisitor)
         } else {
             let Some(code_page) = self.code_page else {
-                return Err(D::Error::custom("func page required for binary deserialization"));
+                return Err(D::Error::custom("code page required for binary deserialization"));
             };
             Ok(ScriptData::from_bytes(code_page, &<Vec<u8>>::deserialize(deserializer)?))
         }
