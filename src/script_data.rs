@@ -342,6 +342,9 @@ macro_attr! {
         ForceSneak = 0x1163,
         ClearForceSneak = 0x1164,
         Fall = 0x1166,
+        Pop = 0x380F,
+        PushS = 0x3813,
+        GetLocal = 0x3C00,
     }
 }
 
@@ -429,6 +432,7 @@ impl Func {
             Func::Fall => FuncParams::None,
             Func::ForceGreeting => FuncParams::None,
             Func::ForceSneak => FuncParams::None,
+            Func::GetLocal => FuncParams::None,
             Func::HurtStandingActor => FuncParams::Float,
             Func::If => FuncParams::ByteStr,
             Func::Journal => FuncParams::StrInt2,
@@ -482,8 +486,10 @@ impl Func {
             Func::PlaySoundVP => FuncParams::StrFloat2,
             Func::PlaySound3D => FuncParams::Str,
             Func::PlaySound3DVP => FuncParams::StrFloat2,
+            Func::Pop => FuncParams::Int,
             Func::Position => FuncParams::Float4,
             Func::PositionCell => FuncParams::Float4Str,
+            Func::PushS => FuncParams::Int,
             Func::RaiseRank => FuncParams::None,
             Func::RemoveItem => FuncParams::StrInt,
             Func::RemoveSoulGem => FuncParams::Str,
