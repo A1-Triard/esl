@@ -196,11 +196,15 @@ macro_attr! {
         StreamMusic = 0x1003,
         Position = 0x1004,
         PositionCell = 0x1005,
+        Move = 0x1006,
         Rotate = 0x1007,
         MoveWorld = 0x1008,
+        RotateWorld = 0x1009,
+        SetPos = 0x100B,
         SetAngle = 0x100D,
         SetAtStart = 0x1010,
         PlayGroup = 0x1014,
+        LoopGroup = 0x1015,
         Activate = 0x1017,
         OnActivate = 0x1018,
         StartCombat = 0x1019,
@@ -242,8 +246,15 @@ macro_attr! {
         ModSpear = 0x1052,
         SetAthletics = 0x1054,
         ModAthletics = 0x1055,
+        SetEnchant = 0x1057,
+        SetDestruction = 0x105A,
+        SetAlteration = 0x105D,
+        SetIllusion = 0x1060,
+        SetConjuration = 0x1063,
+        SetMysticism = 0x1066,
         SetRestoration = 0x1069,
         ModRestoration = 0x106A,
+        SetAlchemy = 0x106C,
         SetMarksman = 0x1081,
         ModMarksman = 0x1082,
         ModMercantile = 0x1085,
@@ -268,11 +279,14 @@ macro_attr! {
         Disable = 0x10DB,
         EnablePlayerControls = 0x10DD,
         DisablePlayerControls = 0x10DE,
+        WakeUpPC = 0x10E1,
         EnablePlayerViewSwitch = 0x10E2,
         DisablePlayerViewSwitch = 0x10E3,
         ShowRestMenu = 0x10E5,
         PlaceAtPC = 0x10E6,
+        Resurrect = 0x10E7,
         ForceGreeting = 0x10E8,
+        RemoveSoulGem = 0x10EC,
         EnableTeleporting = 0x10EE,
         DisableTeleporting = 0x10EF,
         AiEscort = 0x10F4,
@@ -299,6 +313,7 @@ macro_attr! {
         EnableRaceMenu = 0x1127,
         EnableClassMenu = 0x1128,
         EnableBirthMenu = 0x1129,
+        PlaySoundVP = 0x112B,
         PlaySound3D = 0x112C,
         PlaySound3DVP = 0x112D,
         PlayLoopSound3D = 0x112E,
@@ -308,6 +323,7 @@ macro_attr! {
         ModCurrentHealth = 0x1132,
         ModCurrentFatigue = 0x1134,
         HurtStandingActor = 0x1135,
+        Lock = 0x1136,
         Unlock = 0x1137,
         PCJoinFaction = 0x113B,
         EnablePlayerJumping = 0x113F,
@@ -344,7 +360,9 @@ pub enum FuncParams {
     Float3IntListByte,
     Float4,
     Float4Str,
+    Int,
     IntByte,
+    Int2,
     Str,
     StrByte,
     StrByte8,
@@ -415,6 +433,8 @@ impl Func {
             Func::HurtStandingActor => FuncParams::Float,
             Func::If => FuncParams::ByteStr,
             Func::Journal => FuncParams::StrInt2,
+            Func::Lock => FuncParams::Int,
+            Func::LoopGroup => FuncParams::Int2,
             Func::MessageBox => FuncParams::TextVarListStrList,
             Func::ModAgility => FuncParams::Float,
             Func::ModArmorer => FuncParams::Float,
@@ -447,6 +467,7 @@ impl Func {
             Func::ModSpeed => FuncParams::Float,
             Func::ModStrength => FuncParams::Float,
             Func::ModWillpower => FuncParams::Float,
+            Func::Move => FuncParams::CharFloat,
             Func::MoveWorld => FuncParams::CharFloat,
             Func::OnActivate => FuncParams::None,
             Func::PayFine => FuncParams::None,
@@ -459,18 +480,24 @@ impl Func {
             Func::PlayLoopSound3D => FuncParams::Str,
             Func::PlayLoopSound3DVP => FuncParams::StrFloat2,
             Func::PlaySound => FuncParams::Str,
+            Func::PlaySoundVP => FuncParams::StrFloat2,
             Func::PlaySound3D => FuncParams::Str,
             Func::PlaySound3DVP => FuncParams::StrFloat2,
             Func::Position => FuncParams::Float4,
             Func::PositionCell => FuncParams::Float4Str,
             Func::RaiseRank => FuncParams::None,
             Func::RemoveItem => FuncParams::StrInt,
+            Func::RemoveSoulGem => FuncParams::Str,
             Func::RemoveSpell => FuncParams::Str,
+            Func::Resurrect => FuncParams::None,
             Func::Return => FuncParams::None,
             Func::Rotate => FuncParams::CharFloat,
+            Func::RotateWorld => FuncParams::CharFloat,
             Func::Say => FuncParams::StrText,
             Func::Set => FuncParams::VarStr,
             Func::SetAgility => FuncParams::Float,
+            Func::SetAlchemy => FuncParams::Float,
+            Func::SetAlteration => FuncParams::Float,
             Func::SetAngle => FuncParams::CharFloat,
             Func::SetArmorer => FuncParams::Float,
             Func::SetAthletics => FuncParams::Float,
@@ -478,7 +505,10 @@ impl Func {
             Func::SetAxe => FuncParams::Float,
             Func::SetBlock => FuncParams::Float,
             Func::SetBluntWeapon => FuncParams::Float,
+            Func::SetConjuration => FuncParams::Float,
+            Func::SetDestruction => FuncParams::Float,
             Func::SetDisposition => FuncParams::Float,
+            Func::SetEnchant => FuncParams::Float,
             Func::SetEndurance => FuncParams::Float,
             Func::SetFatigue => FuncParams::Float,
             Func::SetFight => FuncParams::Float,
@@ -490,13 +520,16 @@ impl Func {
             Func::SetLuck => FuncParams::Float,
             Func::SetMagicka => FuncParams::Float,
             Func::SetMarksman => FuncParams::Float,
+            Func::SetMysticism => FuncParams::Float,
             Func::SetPCCrimeLevel => FuncParams::Float,
+            Func::SetPos => FuncParams::CharFloat,
             Func::SetRef => FuncParams::Str,
             Func::SetRestoration => FuncParams::Float,
             Func::SetSpear => FuncParams::Float,
             Func::SetSpeed => FuncParams::Float,
             Func::SetStrength => FuncParams::Float,
             Func::SetMediumArmor => FuncParams::Float,
+            Func::SetIllusion => FuncParams::Float,
             Func::SetIntelligence => FuncParams::Float,
             Func::SetWillpower => FuncParams::Float,
             Func::SetPersonality => FuncParams::Float,
@@ -509,6 +542,7 @@ impl Func {
             Func::StopSound => FuncParams::Str,
             Func::StreamMusic => FuncParams::Str,
             Func::Unlock => FuncParams::None,
+            Func::WakeUpPC => FuncParams::None,
         }
     }
 }
@@ -525,7 +559,9 @@ pub enum FuncArgs {
     Float3IntListByte([Float; 3], Vec<i16>, u8),
     Float4([Float; 4]),
     Float4Str([Float; 4], String),
+    Int(i16),
     IntByte(i16, u8),
+    Int2([i16; 2]),
     Str(String),
     StrByte(String, u8),
     StrByte8(String, [u8; 8]),
@@ -565,7 +601,9 @@ impl SerializeSeed for FuncArgsSerde {
             FuncArgs::Float4(a1) => a1.serialize(serializer),
             FuncArgs::Float4Str(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::Float3IntListByte(a1, a2, a3) => (a1, a2, a3).serialize(serializer),
+            FuncArgs::Int(a1) => a1.serialize(serializer),
             FuncArgs::IntByte(a1, a2) => (a1, a2).serialize(serializer),
+            FuncArgs::Int2(a1) => a1.serialize(serializer),
             FuncArgs::Str(a1) => a1.serialize(serializer),
             FuncArgs::StrByte(a1, a2) => (a1, a2).serialize(serializer),
             FuncArgs::StrByte8(a1, a2) => (a1, a2).serialize(serializer),
@@ -611,7 +649,9 @@ impl<'de> DeserializeSeed<'de> for FuncArgsSerde {
                 let (a1, a2) = <([Float; 4], String)>::deserialize(deserializer)?;
                 FuncArgs::Float4Str(a1, a2)
             },
+            FuncParams::Int => { let a1 = i16::deserialize(deserializer)?; FuncArgs::Int(a1) },
             FuncParams::IntByte => { let (a1, a2) = <(i16, u8)>::deserialize(deserializer)?; FuncArgs::IntByte(a1, a2) },
+            FuncParams::Int2 => { let a1 = <[i16; 2]>::deserialize(deserializer)?; FuncArgs::Int2(a1) },
             FuncParams::Str => { let a1 = String::deserialize(deserializer)?; FuncArgs::Str(a1) },
             FuncParams::StrByte => { let (a1, a2) = <(String, u8)>::deserialize(deserializer)?; FuncArgs::StrByte(a1, a2) },
             FuncParams::StrByte8 => { let (a1, a2) = <(String, [u8; 8])>::deserialize(deserializer)?; FuncArgs::StrByte8(a1, a2) },
@@ -656,7 +696,9 @@ impl FuncArgs {
             FuncArgs::Float4(..) => FuncParams::Float4,
             FuncArgs::Float4Str(..) => FuncParams::Float4Str,
             FuncArgs::Float3IntListByte(..) => FuncParams::Float3IntListByte,
+            FuncArgs::Int(..) => FuncParams::Int,
             FuncArgs::IntByte(..) => FuncParams::IntByte,
+            FuncArgs::Int2(..) => FuncParams::Int2,
             FuncArgs::Str(..) => FuncParams::Str,
             FuncArgs::StrByte(..) => FuncParams::StrByte,
             FuncArgs::StrByte8(..) => FuncParams::StrByte8,
@@ -717,9 +759,14 @@ impl FuncArgs {
                 a1_4.write(res)?;
                 write_str(code_page, a2, res)?;
             },
+            FuncArgs::Int(a1) => write_i16(*a1, res),
             FuncArgs::IntByte(a1, a2) => {
                 write_i16(*a1, res);
                 res.push(*a2);
+            },
+            FuncArgs::Int2([a1_1, a1_2]) => {
+                write_i16(*a1_1, res);
+                write_i16(*a1_2, res);
             },
             FuncArgs::Str(a1) => write_str(code_page, a1, res)?,
             FuncArgs::StrByte(a1, a2) => {
@@ -917,8 +964,16 @@ mod parser {
         )
     }
 
+    fn int_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(le_i16(), |a1| FuncArgs::Int(a1))(input)
+    }
+
     fn int_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
         map(seq_2(le_i16(), le_u8()), |(a1, a2)| FuncArgs::IntByte(a1, a2))(input)
+    }
+
+    fn int_2_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
+        map(seq_2(le_i16(), le_i16()), |(a1_1, a1_2)| FuncArgs::Int2([a1_1, a1_2]))(input)
     }
 
     fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
@@ -1028,7 +1083,9 @@ mod parser {
                 FuncParams::Float3IntListByte => float_3_int_list_byte_args(input),
                 FuncParams::Float4 => float_4_args(input),
                 FuncParams::Float4Str => float_4_str_args(code_page)(input),
+                FuncParams::Int => int_args(input),
                 FuncParams::IntByte => int_byte_args(input),
+                FuncParams::Int2 => int_2_args(input),
                 FuncParams::Str => str_args(code_page)(input),
                 FuncParams::StrByte => str_byte_args(code_page)(input),
                 FuncParams::StrByte8 => str_byte_8_args(code_page)(input),
