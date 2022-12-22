@@ -1278,7 +1278,7 @@ impl SerializeSeed for ScriptDataSerde {
             let Some(code_page) = self.code_page else {
                 return Err(S::Error::custom("func page required for binary serialization"));
             };
-            value.to_bytes(code_page).serialize(serializer)
+            value.to_bytes(code_page).map_err(S::Error::custom)?.serialize(serializer)
         }
     }
 }
