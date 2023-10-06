@@ -14,6 +14,7 @@
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::let_unit_value)]
+#![allow(clippy::non_canonical_partial_ord_impl)]
 #![allow(clippy::option_map_unit_fn)]
 #![allow(clippy::match_ref_pats)]
 #![allow(clippy::transmute_float_to_int)]
