@@ -27,6 +27,6 @@ fn main() {
     let src = BufReader::new(File::open(src_path).unwrap());
     let tags = src.lines().map(|s| Tag::from_str(&s.unwrap()).unwrap());
     for tag in tags  {
-        writeln!(dest, "pub const {}: Tag = Tag::from({});", tag, tag.dword).unwrap();
+        writeln!(dest, "pub const {}: Tag = Tag {{ dword: {} }};", tag, tag.dword).unwrap();
     }
 }

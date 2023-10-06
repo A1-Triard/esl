@@ -1,7 +1,8 @@
 #![feature(const_trait_impl)]
+#![feature(effects)]
 #![feature(iterator_try_collect)]
+#![feature(lazy_cell)]
 #![feature(never_type)]
-#![feature(once_cell)]
 #![feature(stmt_expr_attributes)]
 #![feature(type_alias_impl_trait)]
 

@@ -1894,36 +1894,36 @@ pub struct EffectArg {
 }
 
 impl EffectArg {
-    pub const STRENGTH_BLOCK_00000000: EffectArg = EffectArg::from(0x00000000);
-    pub const ARMORER_INTELLIGENCE_00000001: EffectArg = EffectArg::from(0x00000001);
-    pub const MEDIUM_ARMOR_WILLPOWER_00000002: EffectArg = EffectArg::from(0x00000002);
-    pub const HEAVY_ARMOR_AGILITY_00000003: EffectArg = EffectArg::from(0x00000003);
-    pub const BLUNT_WEAPON_SPEED_00000004: EffectArg = EffectArg::from(0x00000004);
-    pub const LONG_BLADE_ENDURANCE_00000005: EffectArg = EffectArg::from(0x00000005);
-    pub const AXE_PERSONALITY_00000006: EffectArg = EffectArg::from(0x00000006);
-    pub const SPEAR_LUCK_00000007: EffectArg = EffectArg::from(0x00000007);
-    pub const ATHLETICS_00000008: EffectArg = EffectArg::from(0x00000008);
-    pub const ENCHANT_00000009: EffectArg = EffectArg::from(0x00000009);
-    pub const DESTRUCTION_0000000A: EffectArg = EffectArg::from(0x0000000A);
-    pub const ALTERATION_0000000B: EffectArg = EffectArg::from(0x0000000B);
-    pub const ILLUSION_0000000C: EffectArg = EffectArg::from(0x0000000C);
-    pub const CONJURATION_0000000D: EffectArg = EffectArg::from(0x0000000D);
-    pub const MYSTICISM_0000000E: EffectArg = EffectArg::from(0x0000000E);
-    pub const RESTORATION_0000000F: EffectArg = EffectArg::from(0x0000000F);
-    pub const ALCHEMY_00000010: EffectArg = EffectArg::from(0x00000010);
-    pub const UNARMORED_00000011: EffectArg = EffectArg::from(0x00000011);
-    pub const SECURITY_00000012: EffectArg = EffectArg::from(0x00000012);
-    pub const SNEAK_00000013: EffectArg = EffectArg::from(0x00000013);
-    pub const ACROBATICS_00000014: EffectArg = EffectArg::from(0x00000014);
-    pub const LIGHT_ARMOR_00000015: EffectArg = EffectArg::from(0x00000015);
-    pub const SHORT_BLADE_00000016: EffectArg = EffectArg::from(0x00000016);
-    pub const MARKSMAN_00000017: EffectArg = EffectArg::from(0x00000017);
-    pub const MERCANTILE_00000018: EffectArg = EffectArg::from(0x00000018);
-    pub const SPEECHCRAFT_00000019: EffectArg = EffectArg::from(0x00000019);
-    pub const HAND_TO_HAND_0000001A: EffectArg = EffectArg::from(0x0000001A);
+    pub const STRENGTH_BLOCK_00000000: EffectArg = EffectArg { dword: 0x00000000 };
+    pub const ARMORER_INTELLIGENCE_00000001: EffectArg = EffectArg { dword: 0x00000001 };
+    pub const MEDIUM_ARMOR_WILLPOWER_00000002: EffectArg = EffectArg { dword: 0x00000002 };
+    pub const HEAVY_ARMOR_AGILITY_00000003: EffectArg = EffectArg { dword: 0x00000003 };
+    pub const BLUNT_WEAPON_SPEED_00000004: EffectArg = EffectArg { dword: 0x00000004 };
+    pub const LONG_BLADE_ENDURANCE_00000005: EffectArg = EffectArg { dword: 0x00000005 };
+    pub const AXE_PERSONALITY_00000006: EffectArg = EffectArg { dword: 0x00000006 };
+    pub const SPEAR_LUCK_00000007: EffectArg = EffectArg { dword: 0x00000007 };
+    pub const ATHLETICS_00000008: EffectArg = EffectArg { dword: 0x00000008 };
+    pub const ENCHANT_00000009: EffectArg = EffectArg { dword: 0x00000009 };
+    pub const DESTRUCTION_0000000A: EffectArg = EffectArg { dword: 0x0000000A };
+    pub const ALTERATION_0000000B: EffectArg = EffectArg { dword: 0x0000000B };
+    pub const ILLUSION_0000000C: EffectArg = EffectArg { dword: 0x0000000C };
+    pub const CONJURATION_0000000D: EffectArg = EffectArg { dword: 0x0000000D };
+    pub const MYSTICISM_0000000E: EffectArg = EffectArg { dword: 0x0000000E };
+    pub const RESTORATION_0000000F: EffectArg = EffectArg { dword: 0x0000000F };
+    pub const ALCHEMY_00000010: EffectArg = EffectArg { dword: 0x00000010 };
+    pub const UNARMORED_00000011: EffectArg = EffectArg { dword: 0x00000011 };
+    pub const SECURITY_00000012: EffectArg = EffectArg { dword: 0x00000012 };
+    pub const SNEAK_00000013: EffectArg = EffectArg { dword: 0x00000013 };
+    pub const ACROBATICS_00000014: EffectArg = EffectArg { dword: 0x00000014 };
+    pub const LIGHT_ARMOR_00000015: EffectArg = EffectArg { dword: 0x00000015 };
+    pub const SHORT_BLADE_00000016: EffectArg = EffectArg { dword: 0x00000016 };
+    pub const MARKSMAN_00000017: EffectArg = EffectArg { dword: 0x00000017 };
+    pub const MERCANTILE_00000018: EffectArg = EffectArg { dword: 0x00000018 };
+    pub const SPEECHCRAFT_00000019: EffectArg = EffectArg { dword: 0x00000019 };
+    pub const HAND_TO_HAND_0000001A: EffectArg = EffectArg { dword: 0x0000001A };
 }
 
-impl const From<u32> for EffectArg {
+impl From<u32> for EffectArg {
     fn from(dword: u32) -> EffectArg {
         EffectArg { dword }
     }
