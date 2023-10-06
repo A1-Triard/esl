@@ -1296,7 +1296,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(SpellFlags, "spell flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(SpellFlags, "spell flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Spell {
@@ -1342,7 +1342,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(Services, "services", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(Services, "services", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Ai {
@@ -1379,7 +1379,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(AiTravelFlags, "AI travel flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(AiTravelFlags, "AI travel flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -1397,7 +1397,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(AiTargetFlags, "AI target flags", u8, bits, try from_bits, Unsigned, u64);
+enum_serde!(AiTargetFlags, "AI target flags", u8, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Educe)]
 #[educe(Eq, PartialEq)]
@@ -1680,7 +1680,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(NpcFlags, "NPC flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
+enum_serde!(NpcFlags, "NPC flags", u8, bits(), try from_bits, Unsigned, u64, ^0x08);
 
 bitflags_ext! {
     pub struct CreatureFlags: u8 {
@@ -1694,7 +1694,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(CreatureFlags, "creature flags", u8, bits, try from_bits, Unsigned, u64, ^0x08);
+enum_serde!(CreatureFlags, "creature flags", u8, bits(), try from_bits, Unsigned, u64, ^0x08);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct FlagsAndBlood<Flags> {
@@ -1710,7 +1710,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(BookFlags, "book flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(BookFlags, "book flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -1732,7 +1732,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(ContainerFlags, "container flags", u32, bits, try from_bits, Unsigned, u64, ^0x08);
+enum_serde!(ContainerFlags, "container flags", u32, bits(), try from_bits, Unsigned, u64, ^0x08);
 
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -2441,7 +2441,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(EffectFlags, "effect flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(EffectFlags, "effect flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -2556,7 +2556,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(LightFlags, "light flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(LightFlags, "light flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -2676,7 +2676,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(WeaponFlags, "weapon flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(WeaponFlags, "weapon flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Educe)]
 #[educe(Eq, PartialEq)]
@@ -2736,7 +2736,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(BodyPartFlags, "body part flags", u8, bits, try from_bits, Unsigned, u64);
+enum_serde!(BodyPartFlags, "body part flags", u8, bits(), try from_bits, Unsigned, u64);
 
 macro_attr! {
     #[derive(Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
@@ -2940,7 +2940,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(CellFlags, "cell flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(CellFlags, "cell flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Cell {
@@ -3259,7 +3259,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(RaceFlags, "race flags", u32, bits, try from_bits, Unsigned, u64);
+enum_serde!(RaceFlags, "race flags", u32, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct RaceAttribute {

@@ -26,6 +26,7 @@ macro_rules! bitflags_ext {
     ) => {
         bitflags::bitflags! {
             #[derive(Default)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
             $($vis)* struct $flags: $ty {
                 $(const $name = $value;)*
             }

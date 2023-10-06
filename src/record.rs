@@ -3,6 +3,8 @@ use crate::field::*;
 use crate::script_data::*;
 use crate::serde_helpers::*;
 use crate::strings::*;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as base64_STANDARD;
 use either::{Either, Left, Right};
 use flate2::Compression;
 use flate2::write::{ZlibDecoder, ZlibEncoder};
@@ -24,7 +26,7 @@ bitflags_ext! {
     }
 }
 
-enum_serde!(RecordFlags, "record flags", u64, bits, try from_bits, Unsigned, u64);
+enum_serde!(RecordFlags, "record flags", u64, bits(), try from_bits, Unsigned, u64);
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Record {
@@ -93,7 +95,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             },
             FieldType::U8ListZip => if let Field::U8List(v) = self.field {
                 if serializer.is_human_readable() {
-                    base64::encode(v).serialize(serializer)
+                    base64_STANDARD.encode(v).serialize(serializer)
                 } else {
                     let uncompressed = (|| {
                         let mut decoder = ZlibDecoder::new(Vec::new());
@@ -522,7 +524,7 @@ impl<'de> de::Visitor<'de> for Base64DeVisitor {
     fn expecting(&self, f: &mut Formatter) -> fmt::Result { write!(f, "base64") }
 
     fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
-        base64::decode(s).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))
+        base64_STANDARD.decode(s).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))
     }
 }
 
@@ -1005,9 +1007,8 @@ mod tests {
     #[test]
     fn test_record_flags() {
         assert_eq!("PERSIST", format!("{}", RecordFlags::PERSIST));
-        assert_eq!("PERSIST", format!("{:?}", RecordFlags::PERSIST));
         assert_eq!("PERSIST DELETED", format!("{}", RecordFlags::PERSIST | RecordFlags::DELETED));
-        assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits);
+        assert_eq!(0x202000000000, (RecordFlags::BLOCKED | RecordFlags::DELETED).bits());
         assert_eq!(Some(RecordFlags::BLOCKED | RecordFlags::DELETED), RecordFlags::from_bits(0x202000000000));
         assert_eq!(Ok(RecordFlags::DELETED), RecordFlags::from_str("DELETED"));
         assert_eq!(Ok(RecordFlags::DELETED | RecordFlags::PERSIST), RecordFlags::from_str("DELETED PERSIST"));
