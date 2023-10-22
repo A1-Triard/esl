@@ -62,6 +62,7 @@ mod tests {
     use crate::code::{self};
     use crate::read::*;
     use byteorder::{WriteBytesExt, LittleEndian};
+    use either::Right;
     use iter_identify_first_last::IteratorIdentifyFirstLastExt;
     use quickcheck_macros::quickcheck;
     use serde::de::DeserializeSeed;
@@ -139,8 +140,8 @@ mod tests {
                     (HEDR, Field::FileMetadata(FileMetadata {
                         version: 7,
                         file_type: FileType::ESS,
-                        author: "test author".into(),
-                        description: vec!["test description".into(), "AAA".into(), "".into()],
+                        author: Right("test author".into()),
+                        description: Right(vec!["test description".into(), "AAA".into(), "".into()]),
                         records: 1
                     })),
                     (MAST, Field::StringZ("Mo__o_in_.esm".into())),
@@ -234,8 +235,8 @@ mod tests {
                     (HEDR, Field::FileMetadata(FileMetadata {
                         version: 7,
                         file_type: FileType::ESS,
-                        author: "test author".into(),
-                        description: vec!["".to_string()],
+                        author: Right("test author".into()),
+                        description: Right(vec!["".to_string()]),
                         records: 1
                     })),
                     (MAST, Field::StringZ("Mo__o_in_.esm".into())),
@@ -285,8 +286,8 @@ mod tests {
                     (HEDR, Field::FileMetadata(FileMetadata {
                         version: 7,
                         file_type: FileType::ESS,
-                        author: "test author".into(),
-                        description: Vec::new(),
+                        author: Right("test author".into()),
+                        description: Right(Vec::new()),
                         records: 1
                     })),
                     (MAST, Field::StringZ("Mo__o_in_.esm".into())),

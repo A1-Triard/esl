@@ -240,7 +240,23 @@ fn short_string<'a>(
     )
 }
 
-fn file_metadata_field<'a>(
+fn file_metadata_20_field(input: &[u8]) -> IResult<&[u8], FileMetadata, FieldBodyError> {
+    map(
+        tuple((
+            set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
+            map_res(
+                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
+                |w, _| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))
+            ),
+            set_err(tuple((le_u32, le_u32, le_u32)), |_| FieldBodyError::UnexpectedEndOfField(300))
+        )),
+        |(version, file_type, (author, description, records))| FileMetadata {
+            version, file_type, author: Left(author), description: Left(description), records
+        }
+    )(input)
+}
+
+fn file_metadata_300_field<'a>(
     code_page: CodePage
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], FileMetadata, FieldBodyError> {
     map(
@@ -263,7 +279,7 @@ fn file_metadata_field<'a>(
             )
         )),
         |(version, file_type, (author, description, records))| FileMetadata {
-            version, file_type, author, description, records
+            version, file_type, author: Right(author), description: Right(description), records
         }
     )
 }
@@ -1633,7 +1649,11 @@ fn field_body<'a>(
             FieldType::String(None) => map(string_field(code_page), Field::String)(input),
             FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
             FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
-            FieldType::FileMetadata => map(file_metadata_field(code_page), Field::FileMetadata)(input),
+            FieldType::FileMetadata => match field_size {
+                20 => map(file_metadata_20_field, Field::FileMetadata)(input),
+                300 => map(file_metadata_300_field(code_page), Field::FileMetadata)(input),
+                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+            },
             FieldType::Spell => map(spell_field, Field::Spell)(input),
             FieldType::Ai => map(ai_field, Field::Ai)(input),
             FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
@@ -2560,8 +2580,8 @@ mod tests {
         if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.file_type, FileType::ESS);
-            assert_eq!(result.author, "author");
-            assert_eq!(result.description, &["description", "lines", ""]);
+            assert_eq!(result.author.right().unwrap(), "author");
+            assert_eq!(result.description.right().unwrap(), &["description", "lines", ""]);
             assert_eq!(result.version, 0x22000000);
         } else {
             panic!()
@@ -2585,21 +2605,7 @@ mod tests {
             panic!()
         }
     }
-    
-    #[test]
-    fn read_file_metadata_eof_in_file_type() {
-        let mut input: Vec<u8> = Vec::new();
-        input.extend([0x00, 0x00, 0x00, 0x22].iter());
-        input.extend([0x20, 0x00, 0x00].iter());
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32)(&input);
-        let error = result.err().unwrap();
-        if let nom::Err::Error(FieldBodyError::UnexpectedEndOfField(size)) = error {
-            assert_eq!(size, 300);
-        } else {
-            panic!("{:?}", error)
-        }
-    }
-    
+
     #[test]
     fn serialize_ingredient() {
         let ingredient = Ingredient {
@@ -2646,14 +2652,14 @@ mod tests {
         let file_metadata = FileMetadata {
             version: 42424242,
             file_type: FileType::ESS,
-            author: "Some author".into(),
-            description: vec!["descr line1".into(), "descr line2".into()],
+            author: Right("Some author".into()),
+            description: Right(vec!["descr line1".into(), "descr line2".into()]),
             records: 1333
         };
         let bin: Vec<u8> = code::serialize(
-            &ValueWithSeed(&file_metadata, FileMetadataSerde { code_page: Some(CodePage::English) }), false
+            &ValueWithSeed(&file_metadata, FileMetadataSerde { code_page: Some(CodePage::English) }), true
         ).unwrap();
-        let res = file_metadata_field(CodePage::English)(&bin).unwrap().1;
+        let res = file_metadata_300_field(CodePage::English)(&bin).unwrap().1;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
         assert_eq!(res.author, file_metadata.author);

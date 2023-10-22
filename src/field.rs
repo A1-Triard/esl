@@ -811,9 +811,143 @@ impl<'de> DeserializeSeed<'de> for ScriptMetadataSerde {
 pub struct FileMetadata {
     pub version: u32,
     pub file_type: FileType,
+    pub author: Either<u32, String>,
+    pub description: Either<u32, Vec<String>>,
+    pub records: u32
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="FileAuthorOption")]
+enum FileAuthorOptionHRSurrogate {
+    None(u32),
+    Some(String)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+#[serde(rename="FileDescriptionOption")]
+enum FileDescriptionOptionHRSurrogate {
+    None(u32),
+    Some(Vec<String>)
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize)]
+#[serde(rename="FileMetadata")]
+struct FileMetadataHRSurrogate {
+    pub version: u32,
+    pub file_type: FileType,
+    pub author: FileAuthorOptionHRSurrogate,
+    pub description: FileDescriptionOptionHRSurrogate,
+    pub records: u32
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize)]
+struct FileMetadataNHRSurrogate20 {
+    pub version: u32,
+    pub file_type: FileType,
+    pub author: u32,
+    pub description: u32,
+    pub records: u32
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct FileMetadataNHRSurrogate300 {
+    pub version: u32,
+    pub file_type: FileType,
     pub author: String,
     pub description: Vec<String>,
     pub records: u32
+}
+
+impl From<FileMetadata> for FileMetadataHRSurrogate {
+    fn from(x: FileMetadata) -> FileMetadataHRSurrogate {
+        FileMetadataHRSurrogate {
+            version: x.version,
+            file_type: x.file_type,
+            author: match x.author {
+                Left(x) => FileAuthorOptionHRSurrogate::None(x),
+                Right(x) => FileAuthorOptionHRSurrogate::Some(x),
+            },
+            description: match x.description {
+                Left(x) => FileDescriptionOptionHRSurrogate::None(x),
+                Right(x) => FileDescriptionOptionHRSurrogate::Some(x),
+            },
+            records: x.records
+        }
+    }
+}
+
+impl From<FileMetadataHRSurrogate> for FileMetadata {
+    fn from(x: FileMetadataHRSurrogate) -> FileMetadata {
+        FileMetadata {
+            version: x.version,
+            file_type: x.file_type,
+            author: match x.author {
+                FileAuthorOptionHRSurrogate::None(x) => Left(x),
+                FileAuthorOptionHRSurrogate::Some(x) => Right(x),
+            },
+            description: match x.description {
+                FileDescriptionOptionHRSurrogate::None(x) => Left(x),
+                FileDescriptionOptionHRSurrogate::Some(x) => Right(x),
+            },
+            records: x.records
+        }
+    }
+}
+
+impl From<FileMetadataNHRSurrogate20> for FileMetadata {
+    fn from(x: FileMetadataNHRSurrogate20) -> FileMetadata {
+        FileMetadata {
+            version: x.version,
+            file_type: x.file_type,
+            author: Left(x.author),
+            description: Left(x.description),
+            records: x.records
+        }
+    }
+}
+
+impl From<FileMetadataNHRSurrogate300> for FileMetadata {
+    fn from(x: FileMetadataNHRSurrogate300) -> FileMetadata {
+        FileMetadata {
+            version: x.version,
+            file_type: x.file_type,
+            author: Right(x.author),
+            description: Right(x.description),
+            records: x.records
+        }
+    }
+}
+
+impl TryFrom<FileMetadata> for Either<FileMetadataNHRSurrogate20, FileMetadataNHRSurrogate300> {
+    type Error = ();
+
+    fn try_from(x: FileMetadata) -> Result<Either<FileMetadataNHRSurrogate20, FileMetadataNHRSurrogate300>, Self::Error> {
+        if x.author.is_left() && x.description.is_right() { return Err(()); }
+        if x.author.is_right() && x.description.is_left() { return Err(()); }
+        Ok(if x.author.is_left() {
+            Left(FileMetadataNHRSurrogate20 {
+                version: x.version,
+                file_type: x.file_type,
+                author: x.author.left().unwrap(),
+                description: x.description.left().unwrap(),
+                records: x.records
+            })
+        } else {
+            Right(FileMetadataNHRSurrogate300 {
+                version: x.version,
+                file_type: x.file_type,
+                author: x.author.right().unwrap(),
+                description: x.description.right().unwrap(),
+                records: x.records
+            })
+        })
+    }
 }
 
 const FILE_METADATA_VERSION_FIELD: &str = name_of!(version in FileMetadata);
@@ -839,7 +973,34 @@ impl SerializeSeed for FileMetadataSerde {
     type Value = FileMetadata;
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut serializer = serializer.serialize_struct(name_of!(type FileMetadata), 5)?;
+        if serializer.is_human_readable() {
+            FileMetadataHRSurrogate::from(value.clone()).serialize(serializer)
+        } else {
+            let surrogate: Result<Either<FileMetadataNHRSurrogate20, FileMetadataNHRSurrogate300>, ()> = value.clone().try_into();
+            let Ok(surrogate) = surrogate else { return Err(S::Error::custom("invalid file metadata")); };
+            match surrogate {
+                Left(fm20) => serializer.serialize_newtype_variant(
+                    name_of!(type FileMetadata), 20, "FileMetadata20", &fm20
+                ),
+                Right(fm300) => serializer.serialize_newtype_variant(
+                    name_of!(type FileMetadata), 300, "FileMetadata300",
+                    &ValueWithSeed(&fm300, FileMetadataNHRSurrogate300Serde { code_page: self.code_page })
+                ),
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct FileMetadataNHRSurrogate300Serde {
+    pub code_page: Option<CodePage>
+}
+
+impl SerializeSeed for FileMetadataNHRSurrogate300Serde {
+    type Value = FileMetadataNHRSurrogate300;
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut serializer = serializer.serialize_struct(name_of!(type FileMetadataNHRSurrogate300), 5)?;
         serializer.serialize_field(FILE_METADATA_VERSION_FIELD, &value.version)?;
         serializer.serialize_field(FILE_METADATA_TYPE_FIELD, &value.file_type)?;
         serializer.serialize_field(
@@ -892,10 +1053,45 @@ impl<'de> de::Deserialize<'de> for FileMetadataField {
     }
 }
 
-struct FileMetadataDeVisitor(FileMetadataSerde);
+struct FileMetadataNHRDeVisitor(FileMetadataSerde);
 
-impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
+impl<'de> de::Visitor<'de> for FileMetadataNHRDeVisitor {
     type Value = FileMetadata;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "file metadata")
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error> where A: de::EnumAccess<'de> {
+        let (variant_index, variant) = data.variant::<u32>()?;
+        match variant_index {
+            20 => Ok(variant.newtype_variant::<FileMetadataNHRSurrogate20>()?.into()),
+            300 => Ok(variant.newtype_variant_seed(FileMetadataNHRSurrogate300Serde { code_page: self.0.code_page })?.into()),
+            n => Err(A::Error::invalid_value(Unexpected::Unsigned(n as u64), &self))
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for FileMetadataSerde {
+    type Value = FileMetadata;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            FileMetadataHRSurrogate::deserialize(deserializer).map(FileMetadata::from)
+        } else {
+            deserializer.deserialize_enum(
+                name_of!(type FileMetadata),
+                &["FileMetadata20", "FileMetadata300"],
+                FileMetadataNHRDeVisitor(self)
+            )
+        }
+    }
+}
+
+struct FileMetadataNHRSurrogate300DeVisitor(FileMetadataNHRSurrogate300Serde);
+
+impl<'de> de::Visitor<'de> for FileMetadataNHRSurrogate300DeVisitor {
+    type Value = FileMetadataNHRSurrogate300;
 
     fn expecting(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "file metadata")
@@ -939,7 +1135,7 @@ impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
         let author = author.ok_or_else(|| A::Error::missing_field(FILE_METADATA_AUTHOR_FIELD))?;
         let description = description.ok_or_else(|| A::Error::missing_field(FILE_METADATA_DESCRIPTION_FIELD))?;
         let records = records.ok_or_else(|| A::Error::missing_field(FILE_METADATA_RECORDS_FIELD))?;
-        Ok(FileMetadata { version, file_type, author, description, records })
+        Ok(FileMetadataNHRSurrogate300 { version, file_type, author, description, records })
     }
 
     fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: de::SeqAccess<'de> {
@@ -954,15 +1150,15 @@ impl<'de> de::Visitor<'de> for FileMetadataDeVisitor {
         })?.ok_or_else(|| A::Error::invalid_length(3, &self))?;
         let records = seq.next_element()?
             .ok_or_else(|| A::Error::invalid_length(4, &self))?;
-        Ok(FileMetadata { version, file_type, author, description, records })
+        Ok(FileMetadataNHRSurrogate300 { version, file_type, author, description, records })
     }
 }
 
-impl<'de> DeserializeSeed<'de> for FileMetadataSerde {
-    type Value = FileMetadata;
+impl<'de> DeserializeSeed<'de> for FileMetadataNHRSurrogate300Serde {
+    type Value = FileMetadataNHRSurrogate300;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-        deserializer.deserialize_struct(name_of!(type FileMetadata), FILE_METADATA_FIELDS, FileMetadataDeVisitor(self))
+        deserializer.deserialize_struct(name_of!(type FileMetadataNHRSurrogate300), FILE_METADATA_FIELDS, FileMetadataNHRSurrogate300DeVisitor(self))
     }
 }
 
@@ -1335,6 +1531,7 @@ bitflags_ext! {
         _1000000 = 0x01000000,
         _2000000 = 0x2000000,
         _4000000 = 0x4000000,
+        _8000000 = 0x8000000,
         _10000000 = 0x10000000,
         _20000000 = 0x20000000,
         _40000000 = 0x40000000,
@@ -3605,10 +3802,12 @@ impl Field {
         match FieldType::from_tags(record_tag, prev_tag, field_tag) {
             FieldType::FileMetadata => {
                 if let Field::FileMetadata(v) = self {
-                    v.author.find('\0').map(|i| v.author.truncate(i));
-                    let mut d = v.description.join(Newline::Dos.as_str());
-                    d.find('\0').map(|i| d.truncate(i));
-                    v.description = d.split(Newline::Dos.as_str()).map(String::from).collect();
+                    v.author.as_mut().right().map(|a| a.find('\0').map(|i| a.truncate(i)));
+                    if let Right(description) = v.description.as_mut() {
+                        let mut d = description.join(Newline::Dos.as_str());
+                        d.find('\0').map(|i| d.truncate(i));
+                        *description = d.split(Newline::Dos.as_str()).map(String::from).collect();
+                    }
                 } else {
                     panic!("invalid field type")
                 }
