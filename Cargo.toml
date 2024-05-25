@@ -13,10 +13,10 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/A1-Triard/esl"
 
 [dependencies]
-base64 = "0.21.4"
+base64 = "0.22.1"
 bitflags = "2.4.0"
 byteorder = "1.4.3"
-educe = "0.4.19"
+educe = "0.5.11"
 either = { version = "1.7.0", features = ["serde"] }
 encoding = "0.2.33"
 enum-derive-2018 = "3.0.1"
@@ -27,10 +27,10 @@ macro-attr-2018 = "3.0.0"
 nameof = "1.2.2"
 nom = "7.1.1"
 nom-errors = "0.0.13"
-phantom-type = "0.4.2"
+phantom-type = "0.5.0"
 serde = { version = "1.0.147", features = ["derive"] }
-serde-serialize-seed = "0.0.9"
-serde_tagged = "0.2.0"
+serde-serialize-seed = "0.0.10"
+serde_tagged = "0.3.0"
 utf8-chars = "3.0.1"
 
 [build-dependencies]
