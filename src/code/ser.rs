@@ -76,7 +76,7 @@ impl From<io::Error> for IoError {
 const SIZE_STUB: u32 = 0x1375F17B;
 
 fn size(len: usize) -> Result<u32, Error> {
-    if len > u32::max_value() as usize {
+    if len > u32::MAX as usize {
         Err(Error::LargeObject(len))
     } else {
         Ok(len as u32)

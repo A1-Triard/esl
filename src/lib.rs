@@ -19,6 +19,7 @@
 #![allow(clippy::match_ref_pats)]
 #![allow(clippy::transmute_float_to_int)]
 #![allow(clippy::transmute_int_to_float)]
+#![allow(clippy::needless_doctest_main)]
 
 #![recursion_limit="512"]
 

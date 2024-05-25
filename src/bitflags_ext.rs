@@ -38,8 +38,8 @@ macro_rules! bitflags_ext {
                 $(
                     if self.contains($flags::$name) {
                         if start {
-                            #[allow(unused_assignments)]
-                            start = false;
+                            (#[allow(unused_assignments)]
+                            start) = false;
                         } else {
                             write!(f, " ")?;
                         }

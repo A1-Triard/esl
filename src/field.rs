@@ -3231,8 +3231,8 @@ impl CellPosition {
     fn from_exterior(is_interior: bool, position: (i32, i32)) -> Self {
         if is_interior {
             CellPosition::Interior {
-                x: unsafe { transmute(position.0) },
-                y: unsafe { transmute(position.1) },
+                x: unsafe { transmute::<i32, f32>(position.0) },
+                y: unsafe { transmute::<i32, f32>(position.1) },
             }
         } else {
             CellPosition::Exterior {
@@ -3246,8 +3246,8 @@ impl CellPosition {
         match self {
             &CellPosition::Exterior { x, y } => (x, y),
             &CellPosition::Interior { x, y } => (
-                unsafe { transmute(x) },
-                unsafe { transmute(y) }
+                unsafe { transmute::<f32, i32>(x) },
+                unsafe { transmute::<f32, i32>(y) }
             )
         }
     }

@@ -62,7 +62,7 @@ pub fn deserialize_seed<'de, T: DeserializeSeed<'de>>(seed: T, mut bytes: &'de [
 }
 
 fn bytes_deserializer<'a, 'de>(bytes: &'a mut &'de [u8], isolated: bool) -> EslDeserializer<'static, 'a, 'de, &'de [u8]> {
-    assert!(!isolated || bytes.len() <= u32::max_value() as usize);
+    assert!(!isolated || bytes.len() <= u32::MAX as usize);
     EslDeserializer::new(if isolated { Some(bytes.len() as u32) } else { None }, bytes)
 }
 
