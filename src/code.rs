@@ -38,7 +38,7 @@ pub fn deserialize_from_slice_seed<'a, 'de, T: DeserializeSeed<'de>>(seed: T, by
 }
 
 pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8], isolated: bool)
-    -> Result<T, de::ExtError> {
+    -> Result<T, de::ExtError<'de>> {
 
     let deserializer = bytes_deserializer(&mut bytes, isolated);
     let res = T::deserialize(deserializer)?;
@@ -50,7 +50,7 @@ pub fn deserialize<'de, T: Deserialize<'de>>(mut bytes: &'de [u8], isolated: boo
 }
 
 pub fn deserialize_seed<'de, T: DeserializeSeed<'de>>(seed: T, mut bytes: &'de [u8], isolated: bool)
-    -> Result<T::Value, de::ExtError> {
+    -> Result<T::Value, de::ExtError<'de>> {
     
     let deserializer = bytes_deserializer(&mut bytes, isolated);
     let res = seed.deserialize(deserializer)?;
