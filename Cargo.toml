@@ -16,7 +16,7 @@ repository = "https://github.com/A1-Triard/esl"
 base64 = "0.22.1"
 bitflags = "2.4.0"
 byteorder = "1.4.3"
-educe = "0.5.11"
+educe = "0.6.0"
 either = { version = "1.7.0", features = ["serde"] }
 encoding = "0.2.33"
 enum-derive-2018 = "3.0.1"
