@@ -1633,10 +1633,11 @@ fn field_body<'a>(
     record_tag: Tag,
     prev_tag: Tag,
     field_tag: Tag,
-    field_size: u32
+    field_size: u32,
+    omwsave: bool,
 ) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
     move |input| {
-        let field_type = FieldType::from_tags(record_tag, prev_tag, field_tag);
+        let field_type = FieldType::from_tags(record_tag, prev_tag, field_tag, omwsave);
         match field_type {
             FieldType::U8List => map(u8_list_field, Field::U8List)(input),
             FieldType::ScriptData => map(script_data_field(code_page), Field::ScriptData)(input),
@@ -1773,13 +1774,14 @@ fn field<'a>(
     mode: RecordReadMode,
     record_tag: Tag,
     prev_tag: Tag,
+    omwsave: bool,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
     map_res(
         and_then(
             field_bytes,
             move |(field_tag, field_size, field_bytes), _| {
                 let (remaining_field_bytes, field_body) = map_err(
-                    field_body(code_page, mode, record_tag, prev_tag, field_tag, field_size),
+                    field_body(code_page, mode, record_tag, prev_tag, field_tag, field_size, omwsave),
                     move |e, _| match e {
                         FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
                         FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
@@ -2174,7 +2176,8 @@ fn sliding_many0<I, O, E, F, G, S: Copy, X>(f: G, x: X, s: S) -> impl FnMut(I) -
 fn record_body<'a>(
     code_page: CodePage,
     mode: RecordReadMode,
-    record_tag: Tag
+    record_tag: Tag,
+    omwsave: bool,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
     sliding_many0(
         move |prev_tag: Tag| preceded(
@@ -2186,7 +2189,7 @@ fn record_body<'a>(
                     Ok((input, ()))
                 }
             },
-            cut(map_err(field(code_page, mode, record_tag, prev_tag), RecordBodyError))
+            cut(map_err(field(code_page, mode, record_tag, prev_tag, omwsave), RecordBodyError))
         ),
         |s: &(Tag, Field)| s.0,
         META
@@ -2194,12 +2197,12 @@ fn record_body<'a>(
 }
 
 fn read_record_body(record_offset: u64, code_page: CodePage, mode: RecordReadMode,
-                    record_tag: Tag, record_size: u32, record_flags: RecordFlags,
+                    record_tag: Tag, record_size: u32, record_flags: RecordFlags, omwsave: bool,
                     input: &[u8])
     -> Result<Record, RecordError> {
     
     let (remaining_record_bytes, record_body) = map_err(
-        record_body(code_page, mode, record_tag),
+        record_body(code_page, mode, record_tag, omwsave),
         move |e, input| match e {
             RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
                 RecordError::RecordSizeMismatch(RecordSizeMismatch {
@@ -2362,7 +2365,7 @@ impl RecordReader {
         Ok(())
     }
 
-    pub fn read<Input: Read + ?Sized>(&mut self, code_page: CodePage, mode: RecordReadMode, offset: u64, input: &mut Input)
+    pub fn read<Input: Read + ?Sized>(&mut self, code_page: CodePage, mode: RecordReadMode, omwsave: bool, offset: u64, input: &mut Input)
         -> Result<Option<(Record, u32)>, ReadRecordError> {
 
         self.buf.resize(16, 0);
@@ -2386,7 +2389,7 @@ impl RecordReader {
                 bytes: replace(&mut self.buf, Vec::with_capacity(16))
             })?;
         let record = read_record_body(
-            offset, code_page, mode, record_tag, record_size, record_flags,
+            offset, code_page, mode, record_tag, record_size, record_flags, omwsave,
             &self.buf[16..]).map_err(|record_error| ReadRecordError {
                 source: Left(record_error),
                 bytes: replace(&mut self.buf, Vec::with_capacity(16))
@@ -2400,16 +2403,18 @@ pub struct Records<'a, Input: Read + ?Sized> {
     code_page: CodePage,
     mode: RecordReadMode,
     input: &'a mut Input,
+    omwsave: bool,
     offset: u64,
     reader: RecordReader,
 }
 
 impl<'a, Input: Read + ?Sized> Records<'a, Input> {
-    pub fn new(code_page: CodePage, mode: RecordReadMode, offset: u64, input: &'a mut Input) -> Self {
+    pub fn new(code_page: CodePage, mode: RecordReadMode, omwsave: bool, offset: u64, input: &'a mut Input) -> Self {
         Records {
             code_page,
             mode,
             input,
+            omwsave,
             offset,
             reader: RecordReader::new()
         }
@@ -2420,7 +2425,7 @@ impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
     type Item = Result<Record, ReadRecordError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.reader.read(self.code_page, self.mode, self.offset, self.input) {
+        match self.reader.read(self.code_page, self.mode, self.omwsave, self.offset, self.input) {
             Ok(None) => None,
             Err(e) => {
                 self.offset += e.as_bytes().len() as u64;

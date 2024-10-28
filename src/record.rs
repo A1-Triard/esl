@@ -36,10 +36,10 @@ pub struct Record {
 }
 
 impl Record {
-    pub fn fit(&mut self) {
+    pub fn fit(&mut self, omwsave: bool) {
         let mut prev_tag = META;
         for &mut (field_tag, ref mut field) in self.fields.iter_mut() {
-            field.fit(self.tag, prev_tag, field_tag);
+            field.fit(self.tag, prev_tag, field_tag, omwsave);
             prev_tag = field_tag;
         }
     }
@@ -50,12 +50,13 @@ struct FieldBodySerializer<'a> {
     record_tag: Tag,
     prev_tag: Tag,
     field_tag: Tag,
-    field: &'a Field
+    field: &'a Field,
+    omwsave: bool,
 }
 
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
+        match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag, self.omwsave) {
             FieldType::String(len) => if let Field::String(s) = self.field {
                 ValueWithSeed(s.as_str(), StringSerde {
                     code_page: self.code_page,
@@ -455,7 +456,7 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
     }
 }
 
-struct FieldSerializer<'a>(Option<CodePage>, Tag, Tag, Either<RecordFlags, (Tag, &'a Field)>);
+struct FieldSerializer<'a>(Option<CodePage>, Tag, Tag, Either<RecordFlags, (Tag, &'a Field)>, bool);
 
 impl<'a> Serialize for FieldSerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
@@ -469,7 +470,8 @@ impl<'a> Serialize for FieldSerializer<'a> {
                 }
                 serializer.serialize_entry(&field_tag, &FieldBodySerializer {
                     code_page: self.0,
-                    record_tag: self.1, prev_tag: self.2, field_tag, field
+                    record_tag: self.1, prev_tag: self.2, field_tag, field,
+                    omwsave: self.4
                 })?;
             }
         };
@@ -477,7 +479,7 @@ impl<'a> Serialize for FieldSerializer<'a> {
     }
 }
 
-struct RecordBodySerializer<'a>(Option<CodePage>, &'a Record);
+struct RecordBodySerializer<'a>(Option<CodePage>, &'a Record, bool);
 
 impl<'a> Serialize for RecordBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
@@ -485,11 +487,11 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
         let entry_count = self.1.fields.len() + if has_flags { 1 } else { 0 };
         let mut serializer = serializer.serialize_seq(Some(entry_count))?;
         if has_flags {
-            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, META, Left(self.1.flags)))?;
+            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, META, Left(self.1.flags), self.2))?;
         }
         let mut prev_tag = META;
         for &(field_tag, ref field) in &self.1.fields {
-            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, prev_tag, Right((field_tag, field))))?;
+            serializer.serialize_element(&FieldSerializer(self.0, self.1.tag, prev_tag, Right((field_tag, field)), self.2))?;
             prev_tag = field_tag;
         }
         serializer.end()
@@ -498,7 +500,8 @@ impl<'a> Serialize for RecordBodySerializer<'a> {
 
 #[derive(Clone)]
 pub struct RecordSerde {
-    pub code_page: Option<CodePage>
+    pub code_page: Option<CodePage>,
+    pub omwsave: bool,
 }
 
 impl SerializeSeed for RecordSerde {
@@ -508,9 +511,9 @@ impl SerializeSeed for RecordSerde {
         let is_human_readable = serializer.is_human_readable();
         let mut serializer = serializer.serialize_map(Some(1))?;
         if is_human_readable {
-            serializer.serialize_entry(&value.tag, &RecordBodySerializer(self.code_page, value))?;
+            serializer.serialize_entry(&value.tag, &RecordBodySerializer(self.code_page, value, self.omwsave))?;
         } else {
-            serializer.serialize_entry(&(value.tag, value.flags), &RecordBodySerializer(self.code_page, value))?;
+            serializer.serialize_entry(&(value.tag, value.flags), &RecordBodySerializer(self.code_page, value, self.omwsave))?;
         }
         serializer.end()
     }
@@ -546,7 +549,8 @@ struct FieldBodyDeserializer {
     code_page: Option<CodePage>,
     record_tag: Tag,
     prev_tag: Tag,
-    field_tag: Tag
+    field_tag: Tag,
+    omwsave: bool,
 }
 
 impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
@@ -558,7 +562,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
         if deserializer.is_human_readable() && self.field_tag == META {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
-            match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag) {
+            match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag, self.omwsave) {
                 FieldType::String(len) =>
                     StringSerde {
                         code_page: self.code_page, len: len.map(|x| x.try_into().unwrap())
@@ -665,6 +669,7 @@ struct FieldDeserializer {
     code_page: Option<CodePage>,
     record_tag: Tag,
     prev_tag: Tag,
+    omwsave: bool,
 }
 
 impl<'de> de::Visitor<'de> for FieldDeserializer {
@@ -681,7 +686,8 @@ impl<'de> de::Visitor<'de> for FieldDeserializer {
             .ok_or_else(|| A::Error::custom("missed field tag"))?;
         let body = map.next_value_seed(FieldBodyDeserializer {
             code_page: self.code_page,
-            record_tag: self.record_tag, prev_tag: self.prev_tag, field_tag
+            record_tag: self.record_tag, prev_tag: self.prev_tag, field_tag,
+            omwsave: self.omwsave,
         })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated field tag"));
@@ -703,7 +709,8 @@ impl<'de> DeserializeSeed<'de> for FieldDeserializer {
 struct RecordBodyDeserializer {
     code_page: Option<CodePage>,
     record_tag: Tag,
-    record_flags: Option<RecordFlags>
+    record_flags: Option<RecordFlags>,
+    omwsave: bool,
 }
 
 impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
@@ -719,7 +726,8 @@ impl<'de> de::Visitor<'de> for RecordBodyDeserializer {
         let mut fields = seq.size_hint().map_or_else(Vec::new, Vec::with_capacity);
         let mut prev_tag = META;
         while let Some(field) = seq.next_element_seed(FieldDeserializer {
-            code_page: self.code_page, record_tag: self.record_tag, prev_tag
+            code_page: self.code_page, record_tag: self.record_tag, prev_tag,
+            omwsave: self.omwsave,
         })? {
             match field {
                 Left(flags) => {
@@ -749,7 +757,8 @@ impl<'de> DeserializeSeed<'de> for RecordBodyDeserializer {
 
 struct RecordVisitor {
     code_page: Option<CodePage>,
-    is_human_readable: bool
+    is_human_readable: bool,
+    omwsave: bool,
 }
 
 impl<'de> de::Visitor<'de> for RecordVisitor {
@@ -769,7 +778,7 @@ impl<'de> de::Visitor<'de> for RecordVisitor {
                 .ok_or_else(|| A::Error::custom("missed record tag and flags"))?;
             (record_tag, Some(record_flags))
         };
-        let body = map.next_value_seed(RecordBodyDeserializer { code_page: self.code_page, record_tag, record_flags })?;
+        let body = map.next_value_seed(RecordBodyDeserializer { code_page: self.code_page, record_tag, record_flags, omwsave: self.omwsave })?;
         if map.next_key::<Tag>()?.is_some() {
             return Err(A::Error::custom("duplicated record tag"));
         }
@@ -782,7 +791,7 @@ impl<'de> DeserializeSeed<'de> for RecordSerde {
 
     fn deserialize<D>(self, deserializer: D) -> Result<Record, D::Error> where D: Deserializer<'de> {
         let is_human_readable = deserializer.is_human_readable();
-        deserializer.deserialize_map(RecordVisitor { code_page: self.code_page, is_human_readable } )
+        deserializer.deserialize_map(RecordVisitor { code_page: self.code_page, is_human_readable, omwsave: self.omwsave } )
     }
 }
 

@@ -11,12 +11,15 @@
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::let_unit_value)]
+#![allow(clippy::match_ref_pats)]
+#![allow(clippy::needless_doctest_main)]
+#![allow(clippy::needless_lifetimes)]
 #![allow(clippy::non_canonical_partial_ord_impl)]
 #![allow(clippy::option_map_unit_fn)]
-#![allow(clippy::match_ref_pats)]
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::transmute_float_to_int)]
 #![allow(clippy::transmute_int_to_float)]
-#![allow(clippy::needless_doctest_main)]
+#![allow(clippy::type_complexity)]
 
 #![recursion_limit="512"]
 
