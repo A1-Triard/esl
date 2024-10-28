@@ -14,11 +14,11 @@ use std::io::{BufReader, BufWriter};
 fn main() {
     if let Ok(input) = File::open("Morrowind.esm") {
         let mut input = BufReader::new(input);
-        let records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut input);
+        let records = Records::new(CodePage::Russian, RecordReadMode::Strict, false, 0, &mut input);
         let records = records.map(|x| {
             match x {
                 Ok(mut x) => {
-                    x.fit();
+                    x.fit(false);
                     x
                 },
                 Err(e) => panic!("{}", e)
@@ -27,7 +27,7 @@ fn main() {
         let output = File::create("Morrowind.esm.yaml").unwrap();
         serde_yaml::to_writer(
             BufWriter::new(output),
-            &ValueWithSeed(&records[..], VecSerde(RecordSerde { code_page: None }))
+            &ValueWithSeed(&records[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))
         ).unwrap();
     }
 }

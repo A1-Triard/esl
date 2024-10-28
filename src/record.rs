@@ -1044,8 +1044,8 @@ mod tests {
                 ]))
             ]
         };
-        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None })).unwrap();
-        let res = RecordSerde { code_page: None }.deserialize(serde_yaml::Deserializer::from_str(&yaml)).unwrap();
+        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None, omwsave: false })).unwrap();
+        let res = RecordSerde { code_page: None, omwsave: false }.deserialize(serde_yaml::Deserializer::from_str(&yaml)).unwrap();
         assert_eq!(res.tag, record.tag);
         assert_eq!(res.flags, record.flags);
         assert_eq!(res.fields.len(), 2);

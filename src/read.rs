@@ -2470,7 +2470,7 @@ mod tests {
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0u64.to_le_bytes().iter());
         let (result, read) =
-            RecordReader::new().read(CodePage::English, RecordReadMode::Strict, 0x11, &mut (&input[..])).unwrap().unwrap();
+            RecordReader::new().read(CodePage::English, RecordReadMode::Strict, false, 0x11, &mut (&input[..])).unwrap().unwrap();
         assert_eq!(read, 16);
         assert_eq!(result.flags, RecordFlags::empty());
         assert_eq!(result.tag, TES3);
@@ -2483,7 +2483,7 @@ mod tests {
         input.extend(TES3.dword.to_le_bytes().iter());
         input.extend(0u32.to_le_bytes().iter());
         input.extend(0x70000u64.to_le_bytes().iter());
-        let result = RecordReader::new().read(CodePage::English, RecordReadMode::Strict, 0x11, &mut (&input[..]));
+        let result = RecordReader::new().read(CodePage::English, RecordReadMode::Strict, false, 0x11, &mut (&input[..]));
         let error = result.err().unwrap();
         if let Left(RecordError::UnknownRecordFlags(error)) = error.into_source() { 
             assert_eq!(error.value, 0x70000);
@@ -2500,7 +2500,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(6u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Failure(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2516,7 +2516,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2532,7 +2532,7 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
             assert_eq!(expected, 4);
@@ -2546,7 +2546,7 @@ mod tests {
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
         if let (remaining_input, Field::StringList(result)) =
-                field_body(CodePage::Russian, RecordReadMode::Strict, INFO, META, BNAM, input.len() as u32)(input).unwrap() {
+                field_body(CodePage::Russian, RecordReadMode::Strict, INFO, META, BNAM, input.len() as u32, false)(input).unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
             assert_eq!(result[0], "123");
@@ -2561,13 +2561,13 @@ mod tests {
     #[test]
     fn read_from_vec() {
         let input: Vec<u8> = Vec::new();
-        field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32)(&input).err().unwrap();
+        field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input).err().unwrap();
     }
 
     #[test]
     fn read_from_vec_if_let() {
         let input: Vec<u8> = Vec::new();
-        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32)(&input);
+        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
         if let Ok((_, _)) = res {
             panic!()
         } else { }
@@ -2581,7 +2581,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description\r\nlines\r\n")));
         input.extend(vec![0x01, 0x02, 0x03, 0x04]);
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
         if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.file_type, FileType::ESS);
@@ -2601,7 +2601,7 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description")));
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
         let error = result.err().unwrap();
         if let nom::Err::Failure(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
             assert_eq!(val, 0x100000);
@@ -2855,11 +2855,11 @@ mod tests {
                 ]))
             ]
         };
-        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), true)
+        let bin: Vec<u8> = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English), omwsave: false }), true)
             .unwrap();
         println!("{:?}", bin);
         let mut bin = &bin[..];
-        let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bin);
+        let records = Records::new(CodePage::English, RecordReadMode::Strict, false, 0, &mut bin);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records.len(), 1);
         let res = &records[0];
@@ -2878,7 +2878,7 @@ mod tests {
         input.extend(10u32.to_le_bytes().iter());
         input.extend(string(&len(10, "spell")));
         let mut input = &input[..];
-        let records = Records::new(CodePage::English, RecordReadMode::Lenient, 0, &mut input);
+        let records = Records::new(CodePage::English, RecordReadMode::Lenient, false, 0, &mut input);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records.len(), 1);
         let res = &records[0];

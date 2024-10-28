@@ -164,7 +164,7 @@ mod tests {
         let mut res = Vec::new();
         for (is_last, record) in file.iter().identify_last() {
             code::serialize_into_vec(
-                &ValueWithSeed(record, RecordSerde { code_page: Some(CodePage::Russian) }), &mut res, isolated && is_last
+                &ValueWithSeed(record, RecordSerde { code_page: Some(CodePage::Russian), omwsave: false }), &mut res, isolated && is_last
             )?;
         }
         Ok(res)
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn read_file_1() {
         let mut records = &test_file_1_bytes()[..];
-        let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut records);
+        let records = Records::new(CodePage::English, RecordReadMode::Strict, false, 0, &mut records);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records, test_file1());
     }
@@ -185,7 +185,7 @@ mod tests {
     }
 
     fn deserialize_record(bytes: &mut &[u8], isolated: bool) -> Result<Record, code::de::Error> {
-        code::deserialize_from_slice_seed(RecordSerde { code_page: Some(CodePage::Russian) }, bytes, isolated)
+        code::deserialize_from_slice_seed(RecordSerde { code_page: Some(CodePage::Russian), omwsave: false }, bytes, isolated)
     }
 
     #[test]
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn read_file_2() {
         let mut records = &test_file_2_bytes()[..];
-        let records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut records);
+        let records = Records::new(CodePage::English, RecordReadMode::Strict, false, 0, &mut records);
         let records = records.map(|x| x.unwrap()).collect::<Vec<_>>();
         assert_eq!(records, test_file2());
     }
@@ -327,10 +327,10 @@ mod tests {
             0x00, 0x46, 0x4E, 0x41, 0x4D, 0x08, 0x00, 0x00, 0x00, 0xD0, 0xE5, 0xE4, 0xE3, 0xE0, 0xF0, 0xE4,
             0x00
         ][..];
-        let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
+        let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, false, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
-        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None })).unwrap();
+        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None, omwsave: false })).unwrap();
         assert!(!yaml.contains('^'));
         assert!(!yaml.contains("\\u"));
     }
@@ -352,16 +352,16 @@ mod tests {
                 }))
             ]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English), omwsave: false }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
+            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, false, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false)
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian), omwsave: false }, &bytes, false)
             .unwrap();
         assert_eq!(record, deserialized);
     }
@@ -381,16 +381,16 @@ mod tests {
                 speed: 1.0
             }))]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English), omwsave: false }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, 0, &mut bytes);
+            let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, false, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
         };
         assert_eq!(record, read);
-        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false)
+        let deserialized: Record = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian), omwsave: false }, &bytes, false)
             .unwrap();
         assert_eq!(record, deserialized);
     }
@@ -404,16 +404,16 @@ mod tests {
                 "\0\0\0".into(),
             ]))]
         };
-        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English) }), false).unwrap();
+        let bytes = code::serialize(&ValueWithSeed(&record, RecordSerde { code_page: Some(CodePage::English), omwsave: false }), false).unwrap();
         let read = {
             let mut bytes = &bytes[..];
-            let mut records = Records::new(CodePage::English, RecordReadMode::Strict, 0, &mut bytes);
+            let mut records = Records::new(CodePage::English, RecordReadMode::Strict, false, 0, &mut bytes);
             let read = records.next().unwrap().unwrap();
             assert!(records.next().is_none());
             read
         };
         assert_eq!(record, read);
-        let deserialized = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian) }, &bytes, false).unwrap();
+        let deserialized = code::deserialize_seed(RecordSerde { code_page: Some(CodePage::Russian), omwsave: false }, &bytes, false).unwrap();
         assert_eq!(record, deserialized);
     }
 
@@ -428,7 +428,7 @@ mod tests {
   - FLTV: 0.1
   - FLTV: -0.0
 ";
-        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 5);
         assert_eq!(res[0].fields[0].1, Field::F32(3.0));
@@ -441,7 +441,7 @@ mod tests {
         assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
         assert_eq!(res[0].fields[3].1, Field::F32(0.1));
         assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
-        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None }))).unwrap();
+        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 
@@ -458,7 +458,7 @@ mod tests {
       color: '#F58C28'
       flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
 ";
-        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 1);
         if let Field::Light(field) = &res[0].fields[0].1 {
@@ -466,7 +466,7 @@ mod tests {
         } else {
             panic!()
         }
-        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None }))).unwrap();
+        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 }
