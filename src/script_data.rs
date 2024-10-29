@@ -1267,12 +1267,12 @@ pub struct ScriptData {
 }
 
 impl ScriptData {
-    pub fn to_bytes(&self, code_page: CodePage) -> Result<Vec<u8>, String> {
+    pub fn to_bytes(&self, code_page: CodePage, lenient: bool) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         for stmt in &self.stmts {
             stmt.write(code_page, &mut bytes)?;
         }
-        if parser::stmt(code_page)(&self.raw).is_ok() {
+        if !lenient && parser::stmt(code_page)(&self.raw).is_ok() {
             return Err("known func in raw bytes".into());
         }
         bytes.extend_from_slice(&self.raw);
@@ -1288,6 +1288,7 @@ impl ScriptData {
 #[derive(Clone)]
 pub struct ScriptDataSerde {
     pub code_page: Option<CodePage>,
+    pub lenient: bool,
 }
 
 const SCRIPT_DATA_STMTS_FIELD: &str = name_of!(stmts in ScriptData);
@@ -1311,7 +1312,7 @@ impl SerializeSeed for ScriptDataSerde {
             let Some(code_page) = self.code_page else {
                 return Err(S::Error::custom("code page required for binary serialization"));
             };
-            value.to_bytes(code_page).map_err(S::Error::custom)?.serialize(serializer)
+            value.to_bytes(code_page, self.lenient).map_err(S::Error::custom)?.serialize(serializer)
         }
     }
 }
