@@ -3,7 +3,6 @@ use std::mem::{replace};
 use std::fmt::{self, Display, Debug, Formatter};
 use serde::ser::{self, SerializeSeq, SerializeTuple, SerializeTupleStruct};
 use serde::ser::{SerializeStruct, SerializeTupleVariant, SerializeStructVariant, SerializeMap};
-use serde::serde_if_integer128;
 use std::io::{self, Write};
 use byteorder::{WriteBytesExt, LittleEndian};
 
@@ -517,16 +516,14 @@ impl<'r, 'a, W: Writer> Serializer for EslSerializer<'r, 'a, W> {
         Ok(())
     }
 
-    serde_if_integer128! {
-        fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
-            self.writer.write_u128::<LittleEndian>(v)?;
-            Ok(())
-        }
+    fn serialize_u128(self, v: u128) -> Result<Self::Ok, Self::Error> {
+        self.writer.write_u128::<LittleEndian>(v)?;
+        Ok(())
+    }
 
-        fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
-            self.writer.write_i128::<LittleEndian>(v)?;
-            Ok(())
-        }
+    fn serialize_i128(self, v: i128) -> Result<Self::Ok, Self::Error> {
+        self.writer.write_i128::<LittleEndian>(v)?;
+        Ok(())
     }
 
     fn serialize_char(self, _: char) -> Result<Self::Ok, Self::Error> {

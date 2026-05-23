@@ -16,7 +16,6 @@ use serde::ser::Error as ser_Error;
 use serde_serialize_seed::{SerializeSeed, ValueWithSeed};
 use std::convert::TryFrom;
 use std::fmt::{self, Debug, Display, Formatter};
-use std::mem::transmute;
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
 
@@ -3232,8 +3231,8 @@ impl CellPosition {
     fn from_exterior(is_interior: bool, position: (i32, i32)) -> Self {
         if is_interior {
             CellPosition::Interior {
-                x: unsafe { transmute::<i32, f32>(position.0) },
-                y: unsafe { transmute::<i32, f32>(position.1) },
+                x: f32::from_bits(position.0.cast_unsigned()),
+                y: f32::from_bits(position.1.cast_unsigned()),
             }
         } else {
             CellPosition::Exterior {
@@ -3247,8 +3246,8 @@ impl CellPosition {
         match self {
             &CellPosition::Exterior { x, y } => (x, y),
             &CellPosition::Interior { x, y } => (
-                unsafe { transmute::<f32, i32>(x) },
-                unsafe { transmute::<f32, i32>(y) }
+                x.to_bits().cast_signed(),
+                y.to_bits().cast_signed()
             )
         }
     }

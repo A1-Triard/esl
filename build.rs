@@ -1,5 +1,3 @@
-#![feature(const_trait_impl)]
-
 #![deny(warnings)]
 use std::env::{var_os};
 use std::fs::File;

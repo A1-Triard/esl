@@ -1,7 +1,6 @@
 use serde::{Deserializer};
 use std::fmt::{self, Display, Formatter};
 use serde::de::{self, Visitor, SeqAccess, DeserializeSeed, MapAccess, EnumAccess, VariantAccess, IntoDeserializer};
-use serde::serde_if_integer128;
 use std::io::{self, Read};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::borrow::Cow;
@@ -354,14 +353,12 @@ impl<'r, 'a, 'de, R: Reader<'de>> Deserializer<'de> for EslDeserializer<'r, 'a, 
         visitor.visit_u64(self.reader.read_u64::<LittleEndian>()?)
     }
 
-    serde_if_integer128! {
-        fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-            visitor.visit_i128(self.reader.read_i128::<LittleEndian>()?)
-        }
+    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_i128(self.reader.read_i128::<LittleEndian>()?)
+    }
 
-        fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
-            visitor.visit_u128(self.reader.read_u128::<LittleEndian>()?)
-        }
+    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {
+        visitor.visit_u128(self.reader.read_u128::<LittleEndian>()?)
     }
     
     fn deserialize_char<V>(self, _: V) -> Result<V::Value, Self::Error> where V: Visitor<'de> {

@@ -19,9 +19,10 @@ use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::io::{self, Read, Write};
-use std::mem::{replace, transmute};
+use std::mem::replace;
 use std::sync::LazyLock;
 
+#[allow(dead_code)]
 #[derive(Eq, Clone, Copy)]
 struct Void(!);
 
@@ -697,8 +698,8 @@ fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
         |(flags, (x, y))| {
             let position = if flags.contains(CellFlags::INTERIOR) {
                 CellPosition::Interior {
-                    x: unsafe { transmute::<i32, f32>(x) },
-                    y: unsafe { transmute::<i32, f32>(y) }
+                    x: f32::from_bits(x.cast_unsigned()),
+                    y: f32::from_bits(y.cast_unsigned())
                 }
             } else {
                 CellPosition::Exterior { x, y }

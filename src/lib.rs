@@ -1,7 +1,6 @@
 #![feature(iterator_try_collect)]
 #![feature(never_type)]
 #![feature(stmt_expr_attributes)]
-#![feature(type_alias_impl_trait)]
 
 #![deny(warnings)]
 #![doc(test(attr(deny(warnings))))]
