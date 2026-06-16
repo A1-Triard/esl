@@ -6,166 +6,15 @@ use crate::record::*;
 use either::{Right, Left, Either};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-use nom::IResult;
-use nom::combinator::{map, flat_map, cut};
-use nom::sequence::{pair, tuple, preceded};
-use nom::number::complete::{le_u32, le_u64, le_i32, le_i16, le_i64, le_u8, le_f32, le_u16, le_i8};
-use nom::error::{ParseError, ErrorKind};
-use nom::bytes::complete::take;
-use nom::multi::many0;
-use std::cmp::Ordering;
+use mynom::{Parser, u8, u16_le, u32_le, parser, accumulate_until_eof, consume, take, f32_le, i32_le, i16_le};
+use mynom::{error, i8, UnexpectedEof, i64_le, u64_le};
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::io::{self, Read, Write};
 use std::mem::replace;
 use std::sync::LazyLock;
-
-#[allow(dead_code)]
-#[derive(Eq, Clone, Copy)]
-struct Void(!);
-
-impl PartialEq for Void {
-    fn eq(&self, _: &Self) -> bool { self.0 }
-
-    #[allow(clippy::partialeq_ne_impl)]
-    fn ne(&self, _: &Self) -> bool { self.0 }
-}
-
-impl Ord for Void {
-    fn cmp(&self, _: &Self) -> Ordering { self.0 }
-
-    fn max(self, _: Self) -> Self { self.0 }
-
-    fn min(self, _: Self) -> Self { self.0 }
-
-    fn clamp(self, _: Self, _: Self) -> Self { self.0 }
-}
-
-impl PartialOrd for Void {
-    fn partial_cmp(&self, _: &Self) -> Option<Ordering> { self.0 }
-
-    fn lt(&self, _: &Self) -> bool { self.0 }
-
-    fn le(&self, _: &Self) -> bool { self.0 }
-
-    fn gt(&self, _: &Self) -> bool { self.0 }
-
-    fn ge(&self, _: &Self) -> bool { self.0 }
-}
-
-impl Debug for Void {
-    fn fmt(&self, _: &mut Formatter) -> fmt::Result { self.0 }
-}
-
-impl Hash for Void {
-    fn hash<H: Hasher>(&self, _: &mut H) {
-        self.0
-    }
-}
-
-impl<I> ParseError<I> for Void {
-    fn from_error_kind(_input: I, _kind: ErrorKind) -> Self { panic!() }
-
-    fn append(_input: I, _kind: ErrorKind, other: Self) -> Self { other.0 }
-
-    fn or(self, other: Self) -> Self { other.0 }
-
-    fn from_char(_input: I, _: char) -> Self { panic!() }
-}
-
-fn map_err<I: Clone, O, E, X, F>(
-    mut f: F,
-    m: impl Fn(E, I) -> X
-) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, E> {
-    move |input: I| {
-        match f(input.clone()) {
-            Err(nom::Err::Error(e)) => Err(nom::Err::Error(m(e, input))),
-            Err(nom::Err::Failure(e)) => Err(nom::Err::Failure(m(e, input))),
-            Err(nom::Err::Incomplete(n)) => Err(nom::Err::Incomplete(n)),
-            Ok(r) => Ok(r)
-        }
-    }
-}
-
-fn set_err<I: Clone, O, X, F>(
-    mut f: F,
-    m: impl Fn(I) -> X
-) -> impl FnMut(I) -> IResult<I, O, X> where F: FnMut(I) -> IResult<I, O, ()> {
-    move |input: I| {
-        match f(input.clone()) {
-            Err(nom::Err::Error(())) => Err(nom::Err::Error(m(input))),
-            Err(nom::Err::Failure(())) => Err(nom::Err::Failure(m(input))),
-            Err(nom::Err::Incomplete(n)) => Err(nom::Err::Incomplete(n)),
-            Ok(r) => Ok(r)
-        }
-    }
-}
-
-fn map_res<I: Clone, O, E, R, F>(
-    mut f: F,
-    m: impl Fn(O, I) -> Result<R, E>
-) -> impl FnMut(I) -> IResult<I, R, E> where F: FnMut(I) -> IResult<I, O, E> {
-    move |input: I| {
-        match f(input.clone()) {
-            Err(e) => Err(e),
-            Ok((i, r)) => m(r, input).map(|x| (i, x)).map_err(nom::Err::Failure),
-        }
-    }
-}
-
-fn and_then<I: Clone, O, E, R, F>(
-    mut f: F,
-    m: impl Fn(O, I) -> Result<R, nom::Err<E>>
-) -> impl FnMut(I) -> IResult<I, R, E> where F: FnMut(I) -> IResult<I, O, E> {
-    move |input: I| {
-        match f(input.clone()) {
-            Err(e) => Err(e),
-            Ok((i, r)) => m(r, input).map(|x| (i, x)),
-        }
-    }
-}
-
-trait ErrExt<E>: Sized {
-    fn into_err(self) -> nom::Err<E>;
-    fn unwrap(self) -> E {
-        match self.into_err() {
-            nom::Err::Error(e) => e,
-            nom::Err::Failure(e) => e,
-            nom::Err::Incomplete(_) => panic!()
-        }
-    }
-}
-
-impl<E> ErrExt<E> for nom::Err<E> {
-    fn into_err(self) -> nom::Err<E> { self }
-}
-
-macro_rules! impl_parse_error {
-    (<$($lifetimes:lifetime),+>, $input:ty, $name:ident) => {
-        impl<$($lifetimes),+> ::nom::error::ParseError<$input> for $name {
-            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!("{:?}", kind) }
-        
-            fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
-        
-            fn or(self, _other: Self) -> Self { panic!() }
-        
-            fn from_char(_input: $input, _: char) -> Self { panic!() }
-        }
-    };
-    (<$($lifetime:lifetime),+>, $input:ty, $name:ident<$($name_lt:lifetime),+>) => {
-        impl<$($lifetime),+> ::nom::error::ParseError<$input> for $name<$($name_lt),+> {
-            fn from_error_kind(_input: $input, kind: ::nom::error::ErrorKind) -> Self { panic!("{:?}", kind) }
-        
-            fn append(_input: $input, _kind: ::nom::error::ErrorKind, _other: Self) -> Self { panic!() }
-        
-            fn or(self, _other: Self) -> Self { panic!() }
-        
-            fn from_char(_input: $input, _: char) -> Self { panic!() }
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 enum FieldBodyError {
@@ -175,20 +24,20 @@ enum FieldBodyError {
     InvalidValue(Invalid, u32),
 }
 
-impl_parse_error!(<'a>, &'a [u8], FieldBodyError);
-
-fn u8_list_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
-    Ok((&input[input.len() .. ], input.into()))
+fn u8_list_field<'p, E>() -> impl Parser<'p, Result=Vec<u8>, Error=E> {
+    consume().map(|x| x.into()).map_err(|x| x)
 }
 
-fn script_data_field<E>(code_page: CodePage) -> impl FnMut(&[u8]) -> IResult<&[u8], ScriptData, E> {
-    move |input| Ok((&input[input.len() .. ], ScriptData::from_bytes(code_page, input)))
+fn script_data_field<'p, E>(code_page: CodePage) -> impl Parser<'p, Result=ScriptData, Error=E> {
+    consume().map(move |x| ScriptData::from_bytes(code_page, x)).map_err(|x| x)
 }
 
-fn u8_list_zip_field<E>(input: &[u8]) -> IResult<&[u8], Vec<u8>, E> {
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
-    encoder.write_all(input).unwrap();
-    Ok((&input[input.len() .. ], encoder.finish().unwrap()))
+fn u8_list_zip_field<'p, E>() -> impl Parser<'p, Result=Vec<u8>, Error=E> {
+    consume().map(|input| {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::new(5));
+        encoder.write_all(input).unwrap();
+        encoder.finish().unwrap()
+    }).map_err(|x| x)
 }
 
 fn trim_end_nulls(bytes: &[u8]) -> &[u8] {
@@ -196,1035 +45,967 @@ fn trim_end_nulls(bytes: &[u8]) -> &[u8] {
     &bytes[..cut_to]
 }
 
-fn consume<E>(input: &[u8]) -> IResult<&[u8], &[u8], E> {
-    Ok((&input[input.len()..], input))
+fn string_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error=FieldBodyError> {
+    consume().map(move |x| code_page.decode(x)).map_err(|x| x)
 }
 
-fn string_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, FieldBodyError> {
-    map(
-        consume,
-        move |input| code_page.decode(input)
-    )
+fn string_z_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=StringZ, Error=FieldBodyError> {
+    consume().map(move |input| {
+        let has_tail_zero = input.last() == Some(&0);
+        let input = if has_tail_zero {
+            &input[..input.len() - 1]
+        } else {
+            input
+        };
+        StringZ { string: code_page.decode(input), has_tail_zero }
+    }).map_err(|x| x)
 }
 
-fn string_z_field<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], StringZ, FieldBodyError> {
-    map(
-        consume,
-        move |input| {
-            let has_tail_zero = input.last() == Some(&0);
-            let input = if has_tail_zero {
-                &input[..input.len() - 1]                
-            } else {
-                input
-            };
-            StringZ { string: code_page.decode(input), has_tail_zero }
-        }
-    )
-}
-
-fn string_z_list_field<'a>(
+fn string_z_list_field<'p>(
     code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], StringZList, FieldBodyError> {
-    map(
-        string_z_field(code_page),
-        |s| StringZList { vec: s.string.split('\0').map(String::from).collect(), has_tail_zero: s.has_tail_zero }
-    )
+) -> impl Parser<'p, Result=StringZList, Error=FieldBodyError> {
+    string_z_field(code_page)
+        .map(|s| StringZList {
+            vec: s.string.split('\0').map(String::from).collect(), has_tail_zero: s.has_tail_zero
+        })
 }
 
-fn short_string<'a>(
+fn short_string<'p>(
     code_page: CodePage,
     length: u32,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], String, ()> {
-    map(
-        set_err(take(length), |_| ()),
+) -> impl Parser<'p, Result=String, Error=UnexpectedEof> {
+    take(usize::try_from(length).expect("OOM")).map(
         move |bytes| code_page.decode(trim_end_nulls(bytes))
     )
 }
 
-fn file_metadata_20_field(input: &[u8]) -> IResult<&[u8], FileMetadata, FieldBodyError> {
-    map(
-        tuple((
-            set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
-                |w, _| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))
-            ),
-            set_err(tuple((le_u32, le_u32, le_u32)), |_| FieldBodyError::UnexpectedEndOfField(300))
-        )),
+fn file_metadata_20_field<'p>() -> impl Parser<'p, Result=FileMetadata, Error=FieldBodyError> {
+    (
+        u32_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(20)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(20))
+            .map_res(|w| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))),
+        (u32_le(), u32_le(), u32_le()).map_err(|_| FieldBodyError::UnexpectedEndOfField(20))
+    ).map(
         |(version, file_type, (author, description, records))| FileMetadata {
             version, file_type, author: Left(author), description: Left(description), records
         }
-    )(input)
+    )
 }
 
-fn file_metadata_300_field<'a>(
+fn file_metadata_300_field<'p>(
     code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], FileMetadata, FieldBodyError> {
-    map(
-        tuple((
-            set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(300)),
-                |w, _| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))
-            ),
-            set_err(
-                tuple((
-                    short_string(code_page, 32),
-                    map(
-                        short_string(code_page, 256),
-                        |s| s.split(Newline::Dos.as_str()).map(String::from).collect()
-                    ),
-                    le_u32
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(300)
-            )
-        )),
+) -> impl Parser<'p, Result=FileMetadata, Error=FieldBodyError> {
+    (
+        u32_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(300)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(300))
+            .map_res(|w| FileType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::FileType(w), 4))),
+        (
+            short_string(code_page, 32),
+            short_string(code_page, 256)
+                .map(|s| s.split(Newline::Dos.as_str()).map(String::from).collect()),
+            u32_le()
+        ).map_err(|_| FieldBodyError::UnexpectedEndOfField(300))
+    ).map(
         |(version, file_type, (author, description, records))| FileMetadata {
             version, file_type, author: Right(author), description: Right(description), records
         }
     )
 }
 
-fn short_string_field<'a>(code_page: CodePage, mode: RecordReadMode, length: u32) -> impl Fn(&'a [u8])
-    -> IResult<&'a [u8], String, FieldBodyError> {
-    
-    move |input| {
-        let length = if mode == RecordReadMode::Lenient && input.len() < length as usize { input.len() as u32 } else { length };
-        set_err(short_string(code_page, length), move |_| FieldBodyError::UnexpectedEndOfField(length))(input)
-    }
+fn short_string_field<'p>(
+    code_page: CodePage, mode: RecordReadMode, length: u32
+) -> impl Parser<'p, Result=String, Error=FieldBodyError> {
+    consume().peek().map_err(|x| x).and_then(move |input| {
+        let length = if mode == RecordReadMode::Lenient && input.len() < length as usize {
+            input.len() as u32
+        } else {
+            length
+        };
+        short_string(code_page, length).map_err(move |_| FieldBodyError::UnexpectedEndOfField(length))
+    })
 }
 
-fn multiline_field<'a>(
+fn multiline_field<'p>(
     code_page: CodePage,
     linebreaks: Newline
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<String>, FieldBodyError> {
-    map(
-        string_field(code_page),
+) -> impl Parser<'p, Result=Vec<String>, Error=FieldBodyError> {
+    string_field(code_page).map(
         move |s| s.split(linebreaks.as_str()).map(String::from).collect()
     )
 }
 
-fn current_time_field(input: &[u8]) -> IResult<&[u8], CurrentTime, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_f32,
-                le_u32,
-                le_u32,
-                le_u32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(16)
-        ),
-        |(hour, day, month, year)| CurrentTime { hour, day, month, year }
-    )(input)
-}
-
-fn time_field(input: &[u8]) -> IResult<&[u8], Time, FieldBodyError> {
-    map(
-        set_err(
-            pair(
-                le_f32,
-                le_u32,
-            ),
-            |_| FieldBodyError::UnexpectedEndOfField(8)
-        ),
-        |(hour, day)| Time { hour, day }
-    )(input)
-}
-
-fn item_field<'a>(
-    code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Item, FieldBodyError> {
-    set_err(
-        map(
-            pair(
-                le_i32,
-                short_string(code_page, 32)
-            ),
-            |(count, item_id)| Item { count, item_id }
-        ),
-        |_| FieldBodyError::UnexpectedEndOfField(4 + 32)
+fn current_time_field<'p>() -> impl Parser<'p, Result=CurrentTime, Error=FieldBodyError> {
+    (
+        f32_le(),
+        u32_le(),
+        u32_le(),
+        u32_le(),
     )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+        .map(|(hour, day, month, year)| CurrentTime { hour, day, month, year })
 }
 
-fn i32_field(input: &[u8]) -> IResult<&[u8], i32, FieldBodyError> {
-    set_err(le_i32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
-}
-
-fn i32_list_field(input: &[u8]) -> IResult<&[u8], Vec<i32>, FieldBodyError> {
-    let m = input.len() % 4;
-    if m != 0 {
-        return Err(nom::Err::Failure(FieldBodyError::UnexpectedEndOfField((input.len() - m + 4) as u32)));
-    }
-    set_err(many0(le_i32), |_| unreachable!())(input)
-}
-
-fn i16_field(input: &[u8]) -> IResult<&[u8], i16, FieldBodyError> {
-    set_err(le_i16, |_| FieldBodyError::UnexpectedEndOfField(2))(input)
-}
-
-fn i16_list_field(input: &[u8]) -> IResult<&[u8], Vec<i16>, FieldBodyError> {
-    let m = input.len() % 2;
-    if m != 0 {
-        return Err(nom::Err::Failure(FieldBodyError::UnexpectedEndOfField((input.len() - m + 2) as u32)));
-    }
-    set_err(many0(le_i16), |_| unreachable!())(input)
-}
-
-fn i64_field(input: &[u8]) -> IResult<&[u8], i64, FieldBodyError> {
-    set_err(le_i64, |_| FieldBodyError::UnexpectedEndOfField(8))(input)
-}
-
-fn u8_field(input: &[u8]) -> IResult<&[u8], u8, FieldBodyError> {
-    set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1))(input)
-}
-
-fn f32_field(input: &[u8]) -> IResult<&[u8], f32, FieldBodyError> {
-    set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(4))(input)
-}
-
-fn f32_list_field(input: &[u8]) -> IResult<&[u8], Vec<f32>, FieldBodyError> {
-    let m = input.len() % 4;
-    if m != 0 {
-        return Err(nom::Err::Failure(FieldBodyError::UnexpectedEndOfField((input.len() - m + 4) as u32)));
-    }
-    set_err(many0(le_f32), |_| unreachable!())(input)
-}
-
-fn attribute_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Attribute>, ()> {
-    map(
-        le_i8,
-        move |b| if b == -1 { 
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn attribute_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Attribute>, ()> {
-    map(
-        le_i32,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn skill_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, Skill>, ()> {
-    map(
-        le_i32,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn skill_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Skill>, ()> {
-    map(
-        le_i8,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn effect_index_option_i16(input: &[u8]) -> IResult<&[u8], Either<Option<i16>, EffectIndex>, ()> {
-    map(
-        le_i16,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn effect_index_option_i32(input: &[u8]) -> IResult<&[u8], Either<Option<i32>, EffectIndex>, ()> {
-    map(
-        le_i32,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn sex_option_i8(input: &[u8]) -> IResult<&[u8], Either<Option<i8>, Sex>, ()> {
-    map(
-        le_i8,
-        move |b| if b == -1 {
-            Left(None)
-        } else if let Some(a) = b.try_into().ok().and_then(Sex::n) {
-            Right(a)
-        } else {
-            Left(Some(b))
-        }
-    )(input)
-}
-
-fn option_i8(input: &[u8]) -> IResult<&[u8], Option<i8>, ()> {
-    map(
-        le_i8,
-        move |b| if b == -1 {
-            None
-        } else {
-            Some(b)
-        }
-    )(input)
-}
-
-fn ingredient_field(input: &[u8]) -> IResult<&[u8], Ingredient, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_f32, le_u32,
-                tuple((effect_index_option_i32, effect_index_option_i32, effect_index_option_i32, effect_index_option_i32)),
-                tuple((skill_option_i32, skill_option_i32, skill_option_i32, skill_option_i32)),
-                tuple((attribute_option_i32, attribute_option_i32, attribute_option_i32, attribute_option_i32))
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(56)
-        ),
-        |(
-            weight, value,
-            (effect_1_index, effect_2_index, effect_3_index, effect_4_index),
-            (effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill),
-            (effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute)
-        )| Ingredient {
-            weight, value,
-            effect_1_index, effect_2_index, effect_3_index, effect_4_index,
-            effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill,
-            effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute
-        }
-    )(input)
-}
-
-fn sound_chance_field<'a>(
-    code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], SoundChance, FieldBodyError> {
-    map(
-        set_err(
-            pair(
-                short_string(code_page, 32),
-                le_u8
-            ),
-            |_| FieldBodyError::UnexpectedEndOfField(32 + 1)
-        ),
-        |(sound_id, chance)| SoundChance { sound_id, chance }
+fn time_field<'p>() -> impl Parser<'p, Result=Time, Error=FieldBodyError> {
+    (
+        f32_le(),
+        u32_le(),
     )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
+        .map(|(hour, day)| Time { hour, day })
 }
 
-fn script_metadata_field<'a>(
+fn item_field<'p>(
     code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], ScriptMetadata, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                short_string(code_page, 32),
-                le_u32, le_u32, le_u32,
-                le_u32, le_u32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(32 + 20)
-        ),
-        |(name, shorts, longs, floats, data_size, var_table_size)| ScriptMetadata {
-            name,
-            vars: ScriptVars {
+) -> impl Parser<'p, Result=Item, Error=FieldBodyError> {
+    (
+        i32_le(),
+        short_string(code_page, 32),
+    )
+        .map(|(count, item_id)| Item { count, item_id })
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(4 + 32))
+}
+
+fn i32_field<'p>() -> impl Parser<'p, Result=i32, Error=FieldBodyError> {
+    i32_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+}
+
+fn i32_list_field<'p>() -> impl Parser<'p, Result=Vec<i32>, Error=FieldBodyError> {
+    consume().peek().map_err(|x| x).and_then(|input| {
+        let m = input.len() % 4;
+        if m != 0 {
+            let e = (input.len() - m + 4) as u32;
+            return Left(error(move || FieldBodyError::UnexpectedEndOfField(e)));
+        }
+        Right(i32_le().repeat_until_eof(Vec::new, |mut v, i| { v.push(i); v }).map_err(|_| unreachable!()))
+    }).map(|x| x.either(|l| l, |r| r))
+}
+
+fn i16_field<'p>() -> impl Parser<'p, Result=i16, Error=FieldBodyError> {
+    i16_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(2))
+}
+
+fn i16_list_field<'p>() -> impl Parser<'p, Result=Vec<i16>, Error=FieldBodyError> {
+    consume().peek().map_err(|x| x).and_then(|input| {
+        let m = input.len() % 2;
+        if m != 0 {
+            let e = (input.len() - m + 2) as u32;
+            return Left(error(move || FieldBodyError::UnexpectedEndOfField(e)));
+        }
+        Right(i16_le().repeat_until_eof(Vec::new, |mut v, i| { v.push(i); v }).map_err(|_| unreachable!()))
+    }).map(|x| x.either(|l| l, |r| r))
+}
+
+fn i64_field<'p>() -> impl Parser<'p, Result=i64, Error=FieldBodyError> {
+    i64_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
+}
+
+fn u8_field<'p>() -> impl Parser<'p, Result=u8, Error=FieldBodyError> {
+    u8().map_err(|_| FieldBodyError::UnexpectedEndOfField(1))
+}
+
+fn f32_field<'p>() -> impl Parser<'p, Result=f32, Error=FieldBodyError> {
+    f32_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+}
+
+fn f32_list_field<'p>() -> impl Parser<'p, Result=Vec<f32>, Error=FieldBodyError> {
+    consume().peek().map_err(|x| x).and_then(|input| {
+        let m = input.len() % 4;
+        if m != 0 {
+            let e = (input.len() - m + 4) as u32;
+            return Left(error(move || FieldBodyError::UnexpectedEndOfField(e)));
+        }
+        Right(f32_le().repeat_until_eof(Vec::new, |mut v, f| { v.push(f); v }).map_err(|_| unreachable!()))
+    }).map(|x| x.either(|l| l, |r| r))
+}
+
+fn attribute_option_i8<'p>() -> impl Parser<'p, Result=Either<Option<i8>, Attribute>, Error=UnexpectedEof> {
+    i8().map(move |b| if b == -1 { 
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn attribute_option_i32<'p>() -> impl Parser<'p, Result=Either<Option<i32>, Attribute>, Error=UnexpectedEof> {
+    i32_le().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(Attribute::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn skill_option_i32<'p>() -> impl Parser<'p, Result=Either<Option<i32>, Skill>, Error=UnexpectedEof> {
+    i32_le().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn skill_option_i8<'p>() -> impl Parser<'p, Result=Either<Option<i8>, Skill>, Error=UnexpectedEof> {
+    i8().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(Skill::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn effect_index_option_i16<'p>() -> impl Parser<'p, Result=Either<Option<i16>, EffectIndex>, Error=UnexpectedEof> {
+    i16_le().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn effect_index_option_i32<'p>() -> impl Parser<'p, Result=Either<Option<i32>, EffectIndex>, Error=UnexpectedEof> {
+    i32_le().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(EffectIndex::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn sex_option_i8<'p>() -> impl Parser<'p, Result=Either<Option<i8>, Sex>, Error=UnexpectedEof> {
+    i8().map(move |b| if b == -1 {
+        Left(None)
+    } else if let Some(a) = b.try_into().ok().and_then(Sex::n) {
+        Right(a)
+    } else {
+        Left(Some(b))
+    })
+}
+
+fn option_i8<'p>() -> impl Parser<'p, Result=Option<i8>, Error=UnexpectedEof> {
+    i8().map(move |b| if b == -1 {
+        None
+    } else {
+        Some(b)
+    })
+}
+
+fn ingredient_field<'p>() -> impl Parser<'p, Result=Ingredient, Error=FieldBodyError> {
+    (
+        f32_le(), u32_le(),
+        (effect_index_option_i32(), effect_index_option_i32(), effect_index_option_i32(), effect_index_option_i32()),
+        (skill_option_i32(), skill_option_i32(), skill_option_i32(), skill_option_i32()),
+        (attribute_option_i32(), attribute_option_i32(), attribute_option_i32(), attribute_option_i32())
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(56))
+        .map(
+            |(
+                weight, value,
+                (effect_1_index, effect_2_index, effect_3_index, effect_4_index),
+                (effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill),
+                (effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute)
+            )| Ingredient {
+                weight, value,
+                effect_1_index, effect_2_index, effect_3_index, effect_4_index,
+                effect_1_skill, effect_2_skill, effect_3_skill, effect_4_skill,
+                effect_1_attribute, effect_2_attribute, effect_3_attribute, effect_4_attribute
+            }
+        )
+}
+
+fn sound_chance_field<'p>(
+    code_page: CodePage
+) -> impl Parser<'p, Result=SoundChance, Error=FieldBodyError> {
+    (
+        short_string(code_page, 32),
+        u8()
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(32 + 1))
+        .map(|(sound_id, chance)| SoundChance { sound_id, chance })
+}
+
+fn script_metadata_field<'p>(
+    code_page: CodePage
+) -> impl Parser<'p, Result=ScriptMetadata, Error=FieldBodyError> {
+    (
+        short_string(code_page, 32),
+        u32_le(), u32_le(), u32_le(),
+        u32_le(), u32_le(),
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(32 + 20))
+        .map(
+            |(name, shorts, longs, floats, data_size, var_table_size)| ScriptMetadata {
+                name,
+                vars: ScriptVars {
+                    shorts,
+                    longs,
+                    floats
+                },
+                data_size,
+                var_table_size
+            }
+        )
+}
+
+fn script_vars_field<'p>() -> impl Parser<'p, Result=ScriptVars, Error=FieldBodyError> {
+    (u32_le(), u32_le(), u32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+        .map(
+            |(shorts, longs, floats)| ScriptVars {
                 shorts,
                 longs,
                 floats
-            },
-            data_size,
-            var_table_size
-        }
-    )
+            }
+        )
 }
 
-fn script_vars_field(input: &[u8]) -> IResult<&[u8], ScriptVars, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_u32, le_u32, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
-        ),
-        |(shorts, longs, floats)| ScriptVars {
-            shorts,
-            longs,
-            floats
-        }
-    )(input)
-}
-
-fn info_field(input: &[u8]) -> IResult<&[u8], Info, FieldBodyError> {
-    map(
-        pair(
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| w.try_into().ok().and_then(DialogType::n).ok_or(
+fn info_field<'p>() -> impl Parser<'p, Result=Info, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(
+                |w| w.try_into().ok().and_then(DialogType::n).ok_or(
                     FieldBodyError::UnknownValue(Unknown::DialogType(w), 0)
                 )
             ),
-            set_err(
-                tuple((le_u32, option_i8, sex_option_i8, option_i8, le_u8)),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            )
-        ),
-        |(dialog_type, (disp_index, rank, sex, pc_rank, padding))| Info {
-            dialog_type, disp_index, rank, sex, pc_rank, padding
-        }
-    )(input)
+        (u32_le(), option_i8(), sex_option_i8(), option_i8(), u8())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+    )
+        .map(
+            |(dialog_type, (disp_index, rank, sex, pc_rank, padding))| Info {
+                dialog_type, disp_index, rank, sex, pc_rank, padding
+            }
+        )
 }
 
-fn rank(input: &[u8]) -> IResult<&[u8], Rank, ()> {
-    map(
-        tuple((le_u32, le_u32, le_u32, le_u32, le_u32)),
-        |(attribute_1, attribute_2, primary_skill, favored_skill, reputation)| Rank {
-            attribute_1, attribute_2, primary_skill, favored_skill, reputation
-        }
-    )(input)
+fn rank<'p>() -> impl Parser<'p, Result=Rank, Error=UnexpectedEof> {
+    (u32_le(), u32_le(), u32_le(), u32_le(), u32_le())
+        .map(
+            |(attribute_1, attribute_2, primary_skill, favored_skill, reputation)| Rank {
+                attribute_1, attribute_2, primary_skill, favored_skill, reputation
+            }
+        )
 }
 
-fn faction_field(input: &[u8]) -> IResult<&[u8], Faction, FieldBodyError> {
-    map(
-        tuple((
-            attribute(240, 0), attribute(240, 4),
-            set_err(
-                pair(
-                    tuple((rank, rank, rank, rank, rank, rank, rank, rank, rank, rank)),
-                    tuple((
-                        skill_option_i32, skill_option_i32, skill_option_i32, skill_option_i32,
-                        skill_option_i32, skill_option_i32, skill_option_i32
-                    ))
-                ),
-                |_| FieldBodyError::UnexpectedEndOfField(240)
-            ),
-            bool_u32(240, 236)
-        )),
-        |(
-            favored_attribute_1, favored_attribute_2,
+fn faction_field<'p>() -> impl Parser<'p, Result=Faction, Error=FieldBodyError> {
+    (
+        attribute(240, 0), attribute(240, 4),
+        (
+            (rank(), rank(), rank(), rank(), rank(), rank(), rank(), rank(), rank(), rank()),
             (
-                (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9),
+                skill_option_i32(), skill_option_i32(), skill_option_i32(), skill_option_i32(),
+                skill_option_i32(), skill_option_i32(), skill_option_i32()
+            )
+        )
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(240)),
+        bool_u32(240, 236)
+    )
+        .map(
+            |(
+                favored_attribute_1, favored_attribute_2,
                 (
-                    favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
-                    favored_skill_5, favored_skill_6, favored_skill_7
-                )
-            ),
-            hidden_from_pc
-        )| Faction {
-            favored_attribute_1, favored_attribute_2,
-            favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
-            favored_skill_5, favored_skill_6, favored_skill_7, hidden_from_pc,
-            ranks: [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9]
-        }
-    )(input)
+                    (r0, r1, r2, r3, r4, r5, r6, r7, r8, r9),
+                    (
+                        favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
+                        favored_skill_5, favored_skill_6, favored_skill_7
+                    )
+                ),
+                hidden_from_pc
+            )| Faction {
+                favored_attribute_1, favored_attribute_2,
+                favored_skill_1, favored_skill_2, favored_skill_3, favored_skill_4,
+                favored_skill_5, favored_skill_6, favored_skill_7, hidden_from_pc,
+                ranks: [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9]
+            }
+        )
 }
 
-fn weather_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_u8, le_u8, le_u8, le_u8, le_u8,
-                le_u8, le_u8, le_u8
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(8)
-        ),
-        |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight)| Weather {
-            clear, cloudy, foggy, overcast, rain, thunder, ash, blight, ex: None
-        }
-    )(input)
+fn weather_field<'p>() -> impl Parser<'p, Result=Weather, Error=FieldBodyError> {
+    (
+        u8(), u8(), u8(), u8(), u8(),
+        u8(), u8(), u8()
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
+        .map(
+            |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight)| Weather {
+                clear, cloudy, foggy, overcast, rain, thunder, ash, blight, ex: None
+            }
+        )
 }
 
-fn weather_ex_field(input: &[u8]) -> IResult<&[u8], Weather, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_u8, le_u8, le_u8, le_u8, le_u8,
-                le_u8, le_u8, le_u8, le_u8, le_u8
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(10)
-        ),
-        |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard)| Weather {
-            clear, cloudy, foggy, overcast, rain, thunder, ash, blight,
-            ex: Some(WeatherEx { snow, blizzard })
-        }
-    )(input)
+fn weather_ex_field<'p>() -> impl Parser<'p, Result=Weather, Error=FieldBodyError> {
+    (
+        u8(), u8(), u8(), u8(), u8(),
+        u8(), u8(), u8(), u8(), u8()
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(10))
+        .map(
+            |(clear, cloudy, foggy, overcast, rain, thunder, ash, blight, snow, blizzard)| Weather {
+                clear, cloudy, foggy, overcast, rain, thunder, ash, blight,
+                ex: Some(WeatherEx { snow, blizzard })
+            }
+        )
 }
 
-fn npc_state_field(input: &[u8]) -> IResult<&[u8], NpcState, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_i16, le_i16, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(8)
-        ),
-        |(disposition, reputation, index)| NpcState {
-            disposition,
-            reputation,
-            index
-        }
-    )(input)
+fn npc_state_field<'p>() -> impl Parser<'p, Result=NpcState, Error=FieldBodyError> {
+    (i16_le(), i16_le(), u32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
+        .map(
+            |(disposition, reputation, index)| NpcState {
+                disposition,
+                reputation,
+                index
+            }
+        )
 }
 
-fn cell_field(input: &[u8]) -> IResult<&[u8], Cell, FieldBodyError> {
-    map(
-        pair(
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| CellFlags::from_bits(w).ok_or(
+fn cell_field<'p>() -> impl Parser<'p, Result=Cell, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(
+                |w| CellFlags::from_bits(w).ok_or(
                     FieldBodyError::UnknownValue(Unknown::CellFlags(w), 0)
                 )
             ),
-            set_err(
-                pair(le_i32, le_i32),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            )
-        ),
-        |(flags, (x, y))| {
-            let position = if flags.contains(CellFlags::INTERIOR) {
-                CellPosition::Interior {
-                    x: f32::from_bits(x.cast_unsigned()),
-                    y: f32::from_bits(y.cast_unsigned())
-                }
-            } else {
-                CellPosition::Exterior { x, y }
-            };
-            Cell { flags, position }
-        }
-    )(input)
+        (i32_le(), i32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+    )
+        .map(
+            |(flags, (x, y))| {
+                let position = if flags.contains(CellFlags::INTERIOR) {
+                    CellPosition::Interior {
+                        x: f32::from_bits(x.cast_unsigned()),
+                        y: f32::from_bits(y.cast_unsigned())
+                    }
+                } else {
+                    CellPosition::Exterior { x, y }
+                };
+                Cell { flags, position }
+            }
+        )
 }
 
-fn path_grid_field(input: &[u8]) -> IResult<&[u8], PathGrid, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_i32, le_i32, le_u16, le_u16)),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
-        ),
-        |(x, y, flags, points)| PathGrid { grid: Grid { x, y }, flags, points }
-    )(input)
+fn path_grid_field<'p>() -> impl Parser<'p, Result=PathGrid, Error=FieldBodyError> {
+    (i32_le(), i32_le(), u16_le(), u16_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+        .map(|(x, y, flags, points)| PathGrid { grid: Grid { x, y }, flags, points })
 }
 
-fn grid_field(input: &[u8]) -> IResult<&[u8], Grid, FieldBodyError> {
-    map(
-        set_err(
-            pair(le_i32, le_i32),
-            |_| FieldBodyError::UnexpectedEndOfField(8)
-        ),
-        |(x, y)| Grid { x, y }
-    )(input)
+fn grid_field<'p>() -> impl Parser<'p, Result=Grid, Error=FieldBodyError> {
+    (i32_le(), i32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
+        .map(|(x, y)| Grid { x, y })
 }
 
-fn spell_field(input: &[u8]) -> IResult<&[u8], Spell, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellType::n(w).ok_or(
+fn spell_field<'p>() -> impl Parser<'p, Result=Spell, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(
+                |w| SpellType::n(w).ok_or(
                     FieldBodyError::UnknownValue(Unknown::SpellType(w), 0)
                 )
             ),
-            set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| SpellFlags::from_bits(w).ok_or(
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(
+                |w| SpellFlags::from_bits(w).ok_or(
                     FieldBodyError::UnknownValue(Unknown::SpellFlags(w), 8)
                 )
             ),
-        )),
-        |(spell_type, cost, flags)| Spell {
-            spell_type, cost, flags
-        }
-    )(input)
+    )
+        .map(
+            |(spell_type, cost, flags)| Spell {
+                spell_type, cost, flags
+            }
+        )
 }
 
-fn light_field(input: &[u8]) -> IResult<&[u8], Light, FieldBodyError> {
-    map(
-        tuple((
-            set_err(
-                tuple((le_f32, le_u32, le_i32, le_u32)),
-                |_| FieldBodyError::UnexpectedEndOfField(24)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| Color::try_from_u32(w).ok_or(
+fn light_field<'p>() -> impl Parser<'p, Result=Light, Error=FieldBodyError> {
+    (
+        (f32_le(), u32_le(), i32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            .map_res(
+                |w| Color::try_from_u32(w).ok_or(
                     FieldBodyError::InvalidValue(Invalid::Color(w), 16)
                 )
             ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| LightFlags::from_bits(w).ok_or(
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            .map_res(
+                |w| LightFlags::from_bits(w).ok_or(
                     FieldBodyError::UnknownValue(Unknown::LightFlags(w), 20)
                 )
             )
-        )),
-        |((weight, value, time, radius), color, flags)| Light {
-            weight, value, time, radius, color, flags
-        }
-    )(input)
+    )
+        .map(
+            |((weight, value, time, radius), color, flags)| Light {
+                weight, value, time, radius, color, flags
+            }
+        )
 }
 
-fn interior_field(input: &[u8]) -> IResult<&[u8], Interior, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| Color::try_from_u32(w).ok_or(
+fn interior_field<'p>() -> impl Parser<'p, Result=Interior, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(
+                |w| Color::try_from_u32(w).ok_or(
                     FieldBodyError::InvalidValue(Invalid::Color(w), 0)
                 )
             ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| Color::try_from_u32(w).ok_or(
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(
+                |w| Color::try_from_u32(w).ok_or(
                     FieldBodyError::InvalidValue(Invalid::Color(w), 4)
                 )
             ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| Color::try_from_u32(w).ok_or(
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(
+                |w| Color::try_from_u32(w).ok_or(
                     FieldBodyError::InvalidValue(Invalid::Color(w), 8)
                 )
             ),
-            set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(16))
-        )),
-        |(ambient, sunlight, fog, fog_density)| Interior {
-            ambient, sunlight, fog, fog_density
-        }
-    )(input)
+        f32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+    )
+        .map(
+            |(ambient, sunlight, fog, fog_density)| Interior {
+                ambient, sunlight, fog, fog_density
+            }
+        )
 }
 
-fn sound_field(input: &[u8]) -> IResult<&[u8], Sound, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_u8, le_u8, le_u8)),
-            |_| FieldBodyError::UnexpectedEndOfField(3)
-        ),
-        |(volume, range_min, range_max)| Sound {
-            volume, range_min, range_max
-        }
-    )(input)
+fn sound_field<'p>() -> impl Parser<'p, Result=Sound, Error=FieldBodyError> {
+    (u8(), u8(), u8())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(3))
+        .map(
+            |(volume, range_min, range_max)| Sound {
+                volume, range_min, range_max
+            }
+        )
 }
 
-fn color_component<'a>(
+fn color_component<'p>(
     field_size: u32,
     offset: u32
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], u8, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| w.try_into().map_err(|_| FieldBodyError::InvalidValue(Invalid::ColorComponent(w), offset))
+) -> impl Parser<'p, Result=u8, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(field_size))
+        .map_res(move |w|
+            w.try_into().map_err(|_| FieldBodyError::InvalidValue(Invalid::ColorComponent(w), offset))
+        )
+}
+
+fn effect_metadata_field<'p>() -> impl Parser<'p, Result=EffectMetadata, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(36))
+            .map_res(|w| School::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::School(w), 0))),
+        f32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(36)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(36))
+            .map_res(|w|
+                EffectFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectFlags(w), 8))
+            ),
+        color_component(36, 12),
+        color_component(36, 16),
+        color_component(36, 20),
+        (f32_le(), f32_le(), f32_le()).map_err(|_| FieldBodyError::UnexpectedEndOfField(36))
     )
+        .map(
+            |(school, base_cost, flags, r, g, b, (size_factor, speed, size_cap))| EffectMetadata {
+                school, base_cost, flags, color: Color { r, g, b }, size_factor, speed, size_cap
+            }
+        )
 }
 
-fn effect_metadata_field(input: &[u8]) -> IResult<&[u8], EffectMetadata, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(36)),
-                |w, _| School::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::School(w), 0))
-            ),
-            set_err(le_f32, |_| FieldBodyError::UnexpectedEndOfField(36)),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(36)),
-                |w, _| EffectFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectFlags(w), 8))
-            ),
-            color_component(36, 12),
-            color_component(36, 16),
-            color_component(36, 20),
-            set_err(tuple((le_f32, le_f32, le_f32)), |_| FieldBodyError::UnexpectedEndOfField(36))
-        )),
-        |(school, base_cost, flags, r, g, b, (size_factor, speed, size_cap))| EffectMetadata {
-            school, base_cost, flags, color: Color { r, g, b }, size_factor, speed, size_cap
-        }
-    )(input)
+fn color_field<'p>() -> impl Parser<'p, Result=Color, Error=FieldBodyError> {
+    u32_le()
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+        .map_res(|w| Color::try_from_u32(w).ok_or(FieldBodyError::InvalidValue(Invalid::Color(w), 0)))
 }
 
-fn color_field(input: &[u8]) -> IResult<&[u8], Color, FieldBodyError> {
-    map_res(
-        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-        |w, _| Color::try_from_u32(w).ok_or(FieldBodyError::InvalidValue(Invalid::Color(w), 0))
-    )(input)
+fn misc_item_field<'p>() -> impl Parser<'p, Result=MiscItem, Error=FieldBodyError> {
+    (
+        (f32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12)),
+        bool_u32(12, 8)
+    )
+        .map(
+            |((weight, value), is_key)| MiscItem {
+                weight, value, is_key
+            }
+        )
 }
 
-fn misc_item_field(input: &[u8]) -> IResult<&[u8], MiscItem, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                pair(le_f32, le_u32),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            ),
-            bool_u32(12, 8)
-        ),
-        |((weight, value), is_key)| MiscItem {
-            weight, value, is_key
-        }
-    )(input)
+fn apparatus_field<'p>() -> impl Parser<'p, Result=Apparatus, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(|w| ApparatusType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0))),
+        (f32_le(), f32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+    )
+        .map(
+            |(apparatus_type, (quality, weight, value))| Apparatus {
+                apparatus_type, quality, weight, value
+            }
+        )
 }
 
-fn apparatus_field(input: &[u8]) -> IResult<&[u8], Apparatus, FieldBodyError> {
-    map(
-        pair(
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| ApparatusType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ApparatusType(w), 0))
+fn enchantment_field<'p>() -> impl Parser<'p, Result=Enchantment, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(|w|
+                EnchantmentType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0))
             ),
-            set_err(
-                tuple((le_f32, le_f32, le_u32)),
-                |_| FieldBodyError::UnexpectedEndOfField(16)
-            ),
-        ),
-        |(apparatus_type, (quality, weight, value))| Apparatus {
-            apparatus_type, quality, weight, value
-        }
-    )(input)
+        (u32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16)),
+        i16_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            .map_res(|w| match w {
+                0 => Ok(Right(false)),
+                1 => Ok(Right(true)),
+                -1 => Ok(Left(true)),
+                -2 => Ok(Left(false)),
+                w => Err(FieldBodyError::UnknownValue(Unknown::EnchantmentAutoCalculate(w), 12))
+            }),
+        u16_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+    )
+        .map(
+            |(enchantment_type, (cost, charge_amount), auto_calculate, padding)| Enchantment {
+                enchantment_type, cost, charge_amount, auto_calculate, padding
+            }
+        )
 }
 
-fn enchantment_field(input: &[u8]) -> IResult<&[u8], Enchantment, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| EnchantmentType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EnchantmentType(w), 0))
-            ),
-            set_err(
-                pair(le_u32, le_u32),
-                |_| FieldBodyError::UnexpectedEndOfField(16)
-            ),
-            map_res(
-                set_err(le_i16, |_| FieldBodyError::UnexpectedEndOfField(16)),
-                |w, _| match w {
-                    0 => Ok(Right(false)),
-                    1 => Ok(Right(true)),
-                    -1 => Ok(Left(true)),
-                    -2 => Ok(Left(false)),
-                    w => Err(FieldBodyError::UnknownValue(Unknown::EnchantmentAutoCalculate(w), 12))
-                }
-            ),
-            set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(16))
-        )),
-        |(enchantment_type, (cost, charge_amount), auto_calculate, padding)| Enchantment {
-            enchantment_type, cost, charge_amount, auto_calculate, padding
-        }
-    )(input)
-}
-
-fn armor_field(input: &[u8]) -> IResult<&[u8], Armor, FieldBodyError> {
-    map(
-        pair(
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| ArmorType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0))
-            ),
-            set_err(
-                tuple((le_f32, le_u32, le_u32, le_u32, le_u32)),
-                |_| FieldBodyError::UnexpectedEndOfField(24)
-            ),
-        ),
-        |(armor_type, (weight, value, health, enchantment, armor))| Armor {
+fn armor_field<'p>() -> impl Parser<'p, Result=Armor, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            .map_res(|w| ArmorType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ArmorType(w), 0)))
+            ,
+        (f32_le(), u32_le(), u32_le(), u32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            ,
+    
+    )
+        .map(|(armor_type, (weight, value, health, enchantment, armor))| Armor {
             armor_type, health, weight, value, enchantment, armor
-        }
-    )(input)
+        })
 }
 
-fn clothing_field(input: &[u8]) -> IResult<&[u8], Clothing, FieldBodyError> {
-    map(
-        pair(
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| ClothingType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0))
-            ),
-            set_err(
-                tuple((le_f32, le_u16, le_u16)),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            ),
-        ),
-        |(clothing_type, (weight, value, enchantment))| Clothing {
+fn clothing_field<'p>() -> impl Parser<'p, Result=Clothing, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(|w| ClothingType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::ClothingType(w), 0)))
+            ,
+        (f32_le(), u16_le(), u16_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            ,
+    )
+        .map(|(clothing_type, (weight, value, enchantment))| Clothing {
             clothing_type, weight, value, enchantment
-        }
-    )(input)
+        })
 }
 
-fn weapon_field(input: &[u8]) -> IResult<&[u8], Weapon, FieldBodyError> {
-    map(
-        tuple((
-            set_err(
-                tuple((le_f32, le_u32)),
-                |_| FieldBodyError::UnexpectedEndOfField(32)
-            ),
-            map_res(
-                set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8))
-            ),
-            set_err(
-                tuple((le_u16, le_f32, le_f32, le_u16, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
-                |_| FieldBodyError::UnexpectedEndOfField(32)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(32)),
-                |w, _| WeaponFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::WeaponFlags(w), 28))
+fn weapon_field<'p>() -> impl Parser<'p, Result=Weapon, Error=FieldBodyError> {
+    (
+        (f32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(32))
+            ,
+        u16_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(32))
+            .map_res(|w| WeaponType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::WeaponType(w), 8)))
+            ,
+        (u16_le(), f32_le(), f32_le(), u16_le(), u8(), u8(), u8(), u8(), u8(), u8())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(32))
+            ,
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(32))
+            .map_res(|w|
+                WeaponFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::WeaponFlags(w), 28))
             )
-        )),
-        |((weight, value), weapon_type, (health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max), flags)| Weapon {
-            weight, value, weapon_type, health, speed, reach, enchantment, chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max, flags
-        }
-    )(input)
+            ,
+    )
+        .map(|(
+            (weight, value),
+            weapon_type,
+            (
+                health,
+                speed,
+                reach,
+                enchantment,
+                chop_min,
+                chop_max,
+                slash_min,
+                slash_max,
+                thrust_min,
+                thrust_max,
+            ),
+            flags
+        )| Weapon {
+            weight, value, weapon_type, health, speed, reach, enchantment,
+            chop_min, chop_max, slash_min, slash_max, thrust_min, thrust_max, flags
+        })
 }
 
-fn body_part_field(input: &[u8]) -> IResult<&[u8], BodyPart, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartKind::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0))
-            ),
-            bool_u8(4, 1),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartFlags::from_bits(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2))
-            ),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| BodyPartType::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3))
+fn body_part_field<'p>() -> impl Parser<'p, Result=BodyPart, Error=FieldBodyError> {
+    (
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|b| BodyPartKind::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartKind(b), 0)))
+            ,
+        bool_u8(4, 1),
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|b|
+                BodyPartFlags::from_bits(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartFlags(b), 2))
             )
-        )),
-        |(kind, vampire, flags, body_part_type)| BodyPart {
+            ,
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|b| BodyPartType::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BodyPartType(b), 3)))
+            ,
+    )
+        .map(|(kind, vampire, flags, body_part_type)| BodyPart {
             kind, vampire, flags, body_part_type
-        }
-    )(input)
+        })
 }
 
-fn ai_field(input: &[u8]) -> IResult<&[u8], Ai, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                tuple((le_u16, le_u8, le_u8, le_u8, le_u8, le_u16)),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(12)),
-                |w, _| Services::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiServices(w), 8))
-            )
-        ),
-        |((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
+fn ai_field<'p>() -> impl Parser<'p, Result=Ai, Error=FieldBodyError> {
+    (
+        (u16_le(), u8(), u8(), u8(), u8(), u16_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            ,
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+            .map_res(|w| Services::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiServices(w), 8)))
+            ,
+    )
+        .map(|((hello, fight, flee, alarm, padding_8, padding_16), services)| Ai {
             hello, fight, flee, alarm, padding_8, padding_16, services
-        }
-    )(input)
+        })
 }
 
-fn ai_wander_field(input: &[u8]) -> IResult<&[u8], AiWander, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                tuple((
-                    le_u16, le_u16, le_u8,
-                    le_u8, le_u8, le_u8, le_u8,
-                    le_u8, le_u8, le_u8, le_u8
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(14)
-            ),
-            bool_u8(14, 13)
-        ),
-        |((distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9), repeat)| AiWander {
+fn ai_wander_field<'p>() -> impl Parser<'p, Result=AiWander, Error=FieldBodyError> {
+    (
+        (
+            u16_le(), u16_le(), u8(),
+            u8(), u8(), u8(), u8(),
+            u8(), u8(), u8(), u8()
+        )
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(14))
+            ,
+        bool_u8(14, 13)
+    )
+        .map(|
+            (
+                (distance, duration, time_of_day, idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9),
+                repeat,
+            )
+        | AiWander {
             distance,
             duration,
             time_of_day,
             idle: [idle2, idle3, idle4, idle5, idle6, idle7, idle8, idle9],
             repeat
-        }
-    )(input)
+        })
 }
 
-fn ai_travel_field(input: &[u8]) -> IResult<&[u8], AiTravel, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                tuple((
-                    le_f32, le_f32, le_f32
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(16)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |w, _| AiTravelFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12))
+fn ai_travel_field<'p>() -> impl Parser<'p, Result=AiTravel, Error=FieldBodyError> {
+    (
+        (f32_le(), f32_le(), f32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+            ,
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|w|
+                AiTravelFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiTravelFlags(w), 12))
             )
-        ),
-        |((x, y, z), flags)| AiTravel {
-            pos: Pos { x, y, z }, flags
-        }
-    )(input)
-}
-
-fn ai_target_field<'a>(
-    code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiTarget, FieldBodyError> {
-    map(
-        tuple((
-            set_err(
-                tuple((
-                    le_f32, le_f32, le_f32, le_u16,
-                    short_string(code_page, 32)
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(48)
-            ),
-            bool_u8(48, 46),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(48)),
-                |b, _| AiTargetFlags::from_bits(b).ok_or(
-                    FieldBodyError::UnknownValue(Unknown::AiTargetFlags(b), 46)
-                )
-            )
-        )),
-        |((x, y, z, duration, actor_id), reset, flags)| AiTarget {
-            pos: Pos { x, y, z }, duration, actor_id, reset, flags
-        }
+            ,
     )
+        .map(|((x, y, z), flags)| AiTravel {
+            pos: Pos { x, y, z }, flags
+        })
 }
 
-fn bool_u8<'a>(
+fn ai_target_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=AiTarget, Error=FieldBodyError> {
+    (
+        (
+            f32_le(), f32_le(), f32_le(), u16_le(),
+            short_string(code_page, 32)
+        )
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(48))
+            ,
+        bool_u8(48, 46),
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(48))
+            .map_res(|b| AiTargetFlags::from_bits(b).ok_or(
+                FieldBodyError::UnknownValue(Unknown::AiTargetFlags(b), 46)
+            ))
+            ,
+    )
+        .map(|((x, y, z, duration, actor_id), reset, flags)| AiTarget {
+            pos: Pos { x, y, z }, duration, actor_id, reset, flags
+        })
+}
+
+fn bool_u8<'p>(
     field_size: u32,
     offset: u32
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
-    map_res(
-        set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |b, _| match b {
+) -> impl Parser<'p, Result=bool, Error=FieldBodyError> {
+    u8()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(field_size))
+        .map_res(move |b| match b {
             0 => Ok(false),
             1 => Ok(true),
             b => Err(FieldBodyError::InvalidValue(Invalid::Bool(b as u32), offset))
-        }
-    )
+        })
 }
 
-fn bool_u32<'a>(
+fn bool_u32<'p>(
     field_size: u32,
     offset: u32
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], bool, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| match w {
+) -> impl Parser<'p, Result=bool, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(field_size))
+        .map_res(move |w| match w {
             0 => Ok(false),
             1 => Ok(true),
             w => Err(FieldBodyError::InvalidValue(Invalid::Bool(w), offset))
-        }
-    )
+        })
 }
 
-fn none_u8_field<'a>(
+fn none_u8_field<'p>(
     none: u8
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (), FieldBodyError> {
-    map_res(
-        set_err(le_u8, move |_| FieldBodyError::UnexpectedEndOfField(1)),
-        move |b, _| if b == none {
+) -> impl Parser<'p, Result=(), Error=FieldBodyError> {
+    u8()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(1))
+        .map_res(move |b| if b == none {
             Ok(())
         } else {
             Err(FieldBodyError::InvalidValue(Invalid::MarkerU8(b), 0))
-        }
-    )
+        })
 }
 
-fn ai_activate_field<'a>(
+fn ai_activate_field<'p>(
     code_page: CodePage
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], AiActivate, FieldBodyError> {
-    map(
-        pair(
-            set_err(short_string(code_page, 32), |_| FieldBodyError::UnexpectedEndOfField(33)),
-            bool_u8(33, 32)
-        ),
-        |(object_id, reset)| AiActivate {
+) -> impl Parser<'p, Result=AiActivate, Error=FieldBodyError> {
+    (
+        short_string(code_page, 32).map_err(|_| FieldBodyError::UnexpectedEndOfField(33)),
+        bool_u8(33, 32)
+    )
+        .map(|(object_id, reset)| AiActivate {
             object_id, reset
-        }
-    )
+        })
 }
 
-fn attribute<'a>(
+fn attribute<'p>(
     field_size: u32,
     offset: u32
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Attribute, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| Attribute::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset))
-    )
+) -> impl Parser<'p, Result=Attribute, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(field_size))
+        .map_res(move |w| Attribute::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Attribute(w), offset)))
 }
 
-fn skill<'a>(
+fn skill<'p>(
     field_size: u32,
     offset: u32
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Skill, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(field_size)),
-        move |w, _| Skill::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Skill(w), offset))
-    )
+) -> impl Parser<'p, Result=Skill, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(field_size))
+        .map_res(move |w| Skill::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Skill(w), offset)))
 }
 
-fn skill_field(input: &[u8]) -> IResult<&[u8], Skill, FieldBodyError> {
-    skill(4, 0)(input)
+fn skill_field<'p>() -> impl Parser<'p, Result=Skill, Error=FieldBodyError> {
+    skill(4, 0)
 }
 
-fn effect_arg_field(input: &[u8]) -> IResult<&[u8], EffectArg, FieldBodyError> {
-    map(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        EffectArg::from
-    )(input)
+fn effect_arg_field<'p>() -> impl Parser<'p, Result=EffectArg, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(4))
+        .map(EffectArg::from)
 }
 
-fn effect_index_field(input: &[u8]) -> IResult<&[u8], EffectIndex, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| EffectIndex::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectIndex(w), 0))
-    )(input)
+fn effect_index_field<'p>() -> impl Parser<'p, Result=EffectIndex, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(4))
+        .map_res(move |w| EffectIndex::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::EffectIndex(w), 0)))
 }
 
-fn tag_field(input: &[u8]) -> IResult<&[u8], Tag, FieldBodyError> {
-    map(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        Tag::from
-    )(input)
+fn tag_field<'p>() -> impl Parser<'p, Result=Tag, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(4))
+        .map(Tag::from)
 }
 
-fn sound_gen_field(input: &[u8]) -> IResult<&[u8], SoundGen, FieldBodyError> {
-    map_res(
-        set_err(le_u32, move |_| FieldBodyError::UnexpectedEndOfField(4)),
-        move |w, _| SoundGen::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::SoundGen(w), 0))
-    )(input)
+fn sound_gen_field<'p>() -> impl Parser<'p, Result=SoundGen, Error=FieldBodyError> {
+    u32_le()
+        .map_err(move |_| FieldBodyError::UnexpectedEndOfField(4))
+        .map_res(move |w| SoundGen::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::SoundGen(w), 0)))
 }
 
-fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
-    map(
-        tuple((
-            attribute(60, 0),
-            attribute(60, 4),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Specialization::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8))
-            ),
-            pair(
-                tuple((
-                    skill(60, 12), skill(60, 16), skill(60, 20), skill(60, 24), skill(60, 28),
-                    skill(60, 32), skill(60, 36), skill(60, 40), skill(60, 44), skill(60, 48),
-                )),
-                bool_u32(60, 52)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(60)),
-                |w, _| Services::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiServices(w), 56))
+fn class_field<'p>() -> impl Parser<'p, Result=Class, Error=FieldBodyError> {
+    (
+        attribute(60, 0),
+        attribute(60, 4),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(60))
+            .map_res(|w|
+                Specialization::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Specialization(w), 8))
             )
-        )),
-        |(
+            ,
+        (
+            (
+                skill(60, 12), skill(60, 16), skill(60, 20), skill(60, 24), skill(60, 28),
+                skill(60, 32), skill(60, 36), skill(60, 40), skill(60, 44), skill(60, 48),
+            ),
+            bool_u32(60, 52)
+        ),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(60))
+            .map_res(|w|
+                Services::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::AiServices(w), 56))
+            )
+            ,
+    )
+        .map(|(
             primary_attribute_1, primary_attribute_2, specialization,
             (
-                (minor_skill_1, major_skill_1, minor_skill_2, major_skill_2, minor_skill_3, major_skill_3, minor_skill_4, major_skill_4, minor_skill_5, major_skill_5),
+                (
+                    minor_skill_1,
+                    major_skill_1,
+                    minor_skill_2,
+                    major_skill_2,
+                    minor_skill_3,
+                    major_skill_3,
+                    minor_skill_4,
+                    major_skill_4,
+                    minor_skill_5,
+                    major_skill_5,
+                ),
                 playable
             ),
             auto_calc_services
@@ -1233,90 +1014,69 @@ fn class_field(input: &[u8]) -> IResult<&[u8], Class, FieldBodyError> {
             minor_skill_1, minor_skill_2, minor_skill_3, minor_skill_4, minor_skill_5,
             major_skill_1, major_skill_2, major_skill_3, major_skill_4, major_skill_5,
             playable, auto_calc_services
-        }
-    )(input)
+        })
 }
 
-fn skill_metadata_field(input: &[u8]) -> IResult<&[u8], SkillMetadata, FieldBodyError> {
-    map(
-        tuple((
-            attribute(24, 0),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |w, _| Specialization::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Specialization(w), 4))
+fn skill_metadata_field<'p>() -> impl Parser<'p, Result=SkillMetadata, Error=FieldBodyError> {
+    (
+        attribute(24, 0),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            .map_res(
+                |w| Specialization::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::Specialization(w), 4))
             ),
-            set_err(
-                tuple((le_f32, le_f32, le_f32, le_f32)),
-                |_| FieldBodyError::UnexpectedEndOfField(24)
-            )
-        )),
-        |(
+        (f32_le(), f32_le(), f32_le(), f32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24)),
+    )
+        .map(|(
             governing_attribute, specialization,
             (use_value_1, use_value_2, use_value_3, use_value_4)
         )| SkillMetadata {
             governing_attribute, specialization, use_value_1, use_value_2, use_value_3, use_value_4
-        }
-    )(input)
+        })
 }
 
-fn pos_field(input: &[u8]) -> IResult<&[u8], Pos, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_f32, le_f32, le_f32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
-        ),
-        |(x, y, z)| Pos { x, y, z }
-    )(input)
+fn pos_field<'p>() -> impl Parser<'p, Result=Pos, Error=FieldBodyError> {
+    (f32_le(), f32_le(), f32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+        .map(|(x, y, z)| Pos { x, y, z })
 }
 
-fn pos_rot_field(input: &[u8]) -> IResult<&[u8], PosRot, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_f32, le_f32, le_f32,
-                le_f32, le_f32, le_f32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(24)
-        ),
-        |(pos_x, pos_y, pos_z, rot_x, rot_y, rot_z)| PosRot {
+fn pos_rot_field<'p>() -> impl Parser<'p, Result=PosRot, Error=FieldBodyError> {
+    (
+        f32_le(), f32_le(), f32_le(),
+        f32_le(), f32_le(), f32_le(),
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+        .map(|(pos_x, pos_y, pos_z, rot_x, rot_y, rot_z)| PosRot {
             pos: Pos { x: pos_x, y: pos_y, z: pos_z },
             rot: Rot { x: rot_x, y: rot_y, z: rot_z }
-        }
-    )(input)
+        })
 }
 
-fn attributes_field(input: &[u8]) -> IResult<&[u8], Attributes<u32>, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                le_u32, le_u32, le_u32, le_u32,
-                le_u32, le_u32, le_u32, le_u32,
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(32)
-        ),
-        |(
+fn attributes_field<'p>() -> impl Parser<'p, Result=Attributes<u32>, Error=FieldBodyError> {
+    (
+        u32_le(), u32_le(), u32_le(), u32_le(),
+        u32_le(), u32_le(), u32_le(), u32_le(),
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(32))
+        .map(|(
             strength, intelligence, willpower, agility,
             speed, endurance, personality, luck,
         )| Attributes {
             strength, intelligence, willpower, agility,
             speed, endurance, personality, luck,
-        }
-    )(input)
+        })
 }
 
-fn skills_field(input: &[u8]) -> IResult<&[u8], Skills<u32>, FieldBodyError> {
-    map(
-        set_err(
-            tuple((
-                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
-                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
-                tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
-            )),
-            |_| FieldBodyError::UnexpectedEndOfField(108)
-        ),
-        |(
+fn skills_field<'p>() -> impl Parser<'p, Result=Skills<u32>, Error=FieldBodyError> {
+    (
+        (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le()),
+        (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le()),
+        (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le()),
+    )
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(108))
+        .map(|(
             (block, armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear, athletics, enchant),
             (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
             (sneak, acrobatics, light_armor, short_blade, marksman, mercantile, speechcraft, hand_to_hand),
@@ -1325,45 +1085,43 @@ fn skills_field(input: &[u8]) -> IResult<&[u8], Skills<u32>, FieldBodyError> {
             athletics, enchant, destruction, alteration, illusion, conjuration, mysticism,
             restoration, alchemy, unarmored, security, sneak, acrobatics, light_armor,
             short_blade, marksman, mercantile, speechcraft, hand_to_hand
-        }
-    )(input)
+        })
 }
 
-fn race_field(input: &[u8]) -> IResult<&[u8], Race, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                pair(
-                    tuple((
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32,
-                        skill_option_i32, le_u32
-                    )),
-                    tuple((
-                        le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32,
-                        le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32,
-                        le_f32, le_f32, le_f32, le_f32
-                    ))
-                ),
-                |_| FieldBodyError::UnexpectedEndOfField(140)
+fn race_field<'p>() -> impl Parser<'p, Result=Race, Error=FieldBodyError> {
+    (
+        (
+            (
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le(),
+                skill_option_i32(), u32_le()
             ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(140)),
-                |w, _| RaceFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::RaceFlags(w), 136))
-            )
-        ),
-        |(
+            (
+                u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(),
+                u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(),
+                f32_le(), f32_le(), f32_le(), f32_le()
+            ),
+        )
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(140)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(140))
+            .map_res(
+                |w| RaceFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::RaceFlags(w), 136))
+            ),
+    )
+        .map(|(
             (
                 (
                     skill_1, skill_1_bonus, skill_2, skill_2_bonus, skill_3, skill_3_bonus, skill_4, skill_4_bonus,
                     skill_5, skill_5_bonus, skill_6, skill_6_bonus, skill_7, skill_7_bonus
                 ),
                 (
-                    strength_m, strength_f, intelligence_m, intelligence_f, willpower_m, willpower_f, agility_m, agility_f,
+                    strength_m, strength_f, intelligence_m, intelligence_f,
+                    willpower_m, willpower_f, agility_m, agility_f,
                     speed_m, speed_f, endurance_m, endurance_f, personality_m, personality_f, luck_m, luck_f,
                     height_m, height_f, weight_m, weight_f
                 )
@@ -1384,131 +1142,131 @@ fn race_field(input: &[u8]) -> IResult<&[u8], Race, FieldBodyError> {
                 personality: RaceAttribute { male: personality_m, female: personality_f },
                 luck: RaceAttribute { male: luck_m, female: luck_f }
             }
-        }
-    )(input)
+        })
 }
 
-fn npc_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<NpcFlags>, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| NpcFlags::from_bits(b ^ 0x08).ok_or(FieldBodyError::UnknownValue(Unknown::NpcFlags(b), 0))
+fn npc_flags_field<'p>() -> impl Parser<'p, Result=FlagsAndBlood<NpcFlags>, Error=FieldBodyError> {
+    (
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(
+                |b| NpcFlags::from_bits(b ^ 0x08).ok_or(FieldBodyError::UnknownValue(Unknown::NpcFlags(b), 0))
             ),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::Blood(b), 1))
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(
+                |b| Blood::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::Blood(b), 1))
             ),
-            set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        )),
-        |(flags, blood, padding)| FlagsAndBlood {
-            flags,
-            blood,
-            padding
-        }
-    )(input)
+        u16_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4)),
+    )
+        .map(
+            |(flags, blood, padding)| FlagsAndBlood {
+                flags,
+                blood,
+                padding
+            }
+        )
 }
 
-fn creature_flags_field(input: &[u8]) -> IResult<&[u8], FlagsAndBlood<CreatureFlags>, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| CreatureFlags::from_bits(b ^ 0x08).ok_or(FieldBodyError::UnknownValue(Unknown::CreatureFlags(b), 0))
+fn creature_flags_field<'p>() -> impl Parser<'p, Result=FlagsAndBlood<CreatureFlags>, Error=FieldBodyError> {
+    (
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|b|
+                CreatureFlags::from_bits(b ^ 0x08)
+                    .ok_or(FieldBodyError::UnknownValue(Unknown::CreatureFlags(b), 0))
             ),
-            map_res(
-                set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(4)),
-                |b, _| Blood::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::Blood(b), 1))
+        u8()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+            .map_res(|b| Blood::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::Blood(b), 1))),
+        u16_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(4)),
+    )
+        .map(
+            |(flags, blood, padding)| FlagsAndBlood {
+                flags,
+                blood,
+                padding
+            }
+        )
+}
+
+fn container_flags_field<'p>() -> impl Parser<'p, Result=ContainerFlags, Error=FieldBodyError> {
+    u32_le()
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+        .map_res(|w|
+            ContainerFlags::from_bits(w ^ 0x08)
+                .ok_or(FieldBodyError::UnknownValue(Unknown::ContainerFlags(w), 0))
+        )
+}
+
+fn biped_object_field<'p>() -> impl Parser<'p, Result=BipedObject, Error=FieldBodyError> {
+    u8()
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(1))
+        .map_res(|b| BipedObject::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0)))
+}
+
+fn book_field<'p>() -> impl Parser<'p, Result=Book, Error=FieldBodyError> {
+    (
+        (f32_le(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(20)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(20))
+            .map_res(
+                |w| BookFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::BookFlags(w), 8))
             ),
-            set_err(le_u16, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        )),
-        |(flags, blood, padding)| FlagsAndBlood {
-            flags,
-            blood,
-            padding
-        }
-    )(input)
+        (skill_option_i32(), u32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(20)),
+    )
+        .map(
+            |((weight, value), flags, (skill, enchantment))| Book {
+                weight, value, flags, skill, enchantment
+            }
+        )
 }
 
-fn container_flags_field(input: &[u8]) -> IResult<&[u8], ContainerFlags, FieldBodyError> {
-    map_res(
-        set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(4)),
-        |w, _| ContainerFlags::from_bits(w ^ 0x08).ok_or(FieldBodyError::UnknownValue(Unknown::ContainerFlags(w), 0))
-    )(input)
+fn potion_field<'p>() -> impl Parser<'p, Result=Potion, Error=FieldBodyError> {
+    (
+        (f32_le(), u32_le()).map_err(|_| FieldBodyError::UnexpectedEndOfField(12)),
+        bool_u32(12, 8),
+    )
+        .map(
+            |((weight, value), auto_calculate_value)| Potion {
+                weight, value, auto_calculate_value
+            }
+        )
 }
 
-fn biped_object_field(input: &[u8]) -> IResult<&[u8], BipedObject, FieldBodyError> {
-    map_res(
-        set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| BipedObject::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::BipedObject(b), 0))
-    )(input)
+fn tool_field<'p>() -> impl Parser<'p, Result=Tool, Error=FieldBodyError> {
+    (f32_le(), u32_le(), f32_le(), u32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+        .map(
+            |(weight, value, quality, uses)| Tool {
+                weight, value, quality, uses
+            }
+        )
 }
 
-fn book_field(input: &[u8]) -> IResult<&[u8], Book, FieldBodyError> {
-    map(
-        tuple((
-            set_err(pair(le_f32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20)),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(20)),
-                |w, _| BookFlags::from_bits(w).ok_or(FieldBodyError::UnknownValue(Unknown::BookFlags(w), 8))
-            ),
-            set_err(pair(skill_option_i32, le_u32), |_| FieldBodyError::UnexpectedEndOfField(20))
-        )),
-        |((weight, value), flags, (skill, enchantment))| Book {
-            weight, value, flags, skill, enchantment
-        }
-    )(input)
+fn repair_item_field<'p>() -> impl Parser<'p, Result=RepairItem, Error=FieldBodyError> {
+    (f32_le(), u32_le(), u32_le(), f32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(16))
+        .map(
+            |(weight, value, uses, quality)| RepairItem {
+                weight, value, quality, uses
+            }
+        )
 }
 
-fn potion_field(input: &[u8]) -> IResult<&[u8], Potion, FieldBodyError> {
-    map(
-        pair(
-            set_err(
-                pair(le_f32, le_u32),
-                |_| FieldBodyError::UnexpectedEndOfField(12)
-            ),
-            bool_u32(12, 8)
-        ),
-        |((weight, value), auto_calculate_value)| Potion {
-            weight, value, auto_calculate_value
-        }
-    )(input)
-}
-
-fn tool_field(input: &[u8]) -> IResult<&[u8], Tool, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_f32, le_u32, le_f32, le_u32)),
-            |_| FieldBodyError::UnexpectedEndOfField(16)
-        ),
-        |(weight, value, quality, uses)| Tool {
-            weight, value, quality, uses
-        }
-    )(input)
-}
-
-fn repair_item_field(input: &[u8]) -> IResult<&[u8], RepairItem, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_f32, le_u32, le_u32, le_f32)),
-            |_| FieldBodyError::UnexpectedEndOfField(16)
-        ),
-        |(weight, value, uses, quality)| RepairItem {
-            weight, value, quality, uses
-        }
-    )(input)
-}
-
-fn npc_stats(input: &[u8]) -> IResult<&[u8], NpcStats, ()> {
-    map(
-        tuple((
-            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
-            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
-            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
-            tuple((le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8, le_u8)),
-            tuple((le_i16, le_i16, le_i16))
-        )),
-        |(
+fn npc_stats<'p>() -> impl Parser<'p, Result=NpcStats, Error=UnexpectedEof> {
+    (
+        (u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8()),
+        (u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8()),
+        (u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8()),
+        (u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8()),
+        (i16_le(), i16_le(), i16_le())
+    )
+        .map(|(
             (strength, intelligence, willpower, agility, speed, endurance, personality, luck, block),
             (armorer, medium_armor, heavy_armor, blunt_weapon, long_blade, axe, spear, athletics, enchant),
             (destruction, alteration, illusion, conjuration, mysticism, restoration, alchemy, unarmored, security), 
@@ -1527,27 +1285,22 @@ fn npc_stats(input: &[u8]) -> IResult<&[u8], NpcStats, ()> {
                 short_blade, marksman, mercantile, speechcraft, hand_to_hand
             },
             faction, health, magicka, fatigue
-        }
-    )(input)
+        })
 }
 
-fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
-    map(
-        tuple((
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(96)),
-                |w, _| CreatureType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0))
-            ),
-            set_err(
-                tuple((
-                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
-                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32)),
-                    tuple((le_u32, le_u32, le_u32, le_u32, le_u32, le_u32, le_u32))
-                )),
-                |_| FieldBodyError::UnexpectedEndOfField(96)
-            )
-        )),
-        |(
+fn creature_field<'p>() -> impl Parser<'p, Result=Creature, Error=FieldBodyError> {
+    (
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(96))
+            .map_res(|w| CreatureType::n(w).ok_or(FieldBodyError::UnknownValue(Unknown::CreatureType(w), 0))),
+        (
+            (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le()),
+            (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le()),
+            (u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le(), u32_le())
+        )
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(96)),
+    )
+        .map(|(
             creature_type,
             (
                 (level, strength, intelligence, willpower, agility, speed, endurance, personality),
@@ -1563,72 +1316,60 @@ fn creature_field(input: &[u8]) -> IResult<&[u8], Creature, FieldBodyError> {
             },
             health, magicka, fatigue, soul, combat, magic, stealth,
             attack_1_min, attack_1_max, attack_2_min, attack_2_max, attack_3_min, attack_3_max, gold
-        }
-    )(input)
+        })
 }
 
-fn npc_52_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_u16, npc_stats, le_i8, le_i8, le_i8, le_u8, le_i32)),
-            |_| FieldBodyError::UnexpectedEndOfField(52)
-        ),
-        |(level, stats, disposition, reputation, rank, padding, gold)| Npc {
-            level, disposition, reputation, rank, gold,
-            stats: Right(stats), padding
-        }
-    )(input)
+fn npc_52_field<'p>() -> impl Parser<'p, Result=Npc, Error=FieldBodyError> {
+    (u16_le(), npc_stats(), i8(), i8(), i8(), u8(), i32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(52))
+        .map(
+            |(level, stats, disposition, reputation, rank, padding, gold)| Npc {
+                level, disposition, reputation, rank, gold,
+                stats: Right(stats), padding
+            }
+        )
 }
 
-fn npc_12_field(input: &[u8]) -> IResult<&[u8], Npc, FieldBodyError> {
-    map(
-        set_err(
-            tuple((le_u16, le_i8, le_i8, le_i8, le_u8, le_u16, le_i32)),
-            |_| FieldBodyError::UnexpectedEndOfField(12)
-        ),
-        |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc {
-            level, disposition, reputation, rank, gold,
-            padding: padding_8, stats: Left(padding_16)
-        }
-    )(input)
+fn npc_12_field<'p>() -> impl Parser<'p, Result=Npc, Error=FieldBodyError> {
+    (u16_le(), i8(), i8(), i8(), u8(), u16_le(), i32_le())
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(12))
+        .map(
+            |(level, disposition, reputation, rank, padding_8, padding_16, gold)| Npc {
+                level, disposition, reputation, rank, gold,
+                padding: padding_8, stats: Left(padding_16)
+            }
+        )
 }
 
-fn effect_field(input: &[u8]) -> IResult<&[u8], Effect, FieldBodyError> {
-    map(
-        tuple((
-            set_err(
-                tuple((effect_index_option_i16, skill_option_i8, attribute_option_i8)),
-                |_| FieldBodyError::UnexpectedEndOfField(24)
-            ),
-            map_res(
-                set_err(le_u32, |_| FieldBodyError::UnexpectedEndOfField(24)),
-                |d, _| EffectRange::n(d).ok_or(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4))
-            ),
-            set_err(
-                tuple((le_i32, le_i32, le_i32, le_i32)),
-                |_| FieldBodyError::UnexpectedEndOfField(24)
-            ),
-        )),
-        |(
-            (index, skill, attribute),
-            range,
-            (area, duration, magnitude_min, magnitude_max),
-        )| Effect {
-            index, skill, attribute, range,
-            area, duration, magnitude_min, magnitude_max
-        }
-    )(input)
-}
-
-fn dialog_type_field(input: &[u8]) -> IResult<&[u8], DialogType, FieldBodyError> {
-    map_res(
-        set_err(le_u8, |_| FieldBodyError::UnexpectedEndOfField(1)),
-        |b, _| DialogType::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::DialogType(b as u32), 0))
+fn effect_field<'p>() -> impl Parser<'p, Result=Effect, Error=FieldBodyError> {
+    (
+        (effect_index_option_i16(), skill_option_i8(), attribute_option_i8())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24)),
+        u32_le()
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24))
+            .map_res(|d| EffectRange::n(d).ok_or(FieldBodyError::UnknownValue(Unknown::EffectRange(d), 4))),
+        (i32_le(), i32_le(), i32_le(), i32_le())
+            .map_err(|_| FieldBodyError::UnexpectedEndOfField(24)),
     )
-    (input)
+        .map(
+            |(
+                (index, skill, attribute),
+                range,
+                (area, duration, magnitude_min, magnitude_max),
+            )| Effect {
+                index, skill, attribute, range,
+                area, duration, magnitude_min, magnitude_max
+            }
+        )
 }
 
-fn field_body<'a>(
+fn dialog_type_field<'p>() -> impl Parser<'p, Result=DialogType, Error=FieldBodyError> {
+    u8()
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(1))
+        .map_res(|b| DialogType::n(b).ok_or(FieldBodyError::UnknownValue(Unknown::DialogType(b as u32), 0)))
+}
+
+fn field_body<'p>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag,
@@ -1636,112 +1377,112 @@ fn field_body<'a>(
     field_tag: Tag,
     field_size: u32,
     omwsave: bool,
-) -> impl Fn(&'a [u8]) -> IResult<&'a [u8], Field, FieldBodyError> {
-    move |input| {
+) -> impl Parser<'p, Result=Field, Error=FieldBodyError> {
+    parser(move |input| {
         let field_type = FieldType::from_tags(record_tag, prev_tag, field_tag, omwsave);
         match field_type {
-            FieldType::U8List => map(u8_list_field, Field::U8List)(input),
-            FieldType::ScriptData => map(script_data_field(code_page), Field::ScriptData)(input),
-            FieldType::U8ListZip => map(u8_list_zip_field, Field::U8List)(input),
-            FieldType::Multiline(newline) => map(multiline_field(code_page, newline), Field::StringList)(input),
-            FieldType::Item => map(item_field(code_page), Field::Item)(input),
-            FieldType::CurrentTime => map(current_time_field, Field::CurrentTime)(input),
-            FieldType::Time => map(time_field, Field::Time)(input),
-            FieldType::String(Some(len)) => map(short_string_field(code_page, mode, len), Field::String)(input),
-            FieldType::String(None) => map(string_field(code_page), Field::String)(input),
-            FieldType::StringZ => map(string_z_field(code_page), Field::StringZ)(input),
-            FieldType::StringZList => map(string_z_list_field(code_page), Field::StringZList)(input),
+            FieldType::U8List => u8_list_field().map(Field::U8List).parse(input),
+            FieldType::ScriptData => script_data_field(code_page).map(Field::ScriptData).parse(input),
+            FieldType::U8ListZip => u8_list_zip_field().map(Field::U8List).parse(input),
+            FieldType::Multiline(newline) => multiline_field(code_page, newline).map(Field::StringList).parse(input),
+            FieldType::Item => item_field(code_page).map(Field::Item).parse(input),
+            FieldType::CurrentTime => current_time_field().map(Field::CurrentTime).parse(input),
+            FieldType::Time => time_field().map(Field::Time).parse(input),
+            FieldType::String(Some(len)) => short_string_field(code_page, mode, len).map(Field::String).parse(input),
+            FieldType::String(None) => string_field(code_page).map(Field::String).parse(input),
+            FieldType::StringZ => string_z_field(code_page).map(Field::StringZ).parse(input),
+            FieldType::StringZList => string_z_list_field(code_page).map(Field::StringZList).parse(input),
             FieldType::FileMetadata => match field_size {
-                20 => map(file_metadata_20_field, Field::FileMetadata)(input),
-                300 => map(file_metadata_300_field(code_page), Field::FileMetadata)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+                20 => file_metadata_20_field().map(Field::FileMetadata).parse(input),
+                300 => file_metadata_300_field(code_page).map(Field::FileMetadata).parse(input),
+                x => Err(FieldBodyError::UnexpectedFieldSize(x)),
             },
-            FieldType::Spell => map(spell_field, Field::Spell)(input),
-            FieldType::Ai => map(ai_field, Field::Ai)(input),
-            FieldType::AiWander => map(ai_wander_field, Field::AiWander)(input),
-            FieldType::AiTravel => map(ai_travel_field, Field::AiTravel)(input),
-            FieldType::AiTarget => map(ai_target_field(code_page), Field::AiTarget)(input),
-            FieldType::AiActivate => map(ai_activate_field(code_page), Field::AiActivate)(input),
-            FieldType::NpcFlags => map(npc_flags_field, Field::NpcFlags)(input),
-            FieldType::CreatureFlags => map(creature_flags_field, Field::CreatureFlags)(input),
-            FieldType::Book => map(book_field, Field::Book)(input),
-            FieldType::Light => map(light_field, Field::Light)(input),
-            FieldType::MiscItem => map(misc_item_field, Field::MiscItem)(input),
-            FieldType::Apparatus => map(apparatus_field, Field::Apparatus)(input),
-            FieldType::Faction => map(faction_field, Field::Faction)(input),
-            FieldType::Armor => map(armor_field, Field::Armor)(input),
-            FieldType::Weapon => map(weapon_field, Field::Weapon)(input),
-            FieldType::Pos => map(pos_field, Field::Pos)(input),
-            FieldType::PosRot => map(pos_rot_field, Field::PosRot)(input),
-            FieldType::Skill => map(skill_field, Field::Skill)(input),
-            FieldType::EffectArg => map(effect_arg_field, Field::EffectArg)(input),
-            FieldType::EffectIndex => map(effect_index_field, Field::EffectIndex)(input),
-            FieldType::Tag => map(tag_field, Field::Tag)(input),
-            FieldType::EffectMetadata => map(effect_metadata_field, Field::EffectMetadata)(input),
-            FieldType::Tool => map(tool_field, Field::Tool)(input),
-            FieldType::RepairItem => map(repair_item_field, |x| Field::Tool(x.into()))(input),
-            FieldType::BipedObject => map(biped_object_field, Field::BipedObject)(input),
-            FieldType::BodyPart => map(body_part_field, Field::BodyPart)(input),
-            FieldType::Clothing => map(clothing_field, Field::Clothing)(input),
-            FieldType::Race => map(race_field, Field::Race)(input),
-            FieldType::Enchantment => map(enchantment_field, Field::Enchantment)(input),
-            FieldType::Creature => map(creature_field, Field::Creature)(input),
-            FieldType::ContainerFlags => map(container_flags_field, Field::ContainerFlags)(input),
-            FieldType::Grid => map(grid_field, Field::Grid)(input),
-            FieldType::Color => map(color_field, Field::Color)(input),
-            FieldType::Interior => map(interior_field, Field::Interior)(input),
-            FieldType::Sound => map(sound_field, Field::Sound)(input),
-            FieldType::SoundGen => map(sound_gen_field, Field::SoundGen)(input),
-            FieldType::Info => map(info_field, Field::Info)(input),
-            FieldType::SkillMetadata => map(skill_metadata_field, Field::SkillMetadata)(input),
-            FieldType::Potion => map(potion_field, Field::Potion)(input),
-            FieldType::I32 => map(i32_field, Field::I32)(input),
-            FieldType::I16 => map(i16_field, Field::I16)(input),
-            FieldType::I64 => map(i64_field, Field::I64)(input),
-            FieldType::U8 => map(u8_field, Field::U8)(input),
-            FieldType::Bool8 => map(bool_u8(1, 0), Field::Bool)(input),
-            FieldType::Bool32 => map(bool_u32(4, 0), Field::Bool)(input),
-            FieldType::MarkerU8(none) => map(none_u8_field(none), |()| Field::None)(input),
-            FieldType::F32 => map(f32_field, Field::F32)(input),
-            FieldType::I32List => map(i32_list_field, Field::I32List)(input),
-            FieldType::I16List => map(i16_list_field, Field::I16List)(input),
-            FieldType::F32List => map(f32_list_field, Field::F32List)(input),
-            FieldType::SoundChance => map(sound_chance_field(code_page), Field::SoundChance)(input),
-            FieldType::Ingredient => map(ingredient_field, Field::Ingredient)(input),
-            FieldType::ScriptMetadata => map(script_metadata_field(code_page), Field::ScriptMetadata)(input),
-            FieldType::ScriptVars => map(script_vars_field, Field::ScriptVars)(input),
-            FieldType::NpcState => map(npc_state_field, Field::NpcState)(input),
+            FieldType::Spell => spell_field().map(Field::Spell).parse(input),
+            FieldType::Ai => ai_field().map(Field::Ai).parse(input),
+            FieldType::AiWander => ai_wander_field().map(Field::AiWander).parse(input),
+            FieldType::AiTravel => ai_travel_field().map(Field::AiTravel).parse(input),
+            FieldType::AiTarget => ai_target_field(code_page).map(Field::AiTarget).parse(input),
+            FieldType::AiActivate => ai_activate_field(code_page).map(Field::AiActivate).parse(input),
+            FieldType::NpcFlags => npc_flags_field().map(Field::NpcFlags).parse(input),
+            FieldType::CreatureFlags => creature_flags_field().map(Field::CreatureFlags).parse(input),
+            FieldType::Book => book_field().map(Field::Book).parse(input),
+            FieldType::Light => light_field().map(Field::Light).parse(input),
+            FieldType::MiscItem => misc_item_field().map(Field::MiscItem).parse(input),
+            FieldType::Apparatus => apparatus_field().map(Field::Apparatus).parse(input),
+            FieldType::Faction => faction_field().map(Field::Faction).parse(input),
+            FieldType::Armor => armor_field().map(Field::Armor).parse(input),
+            FieldType::Weapon => weapon_field().map(Field::Weapon).parse(input),
+            FieldType::Pos => pos_field().map(Field::Pos).parse(input),
+            FieldType::PosRot => pos_rot_field().map(Field::PosRot).parse(input),
+            FieldType::Skill => skill_field().map(Field::Skill).parse(input),
+            FieldType::EffectArg => effect_arg_field().map(Field::EffectArg).parse(input),
+            FieldType::EffectIndex => effect_index_field().map(Field::EffectIndex).parse(input),
+            FieldType::Tag => tag_field().map(Field::Tag).parse(input),
+            FieldType::EffectMetadata => effect_metadata_field().map(Field::EffectMetadata).parse(input),
+            FieldType::Tool => tool_field().map(Field::Tool).parse(input),
+            FieldType::RepairItem => repair_item_field().map(|x| Field::Tool(x.into())).parse(input),
+            FieldType::BipedObject => biped_object_field().map(Field::BipedObject).parse(input),
+            FieldType::BodyPart => body_part_field().map(Field::BodyPart).parse(input),
+            FieldType::Clothing => clothing_field().map(Field::Clothing).parse(input),
+            FieldType::Race => race_field().map(Field::Race).parse(input),
+            FieldType::Enchantment => enchantment_field().map(Field::Enchantment).parse(input),
+            FieldType::Creature => creature_field().map(Field::Creature).parse(input),
+            FieldType::ContainerFlags => container_flags_field().map(Field::ContainerFlags).parse(input),
+            FieldType::Grid => grid_field().map(Field::Grid).parse(input),
+            FieldType::Color => color_field().map(Field::Color).parse(input),
+            FieldType::Interior => interior_field().map(Field::Interior).parse(input),
+            FieldType::Sound => sound_field().map(Field::Sound).parse(input),
+            FieldType::SoundGen => sound_gen_field().map(Field::SoundGen).parse(input),
+            FieldType::Info => info_field().map(Field::Info).parse(input),
+            FieldType::SkillMetadata => skill_metadata_field().map(Field::SkillMetadata).parse(input),
+            FieldType::Potion => potion_field().map(Field::Potion).parse(input),
+            FieldType::I32 => i32_field().map(Field::I32).parse(input),
+            FieldType::I16 => i16_field().map(Field::I16).parse(input),
+            FieldType::I64 => i64_field().map(Field::I64).parse(input),
+            FieldType::U8 => u8_field().map(Field::U8).parse(input),
+            FieldType::Bool8 => bool_u8(1, 0).map(Field::Bool).parse(input),
+            FieldType::Bool32 => bool_u32(4, 0).map(Field::Bool).parse(input),
+            FieldType::MarkerU8(none) => none_u8_field(none).map(|()| Field::None).parse(input),
+            FieldType::F32 => f32_field().map(Field::F32).parse(input),
+            FieldType::I32List => i32_list_field().map(Field::I32List).parse(input),
+            FieldType::I16List => i16_list_field().map(Field::I16List).parse(input),
+            FieldType::F32List => f32_list_field().map(Field::F32List).parse(input),
+            FieldType::SoundChance => sound_chance_field(code_page).map(Field::SoundChance).parse(input),
+            FieldType::Ingredient => ingredient_field().map(Field::Ingredient).parse(input),
+            FieldType::ScriptMetadata => script_metadata_field(code_page).map(Field::ScriptMetadata).parse(input),
+            FieldType::ScriptVars => script_vars_field().map(Field::ScriptVars).parse(input),
+            FieldType::NpcState => npc_state_field().map(Field::NpcState).parse(input),
             FieldType::Npc => match field_size {
-                52 => map(npc_52_field, Field::Npc)(input),
-                12 => map(npc_12_field, Field::Npc)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+                52 => npc_52_field().map(Field::Npc).parse(input),
+                12 => npc_12_field().map(Field::Npc).parse(input),
+                x => Err(FieldBodyError::UnexpectedFieldSize(x)),
             },
-            FieldType::PathGrid => map(path_grid_field, Field::PathGrid)(input),
-            FieldType::Class => map(class_field, Field::Class)(input),
-            FieldType::Attributes => map(attributes_field, Field::Attributes)(input),
-            FieldType::Skills => map(skills_field, Field::Skills)(input),
-            FieldType::Effect => map(effect_field, Field::Effect)(input),
+            FieldType::PathGrid => path_grid_field().map(Field::PathGrid).parse(input),
+            FieldType::Class => class_field().map(Field::Class).parse(input),
+            FieldType::Attributes => attributes_field().map(Field::Attributes).parse(input),
+            FieldType::Skills => skills_field().map(Field::Skills).parse(input),
+            FieldType::Effect => effect_field().map(Field::Effect).parse(input),
             FieldType::DialogMetadata => match field_size {
-                4 => map(i32_field, Field::I32)(input),
-                1 => map(dialog_type_field, Field::DialogType)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+                4 => i32_field().map(Field::I32).parse(input),
+                1 => dialog_type_field().map(Field::DialogType).parse(input),
+                x => Err(FieldBodyError::UnexpectedFieldSize(x)),
             },
             FieldType::PosRotOrCell => match field_size {
-                24 => map(pos_rot_field, Field::PosRot)(input),
-                12 => map(cell_field, Field::Cell)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+                24 => pos_rot_field().map(Field::PosRot).parse(input),
+                12 => cell_field().map(Field::Cell).parse(input),
+                x => Err(FieldBodyError::UnexpectedFieldSize(x)),
             },
             FieldType::Weather => match field_size {
-                8 => map(weather_field, Field::Weather)(input),
-                10 => map(weather_ex_field, Field::Weather)(input),
-                x => Err(nom::Err::Failure(FieldBodyError::UnexpectedFieldSize(x))),
+                8 => weather_field().map(Field::Weather).parse(input),
+                10 => weather_ex_field().map(Field::Weather).parse(input),
+                x => Err(FieldBodyError::UnexpectedFieldSize(x)),
             },
         }
-    }
+    })
 }
 
-fn tag(input: &[u8]) -> IResult<&[u8], Tag, ()> {
-    map(le_u32, Tag::from)(input)
+fn tag<'p>() -> impl Parser<'p, Result=Tag, Error=UnexpectedEof> {
+    u32_le().map(Tag::from)
 }
 
 #[derive(Debug, Clone)]
@@ -1753,55 +1494,52 @@ enum FieldError {
     InvalidValue(Tag, Invalid, u32),
 }
 
-impl_parse_error!(<'a>, &'a [u8], FieldError);
-
-fn field_bytes(input: &[u8]) -> IResult<&[u8], (Tag, u32, &[u8]), FieldError> {
-    flat_map(
-        set_err(
-            pair(tag, le_u32),
-            |_| FieldError::UnexpectedEndOfRecord(8)
-        ),
-        |(field_tag, field_size)| {
-            map(
-                set_err(take(field_size), move |_| FieldError::UnexpectedEndOfRecord(field_size + 8)),
-                move |field_bytes| (field_tag, field_size, field_bytes)
-            )
-        }
-    )(input)
+fn field_bytes<'p>() -> impl Parser<'p, Result=(Tag, u32, &'p [u8]), Error=FieldError> {
+    (tag(), u32_le())
+        .map_err(|_| FieldError::UnexpectedEndOfRecord(8))
+        .and_then(|(field_tag, field_size)| {
+            take(usize::try_from(field_size).expect("OOM"))
+                .map_err(move |_| FieldError::UnexpectedEndOfRecord(field_size + 8))
+                .map(move |field_bytes| (field_tag, field_size, field_bytes))
+        })
 }
 
-fn field<'a>(
+fn field_end<'p>(field_tag: Tag, field_size: u32) -> impl Parser<'p, Result=(), Error=FieldError> {
+    parser(move |input| {
+        if !input.is_empty() {
+            return Err(
+                FieldError::FieldSizeMismatch(field_tag, field_size - input.len() as u32, field_size)
+            );
+        }
+        Ok(((), input))
+    })
+}
+
+fn field<'p>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag,
     prev_tag: Tag,
     omwsave: bool,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], (Tag, Field), FieldError> {
-    map_res(
-        and_then(
-            field_bytes,
-            move |(field_tag, field_size, field_bytes), _| {
-                let (remaining_field_bytes, field_body) = map_err(
-                    field_body(code_page, mode, record_tag, prev_tag, field_tag, field_size, omwsave),
-                    move |e, _| match e {
-                        FieldBodyError::UnexpectedEndOfField(n) => FieldError::FieldSizeMismatch(field_tag, n, field_size),
-                        FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
-                        FieldBodyError::InvalidValue(v, o) => FieldError::InvalidValue(field_tag, v, o),
-                        FieldBodyError::UnexpectedFieldSize(s) => FieldError::UnexpectedFieldSize(field_tag, s),
-                    }
-                )(field_bytes)?;
-                Ok((field_tag, field_size, remaining_field_bytes, field_body))
-            }
-        ),
-        move |(field_tag, field_size, remaining_field_bytes, field_body), _| {
-            if !remaining_field_bytes.is_empty() {
-                return Err(
-                    FieldError::FieldSizeMismatch(field_tag, field_size - remaining_field_bytes.len() as u32, field_size)
-                );
-            }
-            Ok((field_tag, field_body))
-        }
-    )
+) -> impl Parser<'p, Result=(Tag, Field), Error=FieldError> {
+    field_bytes()
+        .map_parser(move |(field_tag, field_size, field_bytes)| (
+            (
+                field_body(code_page, mode, record_tag, prev_tag, field_tag, field_size, omwsave)
+                    .map_err(
+                        move |e| match e {
+                            FieldBodyError::UnexpectedEndOfField(n) =>
+                                FieldError::FieldSizeMismatch(field_tag, n, field_size),
+                            FieldBodyError::UnknownValue(v, o) => FieldError::UnknownValue(field_tag, v, o),
+                            FieldBodyError::InvalidValue(v, o) => FieldError::InvalidValue(field_tag, v, o),
+                            FieldBodyError::UnexpectedFieldSize(s) =>
+                                FieldError::UnexpectedFieldSize(field_tag, s),
+                        }
+                    ),
+                field_end(field_tag, field_size),
+            ).map(move |(field, _)| (field_tag, field)),
+            field_bytes
+        ))
 }
 
 #[derive(Debug, Clone)]
@@ -2124,77 +1862,42 @@ impl Error for RecordError {
     }
 }
 
-impl_parse_error!(<'a>, &'a [u8], RecordError);
-
-fn record_head(input: &[u8]) -> IResult<&[u8], (Tag, u32, u64), RecordError> {
-    set_err(tuple((tag, le_u32, le_u64)), |_| { panic!(); })(input)
+fn record_head<'p>() -> impl Parser<'p, Result=(Tag, u32, u64), Error=RecordError> {
+    (tag(), u32_le(), u64_le()).map_err(|_| panic!())
 }
 
 fn read_record_head(input: &[u8]) -> Result<(Tag, u32, u64), RecordError> {
-    match record_head(input) {
-        Ok((rem, res)) => {
+    match record_head().parse(input) {
+        Ok((res, rem)) => {
             debug_assert!(rem.is_empty());
             Ok(res)
         },
-        Err(err) => Err(err.unwrap())
+        Err(err) => Err(err)
     }
 }
 
 #[derive(Debug, Clone)]
-struct RecordBodyError<'a>(FieldError, &'a [u8]);
+struct RecordBodyError<'p>(FieldError, &'p [u8]);
 
-impl_parse_error!(<'a>, &'a [u8], RecordBodyError<'a>);
-
-fn sliding_many0<I, O, E, F, G, S: Copy, X>(f: G, x: X, s: S) -> impl FnMut(I) -> IResult<I, Vec<O>, E> where
-    I: Clone + nom::InputLength,
-    F: nom::Parser<I, O, E>,
-    G: Fn(S) -> F,
-    E: ParseError<I>,
-    X: Fn(&O) -> S,
-{
-    move |mut i: I| {
-        let mut acc = Vec::with_capacity(4);
-        let mut s = s;
-        loop {
-            let len = i.input_len();
-            match f(s).parse(i.clone()) {
-                Err(nom::Err::Error(_)) => return Ok((i, acc)),
-                Err(e) => return Err(e),
-                Ok((i1, o)) => {
-                    // infinite loop check: the parser must always consume
-                    if i1.input_len() == len {
-                        return Err(nom::Err::Error(E::from_error_kind(i, ErrorKind::Many0)));
-                    }
-                    i = i1;
-                    s = x(&o);
-                    acc.push(o);
-                }
-            }
-        }
-    }
-}
-
-fn record_body<'a>(
+fn record_body<'p>(
     code_page: CodePage,
     mode: RecordReadMode,
     record_tag: Tag,
     omwsave: bool,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Vec<(Tag, Field)>, RecordBodyError<'a>> {
-    sliding_many0(
-        move |prev_tag: Tag| preceded(
-            |input: &'a [u8]| {
-                if input.is_empty() {
-                    // error type doesn't matter
-                    Err(nom::Err::Error(RecordBodyError(FieldError::UnexpectedEndOfRecord(0), input)))
-                } else {
-                    Ok((input, ()))
-                }
-            },
-            cut(map_err(field(code_page, mode, record_tag, prev_tag, omwsave), RecordBodyError))
+) -> impl Parser<'p, Result=Vec<(Tag, Field)>, Error=RecordBodyError<'p>> {
+    accumulate_until_eof(
+        move |(v, prev_tag)| (
+            consume().peek().map_err(|x| x).and_then(move |f|
+                field(code_page, mode, record_tag, prev_tag, omwsave).map_err(|x| RecordBodyError(x, f))
+            ),
+            (v, prev_tag),
         ),
-        |s: &(Tag, Field)| s.0,
-        META
-    )
+        || (Vec::new(), META),
+        |(mut v, _), (tag, field)| {
+            v.push((tag, field));
+            (v, tag)
+        }
+    ).map(|(v, _)| v)
 }
 
 fn read_record_body(record_offset: u64, code_page: CodePage, mode: RecordReadMode,
@@ -2202,40 +1905,43 @@ fn read_record_body(record_offset: u64, code_page: CodePage, mode: RecordReadMod
                     input: &[u8])
     -> Result<Record, RecordError> {
     
-    let (remaining_record_bytes, record_body) = map_err(
-        record_body(code_page, mode, record_tag, omwsave),
-        move |e, input| match e {
-            RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
-                RecordError::RecordSizeMismatch(RecordSizeMismatch {
-                    record_offset, record_tag,
-                    expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n,
-                    actual_size: record_size
-                }),
-            RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
-                RecordError::FieldSizeMismatch(FieldSizeMismatch {
-                    record_offset, record_tag, field_tag, expected_size, actual_size,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
-                }),
-            RecordBodyError(FieldError::UnknownValue(field_tag, value, value_offset), field) =>
-                RecordError::UnknownValue(UnknownValue {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag, value_offset
-                }),
-            RecordBodyError(FieldError::InvalidValue(field_tag, value, value_offset), field) =>
-                RecordError::InvalidValue(InvalidValue {
-                    record_offset, value,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag, value_offset
-                }),
-            RecordBodyError(FieldError::UnexpectedFieldSize(field_tag, field_size), field) =>
-                RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
-                    record_offset, field_size,
-                    field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
-                    record_tag, field_tag
-                }),
-        }
-    )(input).map_err(|x| x.unwrap())?;
+    let (record_body, remaining_record_bytes) =
+        consume().peek().map_err(|x| x).and_then(|input|
+            record_body(code_page, mode, record_tag, omwsave).map_err(
+                move |e| match e {
+                    RecordBodyError(FieldError::UnexpectedEndOfRecord(n), field) =>
+                        RecordError::RecordSizeMismatch(RecordSizeMismatch {
+                            record_offset, record_tag,
+                            expected_size: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32 + n,
+                            actual_size: record_size
+                        }),
+                    RecordBodyError(FieldError::FieldSizeMismatch(field_tag, expected_size, actual_size), field) =>
+                        RecordError::FieldSizeMismatch(FieldSizeMismatch {
+                            record_offset, record_tag, field_tag, expected_size, actual_size,
+                            field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32
+                        }),
+                    RecordBodyError(FieldError::UnknownValue(field_tag, value, value_offset), field) =>
+                        RecordError::UnknownValue(UnknownValue {
+                            record_offset, value,
+                            field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                            record_tag, field_tag, value_offset
+                        }),
+                    RecordBodyError(FieldError::InvalidValue(field_tag, value, value_offset), field) =>
+                        RecordError::InvalidValue(InvalidValue {
+                            record_offset, value,
+                            field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                            record_tag, field_tag, value_offset
+                        }),
+                    RecordBodyError(FieldError::UnexpectedFieldSize(field_tag, field_size), field) =>
+                        RecordError::UnexpectedFieldSize(UnexpectedFieldSize {
+                            record_offset, field_size,
+                            field_offset: unsafe { field.as_ptr().offset_from(input.as_ptr()) } as u32,
+                            record_tag, field_tag
+                        }),
+                }
+            )
+        ).parse(input)?
+    ;
     if !remaining_record_bytes.is_empty() {
         return Err(RecordError::RecordSizeMismatch(RecordSizeMismatch {
             record_offset,
@@ -2443,7 +2149,6 @@ impl<'a, Input: Read + ?Sized> Iterator for Records<'a, Input> {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use ::nom;
     use crate::read::*;
     use encoding::all::WINDOWS_1251;
     use encoding::types::Encoding;
@@ -2501,9 +2206,9 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(6u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false).parse(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Failure(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+        if let FieldError::FieldSizeMismatch(DELE, expected, actual) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 6);
         } else {
@@ -2517,9 +2222,9 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00, 0x00, 0x00, 0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false).parse(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+        if let FieldError::FieldSizeMismatch(DELE, expected, actual) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 2);
         } else {
@@ -2533,9 +2238,9 @@ mod tests {
         input.extend(DELE.dword.to_le_bytes().iter());
         input.extend(2u32.to_le_bytes().iter());
         input.extend([0x00, 0x00].iter());
-        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false)(&input);
+        let result = field(CodePage::English, RecordReadMode::Strict, DIAL, META, false).parse(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Error(FieldError::FieldSizeMismatch(DELE, expected, actual)) = error {
+        if let FieldError::FieldSizeMismatch(DELE, expected, actual) = error {
             assert_eq!(expected, 4);
             assert_eq!(actual, 2);
         } else {
@@ -2546,8 +2251,12 @@ mod tests {
     #[test]
     fn read_string_list_field() {
         let input: &'static [u8] = b"123\r\n\xC0\xC1t\r\n\xDA\xDFX\r\n";
-        if let (remaining_input, Field::StringList(result)) =
-                field_body(CodePage::Russian, RecordReadMode::Strict, INFO, META, BNAM, input.len() as u32, false)(input).unwrap() {
+        if
+            let (Field::StringList(result), remaining_input)
+                = field_body(
+                    CodePage::Russian, RecordReadMode::Strict, INFO, META, BNAM, input.len() as u32, false
+                ).parse(input).unwrap()
+        {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.len(), 4);
             assert_eq!(result[0], "123");
@@ -2562,13 +2271,13 @@ mod tests {
     #[test]
     fn read_from_vec() {
         let input: Vec<u8> = Vec::new();
-        field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input).err().unwrap();
+        field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false).parse(&input).err().unwrap();
     }
 
     #[test]
     fn read_from_vec_if_let() {
         let input: Vec<u8> = Vec::new();
-        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
+        let res = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false).parse(&input);
         if let Ok((_, _)) = res {
             panic!()
         } else { }
@@ -2582,8 +2291,10 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description\r\nlines\r\n")));
         input.extend(vec![0x01, 0x02, 0x03, 0x04]);
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
-        if let (remaining_input, Field::FileMetadata(result)) = result.unwrap() {
+        let result = field_body(
+            CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false
+        ).parse(&input);
+        if let (Field::FileMetadata(result), remaining_input) = result.unwrap() {
             assert_eq!(remaining_input.len(), 0);
             assert_eq!(result.file_type, FileType::ESS);
             assert_eq!(result.author.right().unwrap(), "author");
@@ -2602,9 +2313,9 @@ mod tests {
         input.extend(string(&len(32, "author")));
         input.extend(string(&len(256, "description")));
         input.extend([0x01, 0x02, 0x03, 0x04].iter());
-        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false)(&input);
+        let result = field_body(CodePage::English, RecordReadMode::Strict, TES3, META, HEDR, input.len() as u32, false).parse(&input);
         let error = result.err().unwrap();
-        if let nom::Err::Failure(FieldBodyError::UnknownValue(Unknown::FileType(val), offset)) = error {
+        if let FieldBodyError::UnknownValue(Unknown::FileType(val), offset) = error {
             assert_eq!(val, 0x100000);
             assert_eq!(offset, 4);
         } else {
@@ -2625,7 +2336,7 @@ mod tests {
             effect_3_attribute: Right(Attribute::Endurance), effect_4_attribute: Right(Attribute::Strength)
         };
         let bin: Vec<u8> = code::serialize(&ingredient, false).unwrap();
-        let res = ingredient_field(&bin).unwrap().1;
+        let res = ingredient_field().parse(&bin).unwrap().0;
         assert_eq!(res, ingredient);
     }
 
@@ -2644,7 +2355,7 @@ mod tests {
         let bin: Vec<u8> = code::serialize(
             &ValueWithSeed(&script_metadata, ScriptMetadataSerde { code_page: Some(CodePage::English) }), false
         ).unwrap();
-        let res = script_metadata_field(CodePage::English)(&bin).unwrap().1;
+        let res = script_metadata_field(CodePage::English).parse(&bin).unwrap().0;
         assert_eq!(res.name, script_metadata.name);
         assert_eq!(res.vars.shorts, script_metadata.vars.shorts);
         assert_eq!(res.vars.longs, script_metadata.vars.longs);
@@ -2665,7 +2376,7 @@ mod tests {
         let bin: Vec<u8> = code::serialize(
             &ValueWithSeed(&file_metadata, FileMetadataSerde { code_page: Some(CodePage::English) }), true
         ).unwrap();
-        let res = file_metadata_300_field(CodePage::English)(&bin).unwrap().1;
+        let res = file_metadata_300_field(CodePage::English).parse(&bin).unwrap().0;
         assert_eq!(res.version, file_metadata.version);
         assert_eq!(res.file_type, file_metadata.file_type);
         assert_eq!(res.author, file_metadata.author);
@@ -2686,7 +2397,7 @@ mod tests {
             magnitude_max: 300
         };
         let bin: Vec<u8> = code::serialize(&effect, false).unwrap();
-        let res = effect_field(&bin).unwrap().1;
+        let res = effect_field().parse(&bin).unwrap().0;
         assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
@@ -2710,7 +2421,7 @@ mod tests {
             magnitude_max: 300
         };
         let bin: Vec<u8> = code::serialize(&effect, false).unwrap();
-        let res = effect_field(&bin).unwrap().1;
+        let res = effect_field().parse(&bin).unwrap().0;
         assert_eq!(res.index, effect.index);
         assert_eq!(res.skill, effect.skill);
         assert_eq!(res.attribute, effect.attribute);
@@ -2729,7 +2440,7 @@ mod tests {
             index: 129
         };
         let bin: Vec<u8> = code::serialize(&npc_state, false).unwrap();
-        let res = npc_state_field(&bin).unwrap().1;
+        let res = npc_state_field().parse(&bin).unwrap().0;
         assert_eq!(res.disposition, npc_state.disposition);
         assert_eq!(res.reputation, npc_state.reputation);
         assert_eq!(res.index, npc_state.index);
@@ -2753,7 +2464,7 @@ mod tests {
             faction: 36, health: -37, magicka: -38, fatigue: 39
         };
         let bin: Vec<u8> = code::serialize(&stats, false).unwrap();
-        let res = npc_stats(&bin).unwrap().1;
+        let res = npc_stats().parse(&bin).unwrap().0;
         assert_eq!(res, stats);
     }
 
@@ -2783,7 +2494,7 @@ mod tests {
             stats: Right(npc_stats)
         };
         let bin: Vec<u8> = code::serialize(&npc, true).unwrap();
-        let res = npc_52_field(&bin).unwrap().1;
+        let res = npc_52_field().parse(&bin).unwrap().0;
         assert_eq!(res, npc);
     }
 
@@ -2799,7 +2510,7 @@ mod tests {
             stats: Left(30001)
         };
         let bin: Vec<u8> = code::serialize(&npc, true).unwrap();
-        let res = npc_12_field(&bin).unwrap().1;
+        let res = npc_12_field().parse(&bin).unwrap().0;
         assert_eq!(res.level, npc.level);
         assert_eq!(res.disposition, npc.disposition);
         assert_eq!(res.reputation, npc.reputation);
@@ -2821,7 +2532,7 @@ mod tests {
             spell_type: SpellType::Curse
         };
         let bin: Vec<u8> = code::serialize(&spell, false).unwrap();
-        let res = spell_field(&bin).unwrap().1;
+        let res = spell_field().parse(&bin).unwrap().0;
         assert_eq!(res, spell);
     }
 
@@ -2833,7 +2544,7 @@ mod tests {
         };
         let bin: Vec<u8> = code::serialize(&ValueWithSeed(&item, ItemSerde { code_page: Some(CodePage::English) }), false)
             .unwrap();
-        let res = item_field(CodePage::English)(&bin).unwrap().1;
+        let res = item_field(CodePage::English).parse(&bin).unwrap().0;
         assert_eq!(res.count, item.count);
         assert_eq!(res.item_id, item.item_id);
     }

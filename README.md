@@ -25,7 +25,7 @@ fn main() {
             }
         }).collect::<Vec<_>>();
         let output = File::create("Morrowind.esm.yaml").unwrap();
-        serde_yaml::to_writer(
+        yaml_serde::to_writer(
             BufWriter::new(output),
             &ValueWithSeed(&records[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))
         ).unwrap();

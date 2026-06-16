@@ -69,7 +69,6 @@ mod tests {
     use serde_serialize_seed::{ValueWithSeed, VecSerde};
     use std::iter::Iterator;
     use std::str::FromStr;
-    use std::mem::transmute;
 
     #[quickcheck]
     fn tag_from_str_is_display_inversion(dword: u32) -> bool {
@@ -329,7 +328,7 @@ mod tests {
         let mut records = Records::new(CodePage::Russian, RecordReadMode::Strict, false, 0, &mut bytes);
         let record = records.next().unwrap().unwrap();
         assert_eq!(record.fields[1].1, Field::StringZ(StringZ::from("Редгард")));
-        let yaml = serde_yaml::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None, omwsave: false })).unwrap();
+        let yaml = yaml_serde::to_string(&ValueWithSeed(&record, RecordSerde { code_page: None, omwsave: false })).unwrap();
         assert!(!yaml.contains('^'));
         assert!(!yaml.contains("\\u"));
     }
@@ -427,12 +426,12 @@ mod tests {
   - FLTV: 0.1
   - FLTV: -0.0
 ";
-        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(yaml_serde::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 5);
         assert_eq!(res[0].fields[0].1, Field::F32(3.0));
-        let standard_nan: f32 = unsafe { transmute(0xFFFFFFFFu32) };
-        let custom_nan: f32 = unsafe { transmute(0xFFEEEEEEu32) };
+        let standard_nan = f32::from_bits(0xFFFFFFFFu32);
+        let custom_nan = f32::from_bits(0xFFEEEEEEu32);
         assert!(standard_nan.is_nan());
         assert!(custom_nan.is_nan());
         assert_ne!(Field::F32(standard_nan), Field::F32(custom_nan));
@@ -440,7 +439,7 @@ mod tests {
         assert_eq!(res[0].fields[2].1, Field::F32(custom_nan));
         assert_eq!(res[0].fields[3].1, Field::F32(0.1));
         assert_eq!(res[0].fields[4].1, Field::F32(0.0_f32.copysign(-1.0)));
-        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
+        let res_yaml = yaml_serde::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 
@@ -457,7 +456,7 @@ mod tests {
       color: '#F58C28'
       flags: DYNAMIC CAN_CARRY FIRE FLICKER_SLOW
 ";
-        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(serde_yaml::Deserializer::from_str(yaml)).unwrap();
+        let res: Vec<Record> = VecSerde(RecordSerde { code_page: None, omwsave: false }).deserialize(yaml_serde::Deserializer::from_str(yaml)).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res[0].fields.len(), 1);
         if let Field::Light(field) = &res[0].fields[0].1 {
@@ -465,7 +464,7 @@ mod tests {
         } else {
             panic!()
         }
-        let res_yaml = serde_yaml::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
+        let res_yaml = yaml_serde::to_string(&ValueWithSeed(&res[..], VecSerde(RecordSerde { code_page: None, omwsave: false }))).unwrap();
         assert_eq!(res_yaml, yaml);
     }
 }

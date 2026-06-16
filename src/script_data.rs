@@ -5,6 +5,7 @@ use educe::Educe;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use enumn::N;
 use macro_attr_2018::macro_attr;
+use mynom::Parser;
 use nameof::name_of;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, DeserializeSeed};
@@ -853,281 +854,251 @@ impl FuncArgs {
 
 mod parser {
     use super::*;
-    use nom_errors::*;
-    use nom_errors::bytes::*;
+    use mynom::*;
 
-    fn float(input: &[u8]) -> NomRes<&[u8], Float, (), !> {
-        map(le_u32(), |bits| {
-            if let Some(var_type) = VarType::n((bits & 0xFF) as u8) {
-                if (bits >> 24) != 0 {
-                    None
-                } else {
-                    Some(Float::Var { var_type, index: ((bits >> 8) & 0xFFFF) as u16 })
-                }
-            } else { None }.unwrap_or(Float::Val { val: f32::from_bits(bits) })
-        })(input)
+    fn float<'p>() -> impl Parser<'p, Result=Float, Error=UnexpectedEof> {
+        u32_le()
+            .map(|bits| {
+                if let Some(var_type) = VarType::n((bits & 0xFF) as u8) {
+                    if (bits >> 24) != 0 {
+                        None
+                    } else {
+                        Some(Float::Var { var_type, index: ((bits >> 8) & 0xFFFF) as u16 })
+                    }
+                } else { None }.unwrap_or(Float::Val { val: f32::from_bits(bits) })
+            })
     }
 
-    fn string<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
-        map(flat_map(le_u8(), |len| take(len.into())), move |x| code_page.decode(x))
+    fn string<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error=UnexpectedEof> {
+        u8().and_then(|len| take(len.into())).map(move |x| code_page.decode(x))
     }
 
-    fn str_list<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Vec<String>, (), !> {
-        flat_map(le_u8(), move |len| count(string(code_page), len.into()))
+    fn str_list<'p>(code_page: CodePage) -> impl Parser<'p, Result=Vec<String>, Error=UnexpectedEof> {
+        u8().and_then(move |len| string(code_page).repeat(len.into(), Vec::new, |mut v, s| { v.push(s); v }))
     }
 
-    fn int_list(input: &[u8]) -> NomRes<&[u8], Vec<i16>, (), !> {
-        flat_map(le_u16(), move |len| count(le_i16(), len.into()))(input)
+    fn int_list<'p>() -> impl Parser<'p, Result=Vec<i16>, Error=UnexpectedEof> {
+        u16_le().and_then(|len| i16_le().repeat(len.into(), Vec::new, |mut v, i| { v.push(i); v }))
     }
 
-    fn var_list<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Vec<Var>, (), !> {
-        flat_map(le_u8(), move |len| count(var(code_page), len.into()))
+    fn var_list<'p>(code_page: CodePage) -> impl Parser<'p, Result=Vec<Var>, Error=()> {
+        u8().map_err(|_| ())
+            .and_then(move |len| var(code_page).repeat(len.into(), Vec::new, |mut v, x| { v.push(x); v }))
     }
 
-    fn text<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
-        map(flat_map(le_u16(), |len| take(len.into())), move |x| code_page.decode(x))
+    fn text<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error=UnexpectedEof> {
+        u16_le().and_then(|len| take(len.into())).map(move |x| code_page.decode(x))
     }
 
-    fn ch<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
-        map(take(1), move |x| code_page.decode(x))
+    fn ch<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error=UnexpectedEof> {
+        take(1).map(move |x| code_page.decode(x))
     }
 
-    fn var_type(input: &[u8]) -> NomRes<&[u8], VarType, (), !> {
-        map_res(le_u8(), |x| VarType::n(x).ok_or(()))(input)
+    fn var_type<'p>() -> impl Parser<'p, Result=VarType, Error=()> {
+        u8().map_err(|_| ()).map_res(|x| VarType::n(x).ok_or(()))
     }
 
-    fn local_var(input: &[u8]) -> NomRes<&[u8], (VarType, u16), (), !> {
-        map(seq_2(var_type, le_u16()), |(var_type, index)| (var_type, index))(input)
+    fn local_var<'p>() -> impl Parser<'p, Result=(VarType, u16), Error=()> {
+        (var_type(), u16_le().map_err(|_| ()))
     }
 
-    fn owner_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], (String, VarType, u16), (), !> {
-        map(seq_3(tag([b'r']), string(code_page), local_var), |(_, owner, var)| (owner, var.0, var.1))
+    fn owner_var<'p>(code_page: CodePage) -> impl Parser<'p, Result=(String, VarType, u16), Error=()> {
+        (
+            tag(&[b'r'][..]).map_err(|_| ()),
+            string(code_page).map_err(|_| ()),
+            local_var(),
+        ).map(|(_, owner, var)| (owner, var.0, var.1))
     }
 
-    fn global_var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], String, (), !> {
-        map(seq_2(tag([b'G']), string(code_page)), |(_, var)| var)
+    fn global_var<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error=()> {
+        (
+            tag(&[b'G'][..]).map_err(|_| ()),
+            string(code_page).map_err(|_| ()),
+        ).map(|(_, var)| var)
     }
 
-    fn var<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Var, (), !> {
-        alt_3(
-            map(owner_var(code_page), |(owner, var_type, index)| Var::Local { owner: Some(owner), var_type, index }),
-            map(local_var, |(var_type, index)| Var::Local { owner: None, var_type, index }),
-            map(global_var(code_page), |name| Var::Global { name })
-        )
+    fn var<'p>(code_page: CodePage) -> impl Parser<'p, Result=Var, Error=()> {
+        owner_var(code_page).map(|(owner, var_type, index)| Var::Local { owner: Some(owner), var_type, index })
+            .or(local_var().map(|(var_type, index)| Var::Local { owner: None, var_type, index }))
+            .or(global_var(code_page).map(|name| Var::Global { name }))
     }
 
-    fn byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(le_u8(), FuncArgs::Byte)(input)
+    fn byte_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        u8().map(FuncArgs::Byte).map_err(|_| ())
     }
 
-    fn byte_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(
-                le_u8(),
-                string(code_page)
-            ),
-            |(a1, a2)| FuncArgs::ByteStr(a1, a2)
-        )
+    fn byte_str_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (
+            u8(),
+            string(code_page),
+        ).map(|(a1, a2)| FuncArgs::ByteStr(a1, a2)).map_err(|_| ())
     }
 
-    fn char_float_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(ch(code_page), float), |(a1, a2)| FuncArgs::CharFloat(a1, a2))
+    fn char_float_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (ch(code_page), float()).map(|(a1, a2)| FuncArgs::CharFloat(a1, a2)).map_err(|_| ())
     }
 
-    fn float_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(float, FuncArgs::Float)(input)
+    fn float_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        float().map(FuncArgs::Float).map_err(|_| ())
     }
 
-    fn float_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(float, string(code_page)),
-            |(a1, a2)| FuncArgs::FloatStr(a1, a2)
-        )
+    fn float_str_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (float(), string(code_page)).map(|(a1, a2)| FuncArgs::FloatStr(a1, a2)).map_err(|_| ())
     }
 
-    fn float_3_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(
-            seq_4(float, float, float, le_u8()),
-            |(a1_1, a1_2, a1_3, a2)| FuncArgs::Float3Byte([a1_1, a1_2, a1_3], a2)
-        )(input)
+    fn float_3_byte_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (float(), float(), float(), u8())
+            .map(|(a1_1, a1_2, a1_3, a2)| FuncArgs::Float3Byte([a1_1, a1_2, a1_3], a2)).map_err(|_| ())
     }
 
-    fn float_3_int_list_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(
-            seq_3(seq_3(float, float, float), int_list, le_u8()),
-            |((a1_1, a1_2, a1_3), a2, a3)| FuncArgs::Float3IntListByte(
-                [a1_1, a1_2, a1_3], a2, a3
-            )
-        )(input)
+    fn float_3_int_list_byte_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (float(), float(), float(), int_list(), u8())
+            .map(|(a1_1, a1_2, a1_3, a2, a3)| FuncArgs::Float3IntListByte([a1_1, a1_2, a1_3], a2, a3))
+            .map_err(|_| ())
     }
 
-    fn float_4_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(
-            seq_4(float, float, float, float),
-            |(a1_1, a1_2, a1_3, a1_4)| FuncArgs::Float4([a1_1, a1_2, a1_3, a1_4])
-        )(input)
+    fn float_4_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (float(), float(), float(), float())
+            .map(|(a1_1, a1_2, a1_3, a1_4)| FuncArgs::Float4([a1_1, a1_2, a1_3, a1_4]))
+            .map_err(|_| ())
     }
 
-    fn float_4_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_5(float, float, float, float, string(code_page)),
-            |(a1_1, a1_2, a1_3, a1_4, a2)| FuncArgs::Float4Str([a1_1, a1_2, a1_3, a1_4], a2)
-        )
+    fn float_4_str_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (float(), float(), float(), float(), string(code_page))
+            .map(|(a1_1, a1_2, a1_3, a1_4, a2)| FuncArgs::Float4Str([a1_1, a1_2, a1_3, a1_4], a2))
+            .map_err(|_| ())
     }
 
-    fn int_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(le_i16(), FuncArgs::Int)(input)
+    fn int_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        i16_le().map(FuncArgs::Int).map_err(|_| ())
     }
 
-    fn int_byte_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(seq_2(le_i16(), le_u8()), |(a1, a2)| FuncArgs::IntByte(a1, a2))(input)
+    fn int_byte_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (i16_le(), u8()).map(|(a1, a2)| FuncArgs::IntByte(a1, a2)).map_err(|_| ())
     }
 
-    fn int_2_args(input: &[u8]) -> NomRes<&[u8], FuncArgs, (), !> {
-        map(seq_2(le_i16(), le_i16()), |(a1_1, a1_2)| FuncArgs::Int2([a1_1, a1_2]))(input)
+    fn int_2_args<'p>() -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (i16_le(), i16_le()).map(|(a1_1, a1_2)| FuncArgs::Int2([a1_1, a1_2])).map_err(|_| ())
     }
 
-    fn str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(string(code_page), FuncArgs::Str)
+    fn str_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        string(code_page).map(FuncArgs::Str).map_err(|_| ())
     }
 
-    fn str_byte_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(
-                string(code_page),
-                le_u8()
-            ),
-            |(a1, a2)| FuncArgs::StrByte(a1, a2)
-        )
+    fn str_byte_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), u8()).map(|(a1, a2)| FuncArgs::StrByte(a1, a2)).map_err(|_| ())
     }
 
-    fn str_byte_8_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(
-                string(code_page),
-                seq_8(le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8(), le_u8())
-            ),
+    fn str_byte_8_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (
+            string(code_page),
+            (u8(), u8(), u8(), u8(), u8(), u8(), u8(), u8()),
+        ).map(
             |(a1, (a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8))| FuncArgs::StrByte8(
                 a1, [a2_1, a2_2, a2_3, a2_4, a2_5, a2_6, a2_7, a2_8]
             )
-        )
+        ).map_err(|_| ())
     }
 
-    fn str_float_2_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(
-                string(code_page),
-                seq_2(float, float)
-            ),
-            |(a1, (a2_1, a2_2))| FuncArgs::StrFloat2(a1, [a2_1, a2_2])
-        )
+    fn str_float_2_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), float(), float())
+            .map(|(a1, a2_1, a2_2)| FuncArgs::StrFloat2(a1, [a2_1, a2_2]))
+            .map_err(|_| ())
     }
 
-    fn str_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(string(code_page), le_i16()), |(a1, a2)| FuncArgs::StrInt(a1, a2))
+    fn str_int_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), i16_le()).map(|(a1, a2)| FuncArgs::StrInt(a1, a2)).map_err(|_| ())
     }
 
-    fn str_int_float_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_4(string(code_page), le_i16(), float, le_i16()),
-            |(a1, a2, a3, a4)| FuncArgs::StrIntFloatInt(a1, a2, a3, a4)
-        )
+    fn str_int_float_int_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), i16_le(), float(), i16_le())
+            .map(|(a1, a2, a3, a4)| FuncArgs::StrIntFloatInt(a1, a2, a3, a4))
+            .map_err(|_| ())
     }
 
-    fn str_int_float_3_byte_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_6(string(code_page), le_i16(), float, float, float, le_u8()),
-            |(a1, a2, a3_1, a3_2, a3_3, a4)| FuncArgs::StrIntFloat3Byte(a1, a2, [a3_1, a3_2, a3_3], a4)
-        )
+    fn str_int_float_3_byte_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), i16_le(), float(), float(), float(), u8())
+            .map(|(a1, a2, a3_1, a3_2, a3_3, a4)| FuncArgs::StrIntFloat3Byte(a1, a2, [a3_1, a3_2, a3_3], a4))
+            .map_err(|_| ())
     }
 
-    fn str_int_2_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_3(string(code_page), le_i16(), le_i16()),
-            |(a1, a2_1, a2_2)| FuncArgs::StrInt2(a1, [a2_1, a2_2])
-        )
+    fn str_int_2_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), (i16_le(), i16_le()))
+            .map(|(a1, (a2_1, a2_2))| FuncArgs::StrInt2(a1, [a2_1, a2_2]))
+            .map_err(|_| ())
     }
 
-    fn str_text_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(string(code_page), text(code_page)), |(a1, a2)| FuncArgs::StrText(a1, a2))
+    fn str_text_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), text(code_page)).map(|(a1, a2)| FuncArgs::StrText(a1, a2)).map_err(|_| ())
     }
 
-    fn str_2_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_2(string(code_page), string(code_page)), |(a1_1, a1_2)| FuncArgs::Str2([a1_1, a1_2]))
+    fn str_2_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), string(code_page)).map(|(a1_1, a1_2)| FuncArgs::Str2([a1_1, a1_2])).map_err(|_| ())
     }
 
-    fn str_2_int_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(seq_3(string(code_page), string(code_page), le_i16()), |(a1_1, a1_2, a2)| FuncArgs::Str2Int([a1_1, a1_2], a2))
+    fn str_2_int_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (string(code_page), string(code_page), i16_le())
+            .map(|(a1_1, a1_2, a2)| FuncArgs::Str2Int([a1_1, a1_2], a2))
+            .map_err(|_| ())
     }
 
-    fn text_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(text(code_page), FuncArgs::Text)
+    fn text_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        text(code_page).map(FuncArgs::Text).map_err(|_| ())
     }
 
-    fn text_var_list_str_list_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_3(text(code_page), var_list(code_page), str_list(code_page)),
-            |(a1, a2, a3)| FuncArgs::TextVarListStrList(a1, a2, a3)
-        )
+    fn text_var_list_str_list_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (text(code_page).map_err(|_| ()), var_list(code_page), str_list(code_page).map_err(|_| ()))
+            .map(|(a1, a2, a3)| FuncArgs::TextVarListStrList(a1, a2, a3))
     }
 
-    fn var_str_args<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        map(
-            seq_2(
-                var(code_page),
-                string(code_page)
-            ),
-            |(a1, a2)| FuncArgs::VarStr(a1, a2)
-        )
+    fn var_str_args<'p>(code_page: CodePage) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        (var(code_page), string(code_page).map_err(|_| ())).map(|(a1, a2)| FuncArgs::VarStr(a1, a2))
     }
 
-    fn func_args<'a>(code_page: CodePage, func: Func) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], FuncArgs, (), !> {
-        move |input| {
+    fn func_args<'p>(code_page: CodePage, func: Func) -> impl Parser<'p, Result=FuncArgs, Error=()> {
+        parser(move |input| {
             match func.params() {
-                FuncParams::None => Ok((input, FuncArgs::None)),
-                FuncParams::Byte => byte_args(input),
-                FuncParams::ByteStr => byte_str_args(code_page)(input),
-                FuncParams::CharFloat => char_float_args(code_page)(input),
-                FuncParams::Float => float_args(input),
-                FuncParams::FloatStr => float_str_args(code_page)(input),
-                FuncParams::Float3Byte => float_3_byte_args(input),
-                FuncParams::Float3IntListByte => float_3_int_list_byte_args(input),
-                FuncParams::Float4 => float_4_args(input),
-                FuncParams::Float4Str => float_4_str_args(code_page)(input),
-                FuncParams::Int => int_args(input),
-                FuncParams::IntByte => int_byte_args(input),
-                FuncParams::Int2 => int_2_args(input),
-                FuncParams::Str => str_args(code_page)(input),
-                FuncParams::StrByte => str_byte_args(code_page)(input),
-                FuncParams::StrByte8 => str_byte_8_args(code_page)(input),
-                FuncParams::StrFloat2 => str_float_2_args(code_page)(input),
-                FuncParams::StrInt => str_int_args(code_page)(input),
-                FuncParams::StrIntFloatInt => str_int_float_int_args(code_page)(input),
-                FuncParams::StrIntFloat3Byte => str_int_float_3_byte_args(code_page)(input),
-                FuncParams::StrInt2 => str_int_2_args(code_page)(input),
-                FuncParams::StrText => str_text_args(code_page)(input),
-                FuncParams::Str2 => str_2_args(code_page)(input),
-                FuncParams::Str2Int => str_2_int_args(code_page)(input),
-                FuncParams::Text => text_args(code_page)(input),
-                FuncParams::TextVarListStrList => text_var_list_str_list_args(code_page)(input),
-                FuncParams::VarStr => var_str_args(code_page)(input),
+                FuncParams::None => Ok((FuncArgs::None, input)),
+                FuncParams::Byte => byte_args().parse(input),
+                FuncParams::ByteStr => byte_str_args(code_page).parse(input),
+                FuncParams::CharFloat => char_float_args(code_page).parse(input),
+                FuncParams::Float => float_args().parse(input),
+                FuncParams::FloatStr => float_str_args(code_page).parse(input),
+                FuncParams::Float3Byte => float_3_byte_args().parse(input),
+                FuncParams::Float3IntListByte => float_3_int_list_byte_args().parse(input),
+                FuncParams::Float4 => float_4_args().parse(input),
+                FuncParams::Float4Str => float_4_str_args(code_page).parse(input),
+                FuncParams::Int => int_args().parse(input),
+                FuncParams::IntByte => int_byte_args().parse(input),
+                FuncParams::Int2 => int_2_args().parse(input),
+                FuncParams::Str => str_args(code_page).parse(input),
+                FuncParams::StrByte => str_byte_args(code_page).parse(input),
+                FuncParams::StrByte8 => str_byte_8_args(code_page).parse(input),
+                FuncParams::StrFloat2 => str_float_2_args(code_page).parse(input),
+                FuncParams::StrInt => str_int_args(code_page).parse(input),
+                FuncParams::StrIntFloatInt => str_int_float_int_args(code_page).parse(input),
+                FuncParams::StrIntFloat3Byte => str_int_float_3_byte_args(code_page).parse(input),
+                FuncParams::StrInt2 => str_int_2_args(code_page).parse(input),
+                FuncParams::StrText => str_text_args(code_page).parse(input),
+                FuncParams::Str2 => str_2_args(code_page).parse(input),
+                FuncParams::Str2Int => str_2_int_args(code_page).parse(input),
+                FuncParams::Text => text_args(code_page).parse(input),
+                FuncParams::TextVarListStrList => text_var_list_str_list_args(code_page).parse(input),
+                FuncParams::VarStr => var_str_args(code_page).parse(input),
             }
-        }
-    }
-
-    fn func(input: &[u8]) -> NomRes<&[u8], Func, (), !> {
-        map_res(le_u16(), |func| Func::n(func).ok_or(()))(input)
-    }
-
-    pub fn stmt<'a>(code_page: CodePage) -> impl FnMut(&'a [u8]) -> NomRes<&'a [u8], Stmt, (), !> {
-        flat_map(func, move |func| map(func_args(code_page, func), move |args| Stmt { func, args }))
-    }
-
-    pub fn stmts(code_page: CodePage, input: &[u8]) -> (&[u8], Vec<Stmt>) {
-        result_from_parser(many0(stmt(code_page))(input)).unwrap_or_else(|x| match x {
-            NomErr::Error(x) => x,
-            NomErr::Failure(x) => x
         })
+    }
+
+    fn func<'p>() -> impl Parser<'p, Result=Func, Error=()> {
+        u16_le().map_err(|_| ()).map_res(|func| Func::n(func).ok_or(()))
+    }
+
+    pub fn stmt<'p>(code_page: CodePage) -> impl Parser<'p, Result=Stmt, Error=()> {
+        func().and_then(move |func| func_args(code_page, func).map(move |args| Stmt { func, args }))
+    }
+
+    pub fn stmts<'p>(code_page: CodePage) -> impl Parser<'p, Result=Vec<Stmt>, Error=!> {
+        stmt(code_page).repeat_until_error(Vec::new, |mut v, s| { v.push(s); v })
     }
 }
 
@@ -1272,7 +1243,7 @@ impl ScriptData {
         for stmt in &self.stmts {
             stmt.write(code_page, &mut bytes)?;
         }
-        if !lenient && parser::stmt(code_page)(&self.raw).is_ok() {
+        if !lenient && parser::stmt(code_page).parse(&self.raw).is_ok() {
             return Err("known func in raw bytes".into());
         }
         bytes.extend_from_slice(&self.raw);
@@ -1280,7 +1251,7 @@ impl ScriptData {
     }
 
     pub fn from_bytes(code_page: CodePage, bytes: &[u8]) -> ScriptData {
-        let (bytes, stmts) = parser::stmts(code_page, bytes);
+        let (stmts, bytes) = parser::stmts(code_page).parse(bytes).unwrap_or_else(|x| x);
         ScriptData { stmts, raw: bytes.into() }
     }
 }
