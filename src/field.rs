@@ -147,6 +147,8 @@ pub(crate) enum FieldType {
 impl FieldType {
     pub fn from_tags(record_tag: Tag, prev_tag: Tag, field_tag: Tag, omwsave: bool) -> FieldType {
         match (record_tag, prev_tag, field_tag, omwsave) {
+            (CSTA, _, _, _) => FieldType::U8List,
+            (PLAY, _, _, _) => FieldType::U8List,
             (APPA, _, AADT, _) => FieldType::Apparatus,
             (INFO, _, ACDT, _) => FieldType::StringZ,
             (_, _, ACDT, _) => FieldType::U8ListZip,
@@ -204,6 +206,7 @@ impl FieldType {
             (CONT, _, CNDT, _) => FieldType::F32,
             (_, TIME, COUN, _) => FieldType::I64,
             (_, ANIS, COUN, _) => FieldType::I64,
+            (DYNA, _, COUN, _) => FieldType::I64,
             (_, _, COUN, _) => FieldType::I32,
             (CELL, _, CRED, _) => FieldType::U8ListZip,
             (_, _, CREG, _) => FieldType::StringZ,
@@ -248,9 +251,9 @@ impl FieldType {
             (_, _, EIND, _) => FieldType::I32,
             (_, _, ENAB, _) => FieldType::Bool8,
             (ALCH, _, ENAM, _) => FieldType::Effect,
-            (ENCH, _, ENAM, _) => FieldType::Effect,
+            (ENCH, _, ENAM, false) => FieldType::Effect,
             (PCDT, _, ENAM, _) => FieldType::I64,
-            (SPEL, _, ENAM, _) => FieldType::Effect,
+            (SPEL, _, ENAM, false) => FieldType::Effect,
             (_, _, ENAM, _) => FieldType::StringZ,
             (ENCH, _, ENDT, _) => FieldType::Enchantment,
             (_, _, EQIP, _) => FieldType::U8ListZip,
@@ -444,8 +447,6 @@ impl FieldType {
             (BOOK, _, TEXT, _) => FieldType::Multiline(Newline::Dos),
             (JOUR, _, TEXT, _) => FieldType::String(None),
             (_, _, TEXT, _) => FieldType::StringZ,
-            (CSTA, ANIS, TIME, _) => FieldType::I32,
-            (CSTA, _, TIME, _) => FieldType::I64,
             (_, _, TIME, _) => FieldType::Time,
             (_, _, TMPS, _) => FieldType::I32,
             (_, _, TNAM, _) => FieldType::StringZ,
