@@ -7,7 +7,7 @@ use either::{Right, Left, Either};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use mynom::{Parser, u8, u16_le, u32_le, parser, accumulate_until_eof, consume, take, f32_le, i32_le, i16_le};
-use mynom::{error, i8, UnexpectedEof, i64_le, u64_le};
+use mynom::{error, i8, UnexpectedEof, i64_le, u64_le, f64_le};
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::{self, Display, Debug, Formatter};
@@ -207,6 +207,10 @@ fn u8_field<'p>() -> impl Parser<'p, Result=u8, Error=FieldBodyError> {
 
 fn f32_field<'p>() -> impl Parser<'p, Result=f32, Error=FieldBodyError> {
     f32_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(4))
+}
+
+fn f64_field<'p>() -> impl Parser<'p, Result=f64, Error=FieldBodyError> {
+    f64_le().map_err(|_| FieldBodyError::UnexpectedEndOfField(8))
 }
 
 fn f32_list_field<'p>() -> impl Parser<'p, Result=Vec<f32>, Error=FieldBodyError> {
@@ -1444,6 +1448,7 @@ fn field_body<'p>(
             FieldType::Bool32 => bool_u32(4, 0).map(Field::Bool).parse(input),
             FieldType::MarkerU8(none) => none_u8_field(none).map(|()| Field::None).parse(input),
             FieldType::F32 => f32_field().map(Field::F32).parse(input),
+            FieldType::F64 => f64_field().map(Field::F64).parse(input),
             FieldType::I32List => i32_list_field().map(Field::I32List).parse(input),
             FieldType::I16List => i16_list_field().map(Field::I16List).parse(input),
             FieldType::F32List => f32_list_field().map(Field::F32List).parse(input),

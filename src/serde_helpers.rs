@@ -348,6 +348,65 @@ impl<'de> de::Visitor<'de> for F32HRDeVisitor {
 }
 
 #[derive(Clone)]
+pub struct F64AsIsSerde;
+
+impl SerializeSeed for F64AsIsSerde {
+    type Value = f64;
+
+    fn serialize<S>(&self, &value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        if !serializer.is_human_readable() {
+            value.serialize(serializer)
+        } else if value.is_nan() {
+            let d: u64 = value.to_bits();
+            if d == 0xFFFFFFFFFFFFFFFF {
+                value.serialize(serializer)
+            } else {
+                format!("nan{d:016X}").serialize(serializer)
+            }
+        } else {
+            value.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for F64AsIsSerde {
+    type Value = f64;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error> where D: Deserializer<'de> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(F64HRDeVisitor)
+        } else {
+            Ok(f64::deserialize(deserializer)?)
+        }
+    }
+}
+
+struct F64HRDeVisitor;
+
+impl<'de> de::Visitor<'de> for F64HRDeVisitor {
+    type Value = f64;
+
+    fn expecting(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "64-bit float value or 'nanXXXXXXXXXXXXXXXX' (where X is hex digit)")
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E> where E: de::Error {
+        Ok(if v.is_nan() { f64::from_bits(0xFFFFFFFFFFFFFFFFu64) } else { v })
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E> where E: de::Error {
+        if s.len() != 3 + 16 || !s.starts_with("nan") || &s[4..5] == "+" {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
+        let d = u64::from_str_radix(&s[3..], 16).map_err(|_| E::invalid_value(Unexpected::Str(s), &self))?;
+        if d == 0xFFFFFFFFFFFFFFFF {
+            return Err(E::invalid_value(Unexpected::Str(s), &self));
+        }
+        Ok(f64::from_bits(d))
+    }
+}
+
+#[derive(Clone)]
 pub struct StringSerde {
     pub code_page: Option<CodePage>,
     pub len: Option<usize>

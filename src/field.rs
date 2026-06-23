@@ -130,7 +130,7 @@ pub(crate) enum FieldType {
     String(Option<u32>),
     StringZ, StringZList,
     Multiline(Newline),
-    F32, I32, I16, I64, U8,
+    F32, F64, I32, I16, I64, U8,
     MarkerU8(u8),
     Bool8, Bool32,
     Ingredient, ScriptMetadata, DialogMetadata, FileMetadata, Npc, NpcState, Effect, Spell,
@@ -192,7 +192,9 @@ impl FieldType {
             (_, _, BVFX, _) => FieldType::StringZ,
             (BODY, _, BYDT, _) => FieldType::BodyPart,
             (_, _, CAST, _) => FieldType::I32,
+            (SAVE, _, CDAY, _) => FieldType::I32,
             (_, _, CFLG, _) => FieldType::I32,
+            (SAVE, _, CHLT, _) => FieldType::F32,
             (_, _, CHRD, _) => FieldType::U8ListZip,
             (_, _, CIDX, _) => FieldType::I64,
             (CLAS, _, CLDT, _) => FieldType::Class,
@@ -337,6 +339,7 @@ impl FieldType {
             (MISC, _, MCDT, _) => FieldType::MiscItem,
             (MGEF, _, MEDT, _) => FieldType::EffectMetadata,
             (_, _, MGEF, _) => FieldType::EffectIndex,
+            (SAVE, _, MHLT, _) => FieldType::F32,
             (PCDT, _, MNAM, _) => FieldType::StringZ,
             (CELL, _, MNAM, _) => FieldType::U8,
             (_, _, MODI, _) => FieldType::F32,
@@ -447,6 +450,7 @@ impl FieldType {
             (BOOK, _, TEXT, _) => FieldType::Multiline(Newline::Dos),
             (JOUR, _, TEXT, _) => FieldType::String(None),
             (_, _, TEXT, _) => FieldType::StringZ,
+            (SAVE, _, TIME, _) => FieldType::F64,
             (_, _, TIME, _) => FieldType::Time,
             (_, _, TMPS, _) => FieldType::I32,
             (_, _, TNAM, _) => FieldType::StringZ,
@@ -521,6 +525,10 @@ pub struct Ingredient {
     pub effect_3_attribute: Either<Option<i32>, Attribute>,
     #[serde(with="attribute_option_i32")]
     pub effect_4_attribute: Either<Option<i32>, Attribute>,
+}
+
+pub(crate) fn eq_f64(a: &f64, b: &f64) -> bool {
+    a.to_bits() == b.to_bits()
 }
 
 pub(crate) fn eq_f32(a: &f32, b: &f32) -> bool {
@@ -3718,6 +3726,7 @@ define_field!(
     EffectMetadata(EffectMetadata),
     Enchantment(Enchantment),
     F32(#[educe(PartialEq(method="eq_f32"))] f32),
+    F64(#[educe(PartialEq(method="eq_f64"))] f64),
     F32List(#[educe(PartialEq(method="eq_f32_list"))] Vec<f32>),
     Faction(Faction),
     FileMetadata(FileMetadata),

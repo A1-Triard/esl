@@ -402,6 +402,13 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
             } else {
                 Err(S::Error::custom(format!("{} {} field should have 32-bit float type", self.record_tag, self.field_tag)))
             },
+            FieldType::F64 => if let Field::F64(v) = self.field {
+                ValueWithSeed(v, F64AsIsSerde).serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!(
+                    "{} {} field should have 64-bit float type", self.record_tag, self.field_tag
+                )))
+            },
             FieldType::MarkerU8(none) => if let Field::None = self.field {
                 ValueWithSeed(&(), NoneU8Serde { none }).serialize(serializer)
             } else {
@@ -653,6 +660,7 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                 FieldType::Bool8 => BoolU8Serde.deserialize(deserializer).map(Field::Bool),
                 FieldType::Bool32 => BoolU32Serde.deserialize(deserializer).map(Field::Bool),
                 FieldType::F32 => F32AsIsSerde.deserialize(deserializer).map(Field::F32),
+                FieldType::F64 => F64AsIsSerde.deserialize(deserializer).map(Field::F64),
                 FieldType::I32 => i32::deserialize(deserializer).map(Field::I32),
                 FieldType::I16 => i16::deserialize(deserializer).map(Field::I16),
                 FieldType::I64 => i64::deserialize(deserializer).map(Field::I64),
