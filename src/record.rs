@@ -66,13 +66,13 @@ impl<'a> Serialize for FieldBodySerializer<'a> {
                     "{} {} field should have i8 & string type", self.record_tag, self.field_tag
                 )))
             },
-            FieldType::I32I32PrefixedString => if let Field::I32I32PrefixedString(s) = self.field {
-                ValueWithSeed(&(s.prefix.0, s.prefix.1, s.string.clone()), I32I32PrefixedStringSerde {
+            FieldType::I32I32I8PrefixedString => if let Field::I32I32I8PrefixedString(s) = self.field {
+                ValueWithSeed(&(s.prefix.0, s.prefix.1, s.prefix.2, s.string.clone()), I32I32I8PrefixedStringSerde {
                     code_page: self.code_page,
                 }).serialize(serializer)
             } else {
                 Err(S::Error::custom(format!(
-                    "{} {} field should have i32 & i32 & string type", self.record_tag, self.field_tag
+                    "{} {} field should have i32 & i32 & i8 & string type", self.record_tag, self.field_tag
                 )))
             },
             FieldType::String(len) => if let Field::String(s) = self.field {
@@ -594,11 +594,11 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
                     }.deserialize(deserializer).map(|(prefix, string)|
                         Field::I8PrefixedString(I8PrefixedString { prefix, string })
                     ),
-                FieldType::I32I32PrefixedString =>
-                    I32I32PrefixedStringSerde {
+                FieldType::I32I32I8PrefixedString =>
+                    I32I32I8PrefixedStringSerde {
                         code_page: self.code_page
-                    }.deserialize(deserializer).map(|(b0, b1, string)|
-                        Field::I32I32PrefixedString(I32I32PrefixedString { prefix: (b0, b1), string })
+                    }.deserialize(deserializer).map(|(b0, b1, b2, string)|
+                        Field::I32I32I8PrefixedString(I32I32I8PrefixedString { prefix: (b0, b1, b2), string })
                     ),
                 FieldType::String(len) =>
                     StringSerde {

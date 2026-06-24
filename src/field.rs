@@ -128,7 +128,7 @@ enum_serde!(EffectRange, "effect range", as u32, Unsigned, u64);
 pub(crate) enum FieldType {
     U8List, U8ListZip,
     String(Option<u32>),
-    I8PrefixedString, I32I32PrefixedString,
+    I8PrefixedString, I32I32I8PrefixedString,
     StringZ, StringZList,
     Multiline(Newline),
     F32, F64, I32, I16, I64, U8,
@@ -148,6 +148,7 @@ pub(crate) enum FieldType {
 impl FieldType {
     pub fn from_tags(record_tag: Tag, prev_tag: Tag, field_tag: Tag, omwsave: bool) -> FieldType {
         match (record_tag, prev_tag, field_tag, omwsave) {
+            (CSTA, _, FTEX, _) => FieldType::U8ListZip,
             (CSTA, _, _, _) => FieldType::U8List,
             (PLAY, _, _, _) => FieldType::U8List,
             (APPA, _, AADT, _) => FieldType::Apparatus,
@@ -204,6 +205,7 @@ impl FieldType {
             (_, _, CMND, _) => FieldType::Bool8,
             (ARMO, _, CNAM, _) => FieldType::String(None),
             (CLOT, _, CNAM, _) => FieldType::String(None),
+            (CREA, _, CNAM, true) => FieldType::I8PrefixedString,
             (KLST, _, CNAM, _) => FieldType::I32,
             (NPC_, _, CNAM, true) => FieldType::I8PrefixedString,
             (REGN, _, CNAM, _) => FieldType::Color,
@@ -215,6 +217,7 @@ impl FieldType {
             (DYNA, _, COUN, _) => FieldType::I64,
             (_, _, COUN, _) => FieldType::I32,
             (CELL, _, CRED, _) => FieldType::U8ListZip,
+            (_, _, CREG, true) => FieldType::I8PrefixedString,
             (_, _, CREG, _) => FieldType::StringZ,
             (_, _, CRID, _) => FieldType::I32,
             (CELL, _, CSHN, _) => FieldType::StringZ,
@@ -297,7 +300,7 @@ impl FieldType {
             (_, _, HSND, _) => FieldType::StringZ,
             (_, _, HVFX, _) => FieldType::StringZ,
             (_, _, ICNT, _) => FieldType::I32,
-            (_, _, ID__, _) => FieldType::String(None),
+            (_, _, ID__, _) => FieldType::I8PrefixedString,
             (_, _, INAM, _) => FieldType::StringZ,
             (_, _, INCR, _) => FieldType::Attributes,
             (ARMO, _, INDX, _) => FieldType::BipedObject,
@@ -369,7 +372,12 @@ impl FieldType {
             (PCDT, _, NAM9, _) => FieldType::I32,
             (CLAS, _, NAME, true) => FieldType::U8List,
             (CLOT, _, NAME, true) => FieldType::U8List,
+            (CONT, _, NAME, true) => FieldType::I8PrefixedString,
+            (CREA, _, NAME, true) => FieldType::I8PrefixedString,
             (ENCH, _, NAME, true) => FieldType::U8List,
+            (GLOB, _, NAME, true) => FieldType::I8PrefixedString,
+            (GSCR, _, NAME, true) => FieldType::I8PrefixedString,
+            (SPEL, _, NAME, true) => FieldType::U8List,
             (GMST, _, NAME, _) => FieldType::String(None),
             (GSCR, _, NAME, _) => FieldType::String(None),
             (INFO, _, NAME, _) => FieldType::String(None),
@@ -383,13 +391,14 @@ impl FieldType {
             (LEVC, _, NNAM, _) => FieldType::U8,
             (LEVI, _, NNAM, _) => FieldType::U8,
             (_, _, NNAM, _) => FieldType::StringZ,
-            (_, _, NPCO, true) => FieldType::I32I32PrefixedString,
+            (_, _, NPCO, true) => FieldType::I32I32I8PrefixedString,
             (_, _, NPCO, _) => FieldType::Item,
             (CREA, _, NPDT, _) => FieldType::Creature,
             (SPLM, _, NPDT, _) => FieldType::U8ListZip,
             (NPC_, _, NPDT, _) => FieldType::Npc,
             (NPCC, _, NPDT, _) => FieldType::NpcState,
-            (_, _, NPCS, false) => FieldType::String(Some(32)),
+            (_, _, NPCS, true) => FieldType::I8PrefixedString,
+            (_, _, NPCS, _) => FieldType::String(Some(32)),
             (_, _, NWTH, _) => FieldType::I32,
             (_, _, OBJE, _) => FieldType::Tag,
             (STLN, _, ONAM, _) => FieldType::String(None),
@@ -426,6 +435,7 @@ impl FieldType {
             (SCPT, _, SCDT, _) => FieldType::ScriptData,
             (SCPT, _, SCHD, _) => FieldType::ScriptMetadata,
             (TES3, _, SCRD, _) => FieldType::U8ListZip,
+            (_, _, SCRI, true) => FieldType::I8PrefixedString,
             (_, _, SCRI, _) => FieldType::StringZ,
             (_, _, SCRN, _) => FieldType::U8ListZip,
             (TES3, _, SCRS, _) => FieldType::U8ListZip,
@@ -458,7 +468,7 @@ impl FieldType {
             (_, _, STPR, _) => FieldType::F32,
             (_, _, STRV, _) => FieldType::String(None),
             (_, _, TAID, _) => FieldType::I32,
-            (GSCR, _, TARG, _) => FieldType::String(None),
+            (GSCR, _, TARG, _) => FieldType::I8PrefixedString,
             (_, DATA, TARG, _) => FieldType::String(None),
             (_, _, TARG, _) => FieldType::I32,
             (ENAB, _, TELE, _) => FieldType::Bool8,
@@ -3705,8 +3715,8 @@ pub struct I8PrefixedString {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct I32I32PrefixedString {
-    pub prefix: (i32, i32),
+pub struct I32I32I8PrefixedString {
+    pub prefix: (i32, i32, i8),
     pub string: String,
 }
 
@@ -3787,7 +3797,7 @@ define_field!(
     Spell(Spell),
     String(String),
     I8PrefixedString(I8PrefixedString),
-    I32I32PrefixedString(I32I32PrefixedString),
+    I32I32I8PrefixedString(I32I32I8PrefixedString),
     StringList(Vec<String>),
     StringZ(StringZ),
     StringZList(StringZList),
