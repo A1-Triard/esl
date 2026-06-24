@@ -57,6 +57,15 @@ struct FieldBodySerializer<'a> {
 impl<'a> Serialize for FieldBodySerializer<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag, self.omwsave) {
+            FieldType::ByteString => if let Field::ByteString(s) = self.field {
+                ValueWithSeed(&(s.byte, s.string.clone()), ByteStringSerde {
+                    code_page: self.code_page,
+                }).serialize(serializer)
+            } else {
+                Err(S::Error::custom(format!(
+                    "{} {} field should have byte & string type", self.record_tag, self.field_tag
+                )))
+            },
             FieldType::String(len) => if let Field::String(s) = self.field {
                 ValueWithSeed(s.as_str(), StringSerde {
                     code_page: self.code_page,
@@ -570,6 +579,10 @@ impl<'de> DeserializeSeed<'de> for FieldBodyDeserializer {
             RecordFlags::deserialize(deserializer).map(Left)
         } else {
             match FieldType::from_tags(self.record_tag, self.prev_tag, self.field_tag, self.omwsave) {
+                FieldType::ByteString =>
+                    ByteStringSerde {
+                        code_page: self.code_page
+                    }.deserialize(deserializer).map(|(byte, string)| Field::ByteString(ByteString { byte, string })),
                 FieldType::String(len) =>
                     StringSerde {
                         code_page: self.code_page, len: len.map(|x| x.try_into().unwrap())

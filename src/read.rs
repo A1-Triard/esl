@@ -49,6 +49,13 @@ fn string_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=String, Error
     consume().map(move |x| code_page.decode(x)).map_err(|x| x)
 }
 
+fn byte_string_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=ByteString, Error=FieldBodyError> {
+    u8()
+        .map_err(|_| FieldBodyError::UnexpectedEndOfField(1))
+        .and(consume().map(move |x| code_page.decode(x)).map_err(|x| x))
+        .map(|(byte, string)| ByteString { byte, string })
+}
+
 fn string_z_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=StringZ, Error=FieldBodyError> {
     consume().map(move |input| {
         let has_tail_zero = input.last() == Some(&0);
@@ -1394,6 +1401,7 @@ fn field_body<'p>(
             FieldType::Time => time_field().map(Field::Time).parse(input),
             FieldType::String(Some(len)) => short_string_field(code_page, mode, len).map(Field::String).parse(input),
             FieldType::String(None) => string_field(code_page).map(Field::String).parse(input),
+            FieldType::ByteString => byte_string_field(code_page).map(Field::ByteString).parse(input),
             FieldType::StringZ => string_z_field(code_page).map(Field::StringZ).parse(input),
             FieldType::StringZList => string_z_list_field(code_page).map(Field::StringZList).parse(input),
             FieldType::FileMetadata => match field_size {
