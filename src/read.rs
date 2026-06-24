@@ -58,13 +58,13 @@ fn i8_prefixed_string_field<'p>(
         .map(|(prefix, string)| I8PrefixedString { prefix, string })
 }
 
-fn i32_i32_i8_prefixed_string_field<'p>(
+fn i32_i8_i32_prefixed_string_field<'p>(
     code_page: CodePage
-) -> impl Parser<'p, Result=I32I32I8PrefixedString, Error=FieldBodyError> {
-    (i32_le(), i32_le(), i8())
+) -> impl Parser<'p, Result=I32I8I32PrefixedString, Error=FieldBodyError> {
+    (i32_le(), i8(), i32_le())
         .map_err(|_| FieldBodyError::UnexpectedEndOfField(9))
         .and(consume().map(move |x| code_page.decode(x)).map_err(|x| x))
-        .map(|((b0, b1, b2), string)| I32I32I8PrefixedString { prefix: (b0, b1, b2), string })
+        .map(|((b0, b1, b2), string)| I32I8I32PrefixedString { prefix: (b0, b1, b2), string })
 }
 
 fn string_z_field<'p>(code_page: CodePage) -> impl Parser<'p, Result=StringZ, Error=FieldBodyError> {
@@ -1414,8 +1414,8 @@ fn field_body<'p>(
             FieldType::String(None) => string_field(code_page).map(Field::String).parse(input),
             FieldType::I8PrefixedString =>
                 i8_prefixed_string_field(code_page).map(Field::I8PrefixedString).parse(input),
-            FieldType::I32I32I8PrefixedString =>
-                i32_i32_i8_prefixed_string_field(code_page).map(Field::I32I32I8PrefixedString).parse(input),
+            FieldType::I32I8I32PrefixedString =>
+                i32_i8_i32_prefixed_string_field(code_page).map(Field::I32I8I32PrefixedString).parse(input),
             FieldType::StringZ => string_z_field(code_page).map(Field::StringZ).parse(input),
             FieldType::StringZList => string_z_list_field(code_page).map(Field::StringZList).parse(input),
             FieldType::FileMetadata => match field_size {

@@ -453,12 +453,12 @@ impl<'de> DeserializeSeed<'de> for I8PrefixedStringSerde {
 }
 
 #[derive(Clone)]
-pub struct I32I32I8PrefixedStringSerde {
+pub struct I32I8I32PrefixedStringSerde {
     pub code_page: Option<CodePage>,
 }
 
-impl SerializeSeed for I32I32I8PrefixedStringSerde {
-    type Value = (i32, i32, i8, String);
+impl SerializeSeed for I32I8I32PrefixedStringSerde {
+    type Value = (i32, i8, i32, String);
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -475,20 +475,20 @@ impl SerializeSeed for I32I32I8PrefixedStringSerde {
             })?;
             let mut r = Vec::new();
             r.extend_from_slice(&value.0.to_le_bytes());
-            r.extend_from_slice(&value.1.to_le_bytes());
-            r.push(value.2.cast_unsigned());
+            r.push(value.1.cast_unsigned());
+            r.extend_from_slice(&value.2.to_le_bytes());
             r.extend_from_slice(&bytes);
             r.serialize(serializer)
         }
     }
 }
 
-impl<'de> DeserializeSeed<'de> for I32I32I8PrefixedStringSerde {
-    type Value = (i32, i32, i8, String);
+impl<'de> DeserializeSeed<'de> for I32I8I32PrefixedStringSerde {
+    type Value = (i32, i8, i32, String);
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            <(i32, i32, i8, String)>::deserialize(deserializer)
+            <(i32, i8, i32, String)>::deserialize(deserializer)
         } else {
             let bytes = <Vec<u8>>::deserialize(deserializer)?;
             if bytes.len() < 9 {
@@ -499,8 +499,8 @@ impl<'de> DeserializeSeed<'de> for I32I32I8PrefixedStringSerde {
             };
             Ok((
                 i32::from_le_bytes(bytes[0 .. 4].try_into().unwrap()),
-                i32::from_le_bytes(bytes[4 .. 8].try_into().unwrap()),
-                bytes[8].cast_signed(),
+                bytes[4].cast_signed(),
+                i32::from_le_bytes(bytes[5 .. 9].try_into().unwrap()),
                 code_page.decode(&bytes[9 ..])
             ))
         }
