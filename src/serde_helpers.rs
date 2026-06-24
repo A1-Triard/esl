@@ -407,12 +407,12 @@ impl<'de> de::Visitor<'de> for F64HRDeVisitor {
 }
 
 #[derive(Clone)]
-pub struct ByteStringSerde {
+pub struct I8PrefixedStringSerde {
     pub code_page: Option<CodePage>,
 }
 
-impl SerializeSeed for ByteStringSerde {
-    type Value = (u8, String);
+impl SerializeSeed for I8PrefixedStringSerde {
+    type Value = (i8, String);
 
     fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
@@ -427,18 +427,18 @@ impl SerializeSeed for ByteStringSerde {
                 )),
                 Some(c) => S::Error::custom(format!("the '{c}' char is not representable in {code_page:?} code page"))
             })?;
-            bytes.insert(0, value.0);
+            bytes.insert(0, value.0.cast_unsigned());
             bytes.serialize(serializer)
         }
     }
 }
 
-impl<'de> DeserializeSeed<'de> for ByteStringSerde {
-    type Value = (u8, String);
+impl<'de> DeserializeSeed<'de> for I8PrefixedStringSerde {
+    type Value = (i8, String);
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
         if deserializer.is_human_readable() {
-            <(u8, String)>::deserialize(deserializer)
+            <(i8, String)>::deserialize(deserializer)
         } else {
             let bytes = <Vec<u8>>::deserialize(deserializer)?;
             if bytes.len() == 0 {
@@ -447,7 +447,60 @@ impl<'de> DeserializeSeed<'de> for ByteStringSerde {
             let Some(code_page) = self.code_page else {
                 return Err(D::Error::custom("code page required for binary serialization"));
             };
-            Ok((bytes[0], code_page.decode(&bytes[1 ..])))
+            Ok((bytes[0].cast_signed(), code_page.decode(&bytes[1 ..])))
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct I32I32PrefixedStringSerde {
+    pub code_page: Option<CodePage>,
+}
+
+impl SerializeSeed for I32I32PrefixedStringSerde {
+    type Value = (i32, i32, String);
+
+    fn serialize<S: Serializer>(&self, value: &Self::Value, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            value.serialize(serializer)
+        } else {
+            let Some(code_page) = self.code_page else {
+                return Err(S::Error::custom("code page required for binary serialization"));
+            };
+            let bytes = code_page.encode(&value.2).map_err(|e| match e {
+                None => S::Error::custom(format!(
+                    "the '{}' string does not correspond to any source byte sequence", &value.2
+                )),
+                Some(c) => S::Error::custom(format!("the '{c}' char is not representable in {code_page:?} code page"))
+            })?;
+            let mut r = Vec::new();
+            r.extend_from_slice(&value.0.to_le_bytes());
+            r.extend_from_slice(&value.1.to_le_bytes());
+            r.extend_from_slice(&bytes);
+            r.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> DeserializeSeed<'de> for I32I32PrefixedStringSerde {
+    type Value = (i32, i32, String);
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+        if deserializer.is_human_readable() {
+            <(i32, i32, String)>::deserialize(deserializer)
+        } else {
+            let bytes = <Vec<u8>>::deserialize(deserializer)?;
+            if bytes.len() < 8 {
+                return Err(D::Error::custom("At least 8 bytes expected"));
+            }
+            let Some(code_page) = self.code_page else {
+                return Err(D::Error::custom("code page required for binary serialization"));
+            };
+            Ok((
+                i32::from_le_bytes(bytes[0 .. 4].try_into().unwrap()),
+                i32::from_le_bytes(bytes[4 .. 8].try_into().unwrap()),
+                code_page.decode(&bytes[8 ..])
+            ))
         }
     }
 }

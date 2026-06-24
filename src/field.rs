@@ -128,7 +128,7 @@ enum_serde!(EffectRange, "effect range", as u32, Unsigned, u64);
 pub(crate) enum FieldType {
     U8List, U8ListZip,
     String(Option<u32>),
-    ByteString,
+    I8PrefixedString, I32I32PrefixedString,
     StringZ, StringZList,
     Multiline(Newline),
     F32, F64, I32, I16, I64, U8,
@@ -171,7 +171,7 @@ impl FieldType {
             (ALCH, _, ALDT, _) => FieldType::Potion,
             (_, _, ALWY, _) => FieldType::Bool8,
             (CELL, _, AMBI, _) => FieldType::Interior,
-            (NPC_, _, ANAM, true) => FieldType::ByteString,
+            (NPC_, _, ANAM, true) => FieldType::I8PrefixedString,
             (FACT, _, ANAM, _) => FieldType::String(None),
             (_, _, ANAM, _) => FieldType::StringZ,
             (_, _, ANGL, _) => FieldType::F32,
@@ -185,9 +185,9 @@ impl FieldType {
             (BOOK, _, BKDT, _) => FieldType::Book,
             (ARMO, _, BNAM, _) => FieldType::String(None),
             (BODY, _, BNAM, _) => FieldType::String(None),
-            (CLOT, _, BNAM, _) => FieldType::ByteString,
+            (CLOT, _, BNAM, _) => FieldType::I8PrefixedString,
             (INFO, _, BNAM, _) => FieldType::Multiline(Newline::Dos),
-            (NPC_, _, BNAM, true) => FieldType::ByteString,
+            (NPC_, _, BNAM, true) => FieldType::I8PrefixedString,
             (_, _, BNAM, _) => FieldType::StringZ,
             (_, _, BNDS, _) => FieldType::I32List,
             (_, _, BOUN, _) => FieldType::F32List,
@@ -205,7 +205,7 @@ impl FieldType {
             (ARMO, _, CNAM, _) => FieldType::String(None),
             (CLOT, _, CNAM, _) => FieldType::String(None),
             (KLST, _, CNAM, _) => FieldType::I32,
-            (NPC_, _, CNAM, true) => FieldType::ByteString,
+            (NPC_, _, CNAM, true) => FieldType::I8PrefixedString,
             (REGN, _, CNAM, _) => FieldType::Color,
             (_, _, CNAM, _) => FieldType::StringZ,
             (CELL, _, CNDT, _) => FieldType::Grid,
@@ -263,7 +263,7 @@ impl FieldType {
             (SPEL, _, ENAM, _) => FieldType::Effect,
             (_, _, ENAM, _) => FieldType::StringZ,
             (ENCH, _, ENDT, _) => FieldType::Enchantment,
-            (_, _, ENID, _) => FieldType::ByteString,
+            (_, _, ENID, _) => FieldType::I8PrefixedString,
             (_, _, EQIP, _) => FieldType::U8ListZip,
             (_, _, FACT, _) => FieldType::String(None),
             (FACT, _, FADT, _) => FieldType::Faction,
@@ -317,7 +317,7 @@ impl FieldType {
             (_, _, JEDM, _) => FieldType::I32,
             (_, _, JEMO, _) => FieldType::I32,
             (_, _, JETY, _) => FieldType::I32,
-            (NPC_, _, KNAM, true) => FieldType::ByteString,
+            (NPC_, _, KNAM, true) => FieldType::I8PrefixedString,
             (PCDT, _, KNAM, _) => FieldType::U8ListZip,
             (_, _, KNAM, _) => FieldType::StringZ,
             (_, _, LAST, _) => FieldType::I32,
@@ -374,7 +374,7 @@ impl FieldType {
             (GSCR, _, NAME, _) => FieldType::String(None),
             (INFO, _, NAME, _) => FieldType::String(None),
             (JOUR, _, NAME, _) => FieldType::Multiline(Newline::Unix),
-            (NPC_, _, NAME, true) => FieldType::ByteString,
+            (NPC_, _, NAME, true) => FieldType::I8PrefixedString,
             (SPLM, _, NAME, _) => FieldType::I32,
             (SSCR, _, NAME, _) => FieldType::String(None),
             (STLN, _, NAME, _) => FieldType::String(None),
@@ -383,7 +383,8 @@ impl FieldType {
             (LEVC, _, NNAM, _) => FieldType::U8,
             (LEVI, _, NNAM, _) => FieldType::U8,
             (_, _, NNAM, _) => FieldType::StringZ,
-            (_, _, NPCO, false) => FieldType::Item,
+            (_, _, NPCO, true) => FieldType::I32I32PrefixedString,
+            (_, _, NPCO, _) => FieldType::Item,
             (CREA, _, NPDT, _) => FieldType::Creature,
             (SPLM, _, NPDT, _) => FieldType::U8ListZip,
             (NPC_, _, NPDT, _) => FieldType::Npc,
@@ -418,7 +419,7 @@ impl FieldType {
             (_, _, RGNW, _) => FieldType::I32,
             (REPA, _, RIDT, _) => FieldType::RepairItem,
             (FACT, _, RNAM, _) => FieldType::String(Some(32)),
-            (NPC_, _, RNAM, true) => FieldType::ByteString,
+            (NPC_, _, RNAM, true) => FieldType::I8PrefixedString,
             (SCPT, _, RNAM, _) => FieldType::I32,
             (_, _, RNAM, _) => FieldType::StringZ,
             (_, _, RUN_, _) => FieldType::Bool32,
@@ -468,7 +469,7 @@ impl FieldType {
             (_, _, TIME, _) => FieldType::Time,
             (_, _, TMPS, _) => FieldType::I32,
             (_, _, TNAM, _) => FieldType::StringZ,
-            (_, _, TOPI, _) => FieldType::ByteString,
+            (_, _, TOPI, _) => FieldType::I8PrefixedString,
             (_, _, TRFC, _) => FieldType::I32,
             (_, _, TSTM, _) => FieldType::CurrentTime,
             (_, _, TYPE, _) => FieldType::I32,
@@ -498,8 +499,8 @@ impl FieldType {
             (SPLM, _, XNAM, _) => FieldType::U8,
             (_, _, XSCL, _) => FieldType::F32,
             (_, _, XSOL, _) => FieldType::StringZ,
-            (_, _, YEIN, _) => FieldType::ByteString,
-            (_, _, YETO, _) => FieldType::ByteString,
+            (_, _, YEIN, _) => FieldType::I8PrefixedString,
+            (_, _, YETO, _) => FieldType::I8PrefixedString,
             (REFR, _, YNAM, _) => FieldType::I32,
             (CELL, _, ZNAM, _) => FieldType::U8,
             _ => FieldType::U8List
@@ -3698,8 +3699,14 @@ pub struct SkillMetadata {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct ByteString {
-    pub byte: u8,
+pub struct I8PrefixedString {
+    pub prefix: i8,
+    pub string: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct I32I32PrefixedString {
+    pub prefix: (i32, i32),
     pub string: String,
 }
 
@@ -3779,7 +3786,8 @@ define_field!(
     SoundGen(SoundGen),
     Spell(Spell),
     String(String),
-    ByteString(ByteString),
+    I8PrefixedString(I8PrefixedString),
+    I32I32PrefixedString(I32I32PrefixedString),
     StringList(Vec<String>),
     StringZ(StringZ),
     StringZList(StringZList),
